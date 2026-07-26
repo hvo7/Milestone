@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#4338ca"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded-square tile -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#bg)"/>
+
+  <!-- Subtle inner highlight -->
+  <rect x="16" y="16" width="480" height="240" rx="112" fill="#ffffff" opacity="0.06"/>
+
+  <!-- "M" lettermark -->
+  <path d="M 128 372 V 152 a 12 12 0 0 1 20.5 -8.5 L 256 251 L 363.5 143.5 A 12 12 0 0 1 384 152 V 372 a 16 16 0 0 1 -16 16 h -16 a 16 16 0 0 1 -16 -16 V 230 l -71.5 71.5 a 12 12 0 0 1 -17 0 L 176 230 V 372 a 16 16 0 0 1 -16 16 h -16 a 16 16 0 0 1 -16 -16 Z"
+        fill="#ffffff"/>
+</svg>

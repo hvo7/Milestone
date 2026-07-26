@@ -1,0 +1,628 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&display=swap');
+@import "tailwindcss";
+
+/* ══════════════════════════════════════════════
+   DESIGN TOKENS
+   ══════════════════════════════════════════════ */
+
+/* Category accent palette — fixed across themes, tuned brighter/cleaner */
+:root {
+  --color-crimson:  #fb7185;
+  --color-sapphire: #38bdf8;
+  --color-emerald:  #34d399;
+  --color-amber:    #fbbf24;
+  --color-violet:   #a78bfa;
+
+  --font-display: 'Sora', 'Inter', system-ui, sans-serif;
+}
+
+/* ── Dark (default) ── */
+:root, [data-theme="dark"] {
+  color-scheme: dark;
+
+  --accent:        #818cf8;
+  --accent-2:      #c084fc;
+  --accent-strong: #6366f1;
+  --accent-soft:   rgba(129,140,248,0.13);
+  --accent-border: rgba(129,140,248,0.38);
+  --grad-accent:   linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #a855f7 100%);
+
+  /* Legacy aliases (some inline styles still reference these) */
+  --gold:       var(--accent);
+  --gold-dim:   var(--accent-border);
+  --gold-light: #a5b4fc;
+
+  --dark-bg:   #0a0c12;
+  --bg-glow-1: rgba(99,102,241,0.13);
+  --bg-glow-2: rgba(168,85,247,0.09);
+  --bg-glow-3: rgba(56,189,248,0.06);
+
+  --card-bg:          #12141c;
+  --card-border:      rgba(255,255,255,0.08);
+  --card-bg-raised:   #191c26;
+
+  --text-parchment:   #eceef5;
+  --text-dim:         #8b91a5;
+
+  --page-text:        #eceef5;
+  --page-text-dim:    #8b91a5;
+  --page-border:      rgba(255,255,255,0.08);
+  --page-surface:     #12141c;
+  --page-surface-hover: #191c26;
+
+  --track-bg:         rgba(255,255,255,0.08);
+  --row-shadow:       0 1px 2px rgba(0,0,0,0.25);
+  --row-shadow-hover: 0 4px 16px rgba(0,0,0,0.35), 0 0 0 1px rgba(129,140,248,0.12);
+
+  --nav-bg:           rgba(10,12,18,0.8);
+  --nav-border:       rgba(255,255,255,0.07);
+  --modal-bg:         rgba(6,7,11,0.72);
+  --input-bg:         rgba(255,255,255,0.045);
+  --input-border:     rgba(255,255,255,0.11);
+
+  --success:    #34d399;
+  --danger:     #fb7185;
+
+  /* Heatmap greens (GitHub-dark scale) */
+  --heat-0:     rgba(255,255,255,0.06);
+  --heat-1:     #0e4429;
+  --heat-2:     #006d32;
+  --heat-3:     #26a641;
+  --heat-4:     #39d353;
+
+  --sb-track:   #0a0c12;
+  --sb-thumb:   #2b2f3c;
+}
+
+/* ── Light ── */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --accent:        #4f46e5;
+  --accent-2:      #9333ea;
+  --accent-strong: #4338ca;
+  --accent-soft:   rgba(79,70,229,0.08);
+  --accent-border: rgba(79,70,229,0.35);
+  --grad-accent:   linear-gradient(135deg, #4f46e5 0%, #7c3aed 55%, #9333ea 100%);
+
+  --gold:       var(--accent);
+  --gold-dim:   var(--accent-border);
+  --gold-light: #6366f1;
+
+  --dark-bg:   #f4f5fa;
+  --bg-glow-1: rgba(99,102,241,0.09);
+  --bg-glow-2: rgba(168,85,247,0.06);
+  --bg-glow-3: rgba(56,189,248,0.05);
+
+  --card-bg:          #ffffff;
+  --card-border:      rgba(16,20,36,0.09);
+  --card-bg-raised:   #f7f8fc;
+
+  --text-parchment:   #171a23;
+  --text-dim:         #5d6473;
+
+  --page-text:        #171a23;
+  --page-text-dim:    #5d6473;
+  --page-border:      rgba(16,20,36,0.09);
+  --page-surface:     #ffffff;
+  --page-surface-hover: #f7f8fc;
+
+  --track-bg:         rgba(16,20,36,0.09);
+  --row-shadow:       0 1px 2px rgba(16,20,36,0.05);
+  --row-shadow-hover: 0 4px 14px rgba(16,20,36,0.10), 0 0 0 1px rgba(79,70,229,0.10);
+
+  --nav-bg:           rgba(255,255,255,0.82);
+  --nav-border:       rgba(16,20,36,0.08);
+  --modal-bg:         rgba(20,24,34,0.45);
+  --input-bg:         #ffffff;
+  --input-border:     rgba(16,20,36,0.15);
+
+  --success:    #059669;
+  --danger:     #dc2626;
+
+  --heat-0:     rgba(16,20,36,0.07);
+  --heat-1:     #9be9a8;
+  --heat-2:     #40c463;
+  --heat-3:     #30a14e;
+  --heat-4:     #216e39;
+
+  --sb-track:   #f4f5fa;
+  --sb-thumb:   #c9ced8;
+}
+
+/* ══════════════════════════════════════════════
+   BASE
+   ══════════════════════════════════════════════ */
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background-color: var(--dark-bg);
+  color: var(--page-text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font-size: 15px;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+/* Set on <body> for the duration of a to-do reorder drag. Without it, dragging a
+   row across the list paints a text-selection highlight over everything the
+   cursor passes, and the cursor keeps flipping between grab/text/pointer as it
+   crosses each element — both of which make a working drag look broken. */
+body.reordering,
+body.reordering * {
+  user-select: none !important;
+  cursor: grabbing !important;
+}
+
+/* Ambient aurora — a fixed, very quiet colour wash behind everything. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(1100px 520px at 12% -8%,  var(--bg-glow-1), transparent 60%),
+    radial-gradient(900px 480px  at 88% -6%,  var(--bg-glow-2), transparent 60%),
+    radial-gradient(1000px 600px at 50% 112%, var(--bg-glow-3), transparent 60%);
+  transition: opacity 0.3s;
+}
+
+#root { min-height: 100vh; position: relative; z-index: 1; }
+
+::selection { background: var(--accent-border); }
+
+/* Keyboard focus — one consistent ring everywhere */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Legacy font helpers — fantasy fonts removed, normalize to UI font */
+.font-cinzel      { font-family: inherit !important; }
+.font-cinzel-deco { font-family: inherit !important; }
+
+/* Page titles */
+.page-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--page-text);
+}
+
+/* ══════════════════════════════════════════════
+   CARD (.parchment — legacy name kept for compat)
+   ══════════════════════════════════════════════ */
+
+.parchment {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  position: relative;
+  overflow: hidden;
+  transition: background-color 0.3s, border-color 0.3s, box-shadow 0.25s;
+}
+[data-theme="dark"]  .parchment { box-shadow: 0 1px 2px rgba(0,0,0,0.3); }
+[data-theme="light"] .parchment { box-shadow: 0 1px 3px rgba(16,20,36,0.06), 0 4px 14px rgba(16,20,36,0.04); }
+
+/* Slightly luminous variant for hero cards (Today progress) */
+.glass-card {
+  background: linear-gradient(180deg, var(--accent-soft), transparent 55%), var(--card-bg);
+}
+
+/* ══════════════════════════════════════════════
+   ICON PLATE
+   ══════════════════════════════════════════════ */
+
+.icon-plate {
+  background: #f1f3f8;
+  box-shadow: inset 0 0 0 1px rgba(16, 20, 36, 0.12);
+}
+[data-theme="dark"] .icon-plate {
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+
+/* ══════════════════════════════════════════════
+   ACCENT BARS & TEXT COLOURS
+   ══════════════════════════════════════════════ */
+
+.text-gold     { color: var(--accent); }
+
+/* Glow classes kept for compat — a quiet elevation, no neon */
+.glow-crimson, .glow-sapphire, .glow-emerald, .glow-amber, .glow-violet {
+  box-shadow: 0 4px 18px rgba(0,0,0,0.25);
+}
+[data-theme="light"] .glow-crimson, [data-theme="light"] .glow-sapphire,
+[data-theme="light"] .glow-emerald, [data-theme="light"] .glow-amber,
+[data-theme="light"] .glow-violet {
+  box-shadow: 0 2px 8px rgba(16,20,36,0.08), 0 8px 24px rgba(16,20,36,0.06);
+}
+
+.quest-active-crimson, .quest-active-sapphire, .quest-active-emerald,
+.quest-active-amber, .quest-active-violet {
+  box-shadow: 0 4px 18px rgba(0,0,0,0.25);
+}
+
+/* ══════════════════════════════════════════════
+   PROGRESS BARS
+   ══════════════════════════════════════════════ */
+
+.hp-track {
+  height: 6px;
+  background: var(--track-bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.hp-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.6s cubic-bezier(.22,1,.36,1);
+}
+
+.fill-gold     { background: var(--accent); }
+
+/* Hero progress bar — gradient fill with a soft moving sheen when complete */
+.bar-fill {
+  background: var(--grad-accent);
+}
+.bar-fill-done {
+  background: linear-gradient(135deg, #10b981, #34d399, #6ee7b7);
+  background-size: 200% 100%;
+  animation: sheen 2.4s ease-in-out infinite;
+}
+@keyframes sheen {
+  0%   { background-position: 0% 0; }
+  50%  { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
+}
+
+/* ══════════════════════════════════════════════
+   SECTION LABEL (.rune-divider — legacy name kept)
+   ══════════════════════════════════════════════ */
+
+.rune-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  user-select: none;
+}
+.rune-divider::before,
+.rune-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--card-border);
+}
+
+/* ══════════════════════════════════════════════
+   CHECKBOX (.rune-check — legacy name kept)
+   ══════════════════════════════════════════════ */
+
+.rune-check {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 19px; height: 19px;
+  border: 1.5px solid var(--text-dim);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.18s, border-color 0.18s, transform 0.12s, box-shadow 0.2s;
+  position: relative;
+  display: flex;
+}
+.rune-check:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+.rune-check:checked {
+  background: var(--grad-accent);
+  border-color: transparent;
+  animation: check-pop 0.28s cubic-bezier(.34,1.56,.64,1);
+}
+.rune-check:checked::after {
+  content: '';
+  position: absolute;
+  left: 6px; top: 3px;
+  width: 5px; height: 9px;
+  border-right: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(40deg);
+}
+
+/* Smaller variant for subtasks */
+.rune-check-sm { width: 15px; height: 15px; }
+.rune-check-sm:checked::after {
+  left: 4px; top: 1px;
+  width: 4px; height: 8px;
+}
+.rune-check-sm:hover { box-shadow: 0 0 0 3px var(--accent-soft); }
+
+@keyframes check-pop {
+  0%   { transform: scale(0.8); }
+  55%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* ══════════════════════════════════════════════
+   BUTTONS
+   ══════════════════════════════════════════════ */
+
+/* Primary (.btn-gold — legacy name kept) */
+.btn-gold {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: #fff;
+  border: 1px solid transparent;
+  background: var(--grad-accent);
+  background-size: 130% 130%;
+  border-radius: 9px;
+  padding: 7px 16px;
+  cursor: pointer;
+  transition: background-position 0.3s, box-shadow 0.2s, transform 0.12s, opacity 0.15s;
+  box-shadow: 0 2px 10px rgba(99,102,241,0.28);
+}
+.btn-gold:hover {
+  background-position: 100% 100%;
+  box-shadow: 0 4px 16px rgba(99,102,241,0.4);
+  transform: translateY(-1px);
+}
+.btn-gold:active { transform: translateY(0) scale(0.98); }
+.btn-gold:disabled { cursor: default; box-shadow: none; transform: none; }
+
+.btn-ghost {
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--text-dim);
+  border: 1px solid var(--card-border);
+  background: transparent;
+  border-radius: 9px;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s, transform 0.12s;
+}
+.btn-ghost:hover {
+  color: var(--page-text);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+}
+.btn-ghost:active { transform: scale(0.98); }
+
+/* ══════════════════════════════════════════════
+   INPUT (.rune-input — legacy name kept)
+   ══════════════════════════════════════════════ */
+
+.rune-input {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 9px;
+  color: var(--page-text);
+  font-family: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.rune-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.rune-input::placeholder { color: var(--text-dim); opacity: 0.7; }
+
+/* ══════════════════════════════════════════════
+   DROPDOWN MENU ITEM (sort/filter menus)
+   ══════════════════════════════════════════════ */
+
+.v-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--page-text);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s;
+}
+.v-menu-item:hover  { background: var(--accent-soft); color: var(--accent); }
+.v-menu-item.active { color: var(--accent); font-weight: 600; }
+
+/* ══════════════════════════════════════════════
+   MODAL OVERLAY
+   ══════════════════════════════════════════════ */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--modal-bg);
+  backdrop-filter: blur(7px);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: overlay-in 0.2s ease-out;
+}
+@keyframes overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ══════════════════════════════════════════════
+   SCROLLBAR
+   ══════════════════════════════════════════════ */
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--sb-thumb); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--accent-border); }
+
+/* ══════════════════════════════════════════════
+   ANIMATIONS
+   ══════════════════════════════════════════════ */
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Legacy animation helpers */
+.animate-float      { animation: none; }
+.animate-pulse-gold { animation: none; }
+.animate-fade-in-up { animation: fade-in-up 0.4s ease-out forwards; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ══════════════════════════════════════════════
+   TODAY — chips, rows, pills, day flipper
+   ══════════════════════════════════════════════ */
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--card-border);
+  background: var(--page-surface);
+  color: var(--page-text-dim);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s, transform 0.12s, box-shadow 0.15s;
+}
+
+.chip:hover {
+  background: var(--page-surface-hover);
+  color: var(--page-text);
+  transform: translateY(-1px);
+  box-shadow: var(--row-shadow);
+}
+
+.chip[data-active='true'] {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  color: var(--page-text);
+}
+
+.chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.chip-count {
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--page-text-dim);
+}
+
+.chip[data-active='true'] .chip-count { color: var(--accent); }
+
+/* Teal "done for today" pill on a still-open weekly goal */
+.pill-today-done {
+  margin-left: 8px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  color: var(--success);
+  border: 1px solid var(--success);
+  padding: 1px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+  animation: pill-pop 0.3s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes pill-pop {
+  0%   { transform: scale(0.7); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Floating today/tomorrow flipper */
+.day-flipper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 54px;
+  padding: 12px 0;
+  border-radius: 15px;
+  cursor: pointer;
+  background: var(--page-surface);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  box-shadow: 0 4px 18px rgba(0,0,0,0.28), 0 0 0 4px var(--accent-soft);
+}
+
+/* ══════════════════════════════════════════════
+   VYNUES — stat strip & project cards
+   ══════════════════════════════════════════════ */
+
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.stat-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 13px 16px;
+  border-radius: 13px;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+}
+.stat-tile:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-border);
+  box-shadow: var(--row-shadow-hover);
+}
+
+.project-card[data-selected='true'] {
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
