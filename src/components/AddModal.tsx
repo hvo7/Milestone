@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import type { GuildColor, RecurringType } from '../types';
 import { useQuestStore } from '../store';
 import IconPicker from './IconPicker';
 import ColorPicker from './ColorPicker';
+import ModalShell from './ModalShell';
 
 type Mode =
   | { type: 'questline' }
@@ -57,17 +57,7 @@ export default function AddModal({ mode, onClose }: Props) {
   };
 
   return (
-    <AnimatePresence>
-      <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-        <motion.div
-          className="parchment"
-          initial={{ opacity: 0, scale: 0.96, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 12 }}
-          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-          onClick={e => e.stopPropagation()}
-          style={{ width: '100%', maxWidth: 460, borderRadius: 14, padding: '24px' }}
-        >
+    <ModalShell onClose={onClose}>
           <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 600, color: 'var(--page-text)' }}>
             {headingMap[mode.type]}
           </h2>
@@ -170,9 +160,7 @@ export default function AddModal({ mode, onClose }: Props) {
               </button>
             </div>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    </ModalShell>
   );
 }
 

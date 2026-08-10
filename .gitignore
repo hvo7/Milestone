@@ -16,6 +16,11 @@ dist-ssr
 # Rebuild with `npm run package`; never commit it.
 release
 
+# PWA icons rendered from public/logo.svg by `npm run generate-icons`, which the
+# Pages workflow runs before every build. Committing them would let the installed
+# app icon drift from the source mark.
+public/pwa-*.png
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

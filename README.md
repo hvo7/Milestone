@@ -1,73 +1,74 @@
-# React + TypeScript + Vite
+# Milestone
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A goal tracker built around one idea: long-term goals only move when something
+lands on today's list. Questlines hold the ambition, Today holds the work, and
+the same task shows up in both.
 
-Currently, two official plugins are available:
+Runs as a Windows desktop app (Electron) and as an installable PWA from the same
+source — see [Builds](#builds).
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## What's in it
 
-## React Compiler
+- **Questlines → quests → tasks.** A three-level breakdown, optionally sequential
+  so the next quest unlocks only when the previous one is done.
+- **Today.** Every due thing in one list, whatever it came from — routines, quest
+  tasks, pinned quests, Vynues project tasks — filterable by category and
+  reorderable by hand.
+- **Recurrence** that goes past "daily/weekly/monthly": custom intervals ("every
+  3 weeks") and calendar rules ("first Monday", "last weekday of every 2 months").
+- **Counters and checklists.** A task can be "gym 3×/week" or "64 oz of water"
+  rather than a checkbox, and any task breaks down into infinitely nestable steps.
+- **Streaks, skips and a heatmap.** A skip is a *neutral* day — it protects the
+  streak without earning credit, for when a task was genuinely impossible.
+- **Vynues.** A lighter project/task board for work that isn't goal-shaped.
+- **Sync and backup.** Cross-computer sync through any folder your cloud drive
+  already syncs; JSON export/import; optional Notion push/pull.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Running it
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev            # Vite dev server at localhost:5173
+npm run electron:dev   # the desktop shell against that dev server
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+`npm run lint` and `npx tsc -b` are the checks.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Builds
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run package        # regenerate icons, build, package to release/
+```
+
+The desktop build lands in `release/Milestone-win32-x64/` (gitignored — it's
+~290MB of Chromium). The PWA deploys to GitHub Pages automatically on push to
+`main`, via `.github/workflows/pages.yml`.
+
+Version lives in `package.json` and nowhere else: `vite.config.ts` reads it into
+`__APP_VERSION__`, which surfaces beside the nav-bar brand and in the Data modal —
+that's how you tell a fresh build from a stale one. Bump it with
+`npm run release:patch|minor|major`, which bumps, rebuilds and repackages in one
+step. Don't hand-edit it.
+
+## Where your data lives
+
+Everything is local. In the desktop app that's Chromium local storage under
+`%APPDATA%\Milestone`; in the browser it's the tab's local storage. There is no
+account and no server — the sync feature just writes a JSON file into a folder
+OneDrive/Dropbox/Drive is already carrying, and each device only ever writes its
+own file (see `electron/cloudSync.cjs` and `src/lib/cloudSync.ts`).
+
+Back it up from **Sync & Backup → Download backup**. That same JSON restores via
+**Load backup**, and is the format the sync layer parks a rescue copy in when two
+computers were edited independently.
+
+## Layout
+
+```
+electron/     main process — window, Notion IPC, cloud-folder sync + watcher
+src/pages/    Today, Quests, All, Questline detail, Vynues
+src/components/  row/drawer/modal UI
+src/lib/      pure helpers — recurrence rules, subtask trees, sync reconciliation
+src/store.ts  quest + routine state (zustand, persisted); the recurrence engine
+src/vynuesStore.ts  the Vynues half of the same
 ```

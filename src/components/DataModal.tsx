@@ -1,8 +1,10 @@
 import { useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { VYNUES_STORE_KEY } from '../vynuesStore';
 import { QUEST_STORE_KEY as STORE_KEY } from '../store';
 import { APP_VERSION, VERSION_LABEL, buildDateLabel } from '../buildInfo';
+import { noteExternalWrite } from '../lib/cloudSync';
+import CloudSyncCard from './CloudSyncCard';
+import ModalShell from './ModalShell';
 
 interface Props { onClose: () => void; }
 
@@ -61,6 +63,10 @@ export default function DataModal({ onClose }: Props) {
           setImporting(false);
           return;
         }
+        // An import writes localStorage behind the stores' backs, so sync has to
+        // be told — otherwise the restored data still carries the pre-import
+        // version and the next sync would treat it as stale and undo it.
+        noteExternalWrite();
         setMsg({ text: 'Data loaded! Restarting…', ok: true });
         setTimeout(() => window.location.reload(), 900);
       } catch {
@@ -73,31 +79,20 @@ export default function DataModal({ onClose }: Props) {
   }
 
   return (
-    <AnimatePresence>
-      <motion.div
-        className="modal-overlay"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
-      >
-        <motion.div
-          className="parchment"
-          initial={{ opacity: 0, scale: 0.96, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 12 }}
-          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-          onClick={e => e.stopPropagation()}
-          style={{ width: '100%', maxWidth: 420, borderRadius: 14, padding: '24px' }}
-        >
+    <ModalShell onClose={onClose} maxWidth={420}>
           <div style={{ marginBottom: 20 }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--page-text)' }}>
-              Backup & Restore
+              Sync & Backup
             </h2>
             <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--text-dim)' }}>
-              Export your data, or restore from a saved backup.
+              Keep another computer in step, export your data, or restore from a saved backup.
             </p>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+            {/* Sync — hides itself outside the desktop app */}
+            <CloudSyncCard />
 
             {/* Export */}
             <div style={{ background: 'var(--input-bg)', border: '1px solid var(--card-border)', borderRadius: 10, padding: '14px 16px' }}>
@@ -159,8 +154,6 @@ export default function DataModal({ onClose }: Props) {
               built {buildDateLabel()}
             </p>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    </ModalShell>
   );
 }

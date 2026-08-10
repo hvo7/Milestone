@@ -5,6 +5,7 @@ import VynuesProjectModal from '../components/VynuesProjectModal';
 import VynuesTaskCreateDrawer, { type VynuesDrawerTarget } from '../components/VynuesTaskCreateDrawer';
 import TaskEditDrawer, { type EditTarget } from '../components/TaskEditDrawer';
 import SubtaskTree from '../components/SubtaskTree';
+import IconButton from '../components/IconButton';
 import { PRIORITY_META, MenuSelect, PROJECT_COLOR_VAR as COLOR_VAR } from '../vynuesUi';
 import { vynuesSubNodes } from '../lib/ui';
 import { repeats } from '../store';
@@ -393,21 +394,16 @@ function ProjectCard({ project, selected, onSelect, onAddTask }: {
               {open}
             </span>
           )}
-          <button
-            onClick={e => { e.stopPropagation(); onAddTask(); }}
+          <IconButton
+            onClick={onAddTask}
             title={`Add a task to ${project.name}`}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 18, height: 18, padding: 0, borderRadius: 5,
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              color: 'var(--text-dim)', fontSize: 13, lineHeight: 1,
-              opacity: hover ? 1 : 0, transition: 'opacity 0.15s, color 0.15s',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.color = accent)}
-            onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
+            stopPropagation
+            hover={accent}
+            opacity={hover ? 1 : 0}
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 18, height: 18, borderRadius: 5 }}
           >
             ＋
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -737,19 +733,15 @@ function TaskRow({ projectId, task, accent, onEditTask }: {
       )}
 
       {/* Break the task down — inline, right here, any depth. */}
-      <button
+      <IconButton
         onClick={() => setAddingSub(v => !v)}
         title="Add a step"
-        style={{
-          background: 'transparent', border: 'none', cursor: 'pointer',
-          color: 'var(--text-dim)', fontSize: 13, lineHeight: 1, padding: '0 2px',
-          opacity: hover || addingSub ? 0.9 : 0, transition: 'opacity 0.15s, color 0.15s',
-        }}
-        onMouseEnter={e => (e.currentTarget.style.color = accent)}
-        onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
+        hover={accent}
+        opacity={hover || addingSub ? 0.9 : 0}
+        style={{ padding: '0 2px' }}
       >
         ＋
-      </button>
+      </IconButton>
 
       <button
         onClick={onEditTask}

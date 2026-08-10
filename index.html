@@ -3,7 +3,22 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/logo.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover lets the dark background run under the notch and the
+         home-bar area when installed on a phone; env(safe-area-inset-*) in the CSS
+         keeps content itself clear of them. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+
+    <!-- Installable web build. Electron ignores all of this. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#0a0c12" />
+    <meta name="description" content="Quest-driven goal and habit tracker." />
+
+    <!-- iOS ignores the manifest for home-screen installs and reads these instead. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Milestone" />
+    <link rel="apple-touch-icon" href="/pwa-192.png" />
+
     <title>Milestone</title>
   </head>
   <body>

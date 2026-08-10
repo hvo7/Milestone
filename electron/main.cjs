@@ -2,6 +2,7 @@ const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { loadConfig, saveConfig, testConnection, syncToNotion, pullFromNotion } = require('./notion.cjs');
+const cloudSync = require('./cloudSync.cjs');
 
 // ── Identity ─────────────────────────────────────────────────────────────────
 // Electron derives userData from the app name, and npm names must be lowercase —
@@ -52,6 +53,9 @@ function migrateLegacyProfile() {
 
 migrateLegacyProfile();
 
+/** The live window, so the folder watcher has somewhere to push change notices. */
+let mainWindow = null;
+
 function createWindow() {
   const iconPath = app.isPackaged
     ? path.join(process.resourcesPath, 'icon.ico')
@@ -83,6 +87,9 @@ function createWindow() {
     win.loadURL('http://localhost:5173');
     win.webContents.openDevTools();
   }
+
+  mainWindow = win;
+  win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
 }
 
 // ── Notion IPC handlers ───────────────────────────────────────────────────────
@@ -114,10 +121,23 @@ ipcMain.handle('notion:sync', async (_event, { questlines, routines }) => {
   }
 });
 
+// ── Cloud-folder sync IPC ─────────────────────────────────────────────────────
+// Folder access only — which side's data wins is decided in src/lib/cloudSync.ts.
+
+ipcMain.handle('sync:get-config', () => cloudSync.loadConfig());
+ipcMain.handle('sync:set-config', (_event, patch) => cloudSync.setConfig(patch));
+ipcMain.handle('sync:pick-folder', () => cloudSync.pickFolder(mainWindow));
+ipcMain.handle('sync:read-peers', () => cloudSync.readPeers());
+ipcMain.handle('sync:write', (_event, doc) => cloudSync.writeDoc(doc));
+ipcMain.handle('sync:write-backup', (_event, { name, bundle }) => cloudSync.writeBackup(name, bundle));
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
   createWindow();
+  cloudSync.initWatcher(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed');
+  });
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

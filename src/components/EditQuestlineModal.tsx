@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import type { GuildColor, Questline, RecurringType } from '../types';
 import { useQuestStore } from '../store';
 import IconPicker from './IconPicker';
 import ColorPicker from './ColorPicker';
+import ModalShell from './ModalShell';
 
 interface Props { questline: Questline; onClose: () => void; }
 
@@ -40,17 +40,7 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
   };
 
   return (
-    <AnimatePresence>
-      <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose}>
-        <motion.div
-          className="parchment"
-          initial={{ opacity: 0, scale: 0.96, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: 12 }}
-          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
-          onClick={e => e.stopPropagation()}
-          style={{ width: '100%', maxWidth: 480, borderRadius: 14, padding: '24px', maxHeight: '90vh', overflowY: 'auto' }}
-        >
+    <ModalShell onClose={onClose} maxWidth={480} style={{ maxHeight: '90vh', overflowY: 'auto' }}>
           <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 600, color: 'var(--page-text)' }}>Edit Questline</h2>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -137,8 +127,6 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
               <button className="btn-gold" style={{ flex: 2, opacity: title.trim() ? 1 : 0.5 }} onClick={handleSave} disabled={!title.trim()}>Save</button>
             </div>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    </ModalShell>
   );
 }

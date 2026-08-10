@@ -173,6 +173,17 @@ body::before {
 
 #root { min-height: 100vh; position: relative; z-index: 1; }
 
+/* Installed as a PWA on a phone the page runs edge to edge, under the notch and
+   the home-bar strip (index.html sets viewport-fit=cover so the background fills
+   them rather than leaving letterbox bars). These insets keep content itself out
+   from under the hardware. Everywhere else — desktop browser, Electron — they
+   resolve to 0 and change nothing. */
+#root {
+  padding-left:   env(safe-area-inset-left);
+  padding-right:  env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
 ::selection { background: var(--accent-border); }
 
 /* Keyboard focus — one consistent ring everywhere */
@@ -403,6 +414,34 @@ body::before {
   background: var(--accent-soft);
 }
 .btn-ghost:active { transform: scale(0.98); }
+
+/* Bare glyph button — the ✎ / ✕ / ＋ / ⏭ affordances on rows and headers.
+   Was nine hand-rolled copies of the same inline style plus a pair of JS
+   mouseenter/mouseleave handlers to swap the colour; :hover does that, and the
+   two variables cover every variant the copies actually differed by:
+     --icon-btn-rest       resting colour  (stateful callers set it, e.g. a lit ⏭
+                           on a skipped row, so the button reads as "on")
+     --icon-btn-hover      hover colour    (--danger on destructive ones)
+     --icon-btn-fade       resting opacity, for the ones that sit half-lit until
+                           pointed at (they brighten to 1 on hover)
+   Size, and any reveal-on-hover opacity driven by a parent row's hover state,
+   stay inline at the call site. */
+.icon-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  line-height: 1;
+  flex-shrink: 0;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--icon-btn-rest, var(--text-dim));
+  opacity: var(--icon-btn-fade, 1);
+  transition: color 0.15s, opacity 0.15s;
+}
+.icon-btn:hover {
+  color: var(--icon-btn-hover, var(--accent));
+  opacity: 1;
+}
 
 /* ══════════════════════════════════════════════
    INPUT (.rune-input — legacy name kept)

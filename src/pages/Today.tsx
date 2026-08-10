@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls, type PanInfo } from 'framer-motion';
-import type { Routine, Schedule, Action } from '../types';
+import type { Routine, Schedule, Action, Questline } from '../types';
 import {
   useQuestStore, logicalDateKey, logicalDayStart, dateKey, dueOnDay, periodExpired, skipActive,
   isMultiDayCycle, isGoalRoutine, engagedOnDay, subtaskStats, repeats, isQuestComplete, questProgress, DAY_RESET_HOUR,
@@ -14,6 +14,7 @@ import TaskEditDrawer, { type EditTarget } from '../components/TaskEditDrawer';
 import SubtaskTree, { type SubNode, type SubtaskTreeHandlers } from '../components/SubtaskTree';
 import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, countSubNodes } from '../lib/ui';
 import Heatmap from '../components/Heatmap';
+import IconButton from '../components/IconButton';
 
 /** A quest's visible actions mapped into Today check-off steps. `forceOpen`
  *  renders them unchecked (tomorrow preview of a quest that will have reset). */
@@ -58,23 +59,28 @@ function vynuesShowsOnDay(t: VynuesTask, dayKey: string, dayStart: Date): boolea
   return true;
 }
 
+/** The small caption under a row's title — due dates, "3/5 this cycle", and the
+ *  like. One style, so they all sit on the same line consistently. */
+const Caption = ({ color = 'var(--page-text-dim)', children }: { color?: string; children: React.ReactNode }) =>
+  <span style={{ fontSize: 11, fontWeight: 600, color }}>{children}</span>;
+
 /** Compact due-date pill for a one-time To-Do row. */
 function DueLabel({ dueDate, todayKey }: { dueDate: string; todayKey: string }) {
-  const text =
-    dueDate < todayKey  ? 'Overdue' :
-    dueDate === todayKey ? 'Due today' :
-    `Due ${new Date(`${dueDate}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
-  const color = dueDate < todayKey ? 'var(--danger)' : dueDate === todayKey ? 'var(--accent)' : 'var(--text-dim)';
-  return <span style={{ fontSize: 11, fontWeight: 600, color }}>{text}</span>;
+  const overdue = dueDate < todayKey;
+  const today = dueDate === todayKey;
+  const text = overdue ? 'Overdue' : today ? 'Due today'
+    : `Due ${new Date(`${dueDate}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+  return <Caption color={overdue ? 'var(--danger)' : today ? 'var(--accent)' : 'var(--text-dim)'}>{text}</Caption>;
 }
 
 /** Due pill for a Vynues task, whose due dates can carry a time of day. */
 function VynuesDueLabel({ dueDate }: { dueDate: string }) {
   const { text, urgency } = getTaskDueInfo(dueDate);
-  const color =
-    urgency === 'overdue' ? 'var(--danger)' :
-    urgency === 'urgent'  ? 'var(--accent)' : 'var(--text-dim)';
-  return <span style={{ fontSize: 11, fontWeight: 600, color }}>{text}</span>;
+  return (
+    <Caption color={urgency === 'overdue' ? 'var(--danger)' : urgency === 'urgent' ? 'var(--accent)' : 'var(--text-dim)'}>
+      {text}
+    </Caption>
+  );
 }
 
 // ── Today progress summary ────────────────────────────────────────────────────
@@ -121,31 +127,57 @@ interface DragHandlers {
 }
 
 /** Scrolls the window while a reorder-drag is active and the pointer sits near
- *  the top or bottom edge, so a long list can be reordered without first
- *  scrolling by hand to make room for the drop target. Eases in quadratically
- *  over a wide edge band — barely creeping right at the boundary, only
- *  reaching its (deliberately gentle) top speed hard against the edge — so it
- *  reads as a deliberate nudge rather than the page yanking away. Fed by the
- *  pointer position `Reorder.Item`'s `onDrag` reports — there's no native drag
- *  event to listen for the way HTML5 DnD has one. */
+ *  the top or bottom edge of the *viewport*, so a long list can be reordered
+ *  without first scrolling by hand to make room for the drop target: hold the
+ *  row against an edge and the page comes to you. Speed eases in quadratically
+ *  across the band — a slow creep where the band starts, topping out only once
+ *  the pointer is hard against (or past) the screen edge — and is expressed in
+ *  px/second against the real frame delta, so it feels the same on a 60Hz and a
+ *  144Hz display.
+ *
+ *  Fed by the pointer position `Reorder.Item`'s `onDrag` reports — there's no
+ *  native drag event to listen for the way HTML5 DnD has one. That position is
+ *  in *page* coordinates (framer reads `pageX`/`pageY`), so `report` takes the
+ *  scroll offset back off before the loop compares it to the viewport edges.
+ *  Skipping that conversion is what made this run away: once the page was
+ *  scrolled at all, page-Y was past `innerHeight` almost everywhere, every
+ *  position read as "below the bottom edge", and the un-clamped ramp beyond the
+ *  band squared it into a jump straight to the end of the list. */
 function useDragAutoScroll(active: boolean) {
-  const pointerYRef = useRef(0);
+  // null until this drag reports its first position — an unseeded 0 would read
+  // as "pointer pinned to the top of the screen" and yank the page up on grab.
+  const pointerYRef = useRef<number | null>(null);
   useEffect(() => {
     if (!active) return;
-    const EDGE = 140, MAX_SPEED = 6;
-    let raf = requestAnimationFrame(function tick() {
-      const y = pointerYRef.current, vh = window.innerHeight;
-      const nearTop = y < EDGE, nearBottom = y > vh - EDGE;
-      const t = nearTop ? 1 - y / EDGE : nearBottom ? 1 - (vh - y) / EDGE : 0;
-      const eased = t * t; // quadratic — gentle near the edge of the band, faster only right at the screen edge
-      const dir = nearTop ? -MAX_SPEED * eased : nearBottom ? MAX_SPEED * eased : 0;
-      if (dir) window.scrollBy(0, dir);
+    const MIN_SPEED = 90, MAX_SPEED = 1000; // px/s entering the band / at the edge
+    let previous = performance.now();
+    let carry = 0; // sub-pixel remainder — scrollBy can't move less than a pixel
+    let raf = requestAnimationFrame(function tick(now) {
       raf = requestAnimationFrame(tick);
+      // Clamp the delta so one stalled frame (GC pause, window restore) spends
+      // its backlog at ~50ms of travel instead of teleporting the page.
+      const dt = Math.min(now - previous, 50) / 1000;
+      previous = now;
+      const y = pointerYRef.current;
+      if (y === null) return;
+      // Band scales with the window, bounded so it stays easy to hit on a short
+      // one without swallowing a third of a tall one.
+      const vh = window.innerHeight;
+      const edge = Math.min(180, Math.max(90, vh * 0.2));
+      const past = y < edge ? edge - y : y > vh - edge ? y - (vh - edge) : 0;
+      if (!past) { carry = 0; return; }
+      // Dragging past the screen edge is just full speed, never more.
+      const t = Math.min(1, past / edge);
+      const speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * t * t;
+      const step = carry + (y < edge ? -speed : speed) * dt;
+      const whole = Math.trunc(step);
+      carry = step - whole;
+      if (whole) window.scrollBy(0, whole);
     });
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); pointerYRef.current = null; };
   }, [active]);
-  /** Feed the loop the pointer's latest viewport Y. */
-  return useCallback((y: number) => { pointerYRef.current = y; }, []);
+  /** Feed the loop the pointer's latest page Y. */
+  return useCallback((pageY: number) => { pointerYRef.current = pageY - window.scrollY; }, []);
 }
 
 /** Drag-to-reorder state for the To-Do list, built on framer-motion's `Reorder`
@@ -249,6 +281,7 @@ const SKIP_COLOR = '#fbbf24';
 /** Controls inside a task row that must keep working as controls — a pointer-down
  *  on one of these starts a click, not a drag. */
 const INTERACTIVE_SEL = 'button, input, textarea, select, a, label, [contenteditable]';
+
 
 interface TaskRowProps {
   title: string;
@@ -461,55 +494,32 @@ function TaskRow({
           )}
           {/* Skip — stays visible while skipped so it can be undone. */}
           {onSkip && !completed && (hovered || skipped) && (
-            <button
+            <IconButton
               onClick={onSkip}
               title={skipped
                 ? 'Skipped today — click to un-skip'
                 : "Skip just today — streak safe, back tomorrow. A weekly goal keeps its progress."}
-              style={{
-                display: 'flex', alignItems: 'center', padding: 0, lineHeight: 1,
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: skipped ? SKIP_COLOR : 'var(--text-dim)',
-                transition: 'color 0.15s',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.color = SKIP_COLOR)}
-              onMouseLeave={e => (e.currentTarget.style.color = skipped ? SKIP_COLOR : 'var(--text-dim)')}
+              rest={skipped ? SKIP_COLOR : undefined}
+              hover={SKIP_COLOR}
+              style={{ display: 'flex', alignItems: 'center' }}
             >
               <SkipIcon />
-            </button>
+            </IconButton>
           )}
           {subtasksEnabled && !completed && !skipped && (hovered || subs.length > 0) && (
-            <button
-              onClick={() => setAddingSub(v => !v)}
-              title="Add a step"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 15, color: 'var(--text-dim)', padding: 0, lineHeight: 1, transition: 'color 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
-            >
+            <IconButton onClick={() => setAddingSub(v => !v)} title="Add a step" size={15}>
               ＋
-            </button>
+            </IconButton>
           )}
           {onEdit && (hovered || editing) && (
-            <button
-              onClick={onEdit}
-              title="Edit everything — name, due date, schedule, steps…"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-dim)', padding: 0, lineHeight: 1, transition: 'color 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.color = 'var(--accent)')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
-            >
+            <IconButton onClick={onEdit} title="Edit everything — name, due date, schedule, steps…" size={12}>
               ✎
-            </button>
+            </IconButton>
           )}
           {onDelete && hovered && !completed && (
-            <button
-              onClick={onDelete}
-              title="Delete"
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-dim)', padding: 0, lineHeight: 1, transition: 'color 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.color = 'var(--danger)')}
-              onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
-            >
+            <IconButton onClick={onDelete} title="Delete" hover="var(--danger)" size={12}>
               ✕
-            </button>
+            </IconButton>
           )}
         </div>
       </div>
@@ -587,6 +597,35 @@ function TaskRow({
   );
 }
 
+/** The edge button that flips between today and the tomorrow preview. The two
+ *  directions are the same button mirrored — side, arrow, nudge and label all
+ *  follow from `forward`. */
+function DayFlipper({ forward, onClick }: { forward: boolean; onClick: () => void }) {
+  const sign = forward ? 1 : -1;
+  return (
+    <motion.button
+      onClick={onClick}
+      title={forward ? 'Peek at tomorrow — dailies reset, plan the next day' : 'Back to today'}
+      initial={{ opacity: 0, x: sign * 24 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: sign * 24 }}
+      whileHover={{ scale: 1.08 }}
+      whileTap={{ scale: 0.94 }}
+      className="day-flipper"
+      style={{ position: 'fixed', [forward ? 'right' : 'left']: 16, top: '38%', zIndex: 30 }}
+    >
+      <motion.span
+        animate={{ x: [0, sign * 5, 0] }}
+        transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
+        style={{ display: 'block', fontSize: 20, lineHeight: 1 }}
+      >
+        {forward ? '→' : '←'}
+      </motion.span>
+      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.07em' }}>{forward ? 'TMRW' : 'TODAY'}</span>
+    </motion.button>
+  );
+}
+
 // ── Categories ────────────────────────────────────────────────────────────────
 
 interface Category {
@@ -601,6 +640,11 @@ interface Category {
 const CHUD_CATEGORY: Category    = { key: 'chud',    label: 'Fixing my Chud life', tagLabel: 'Chud life', color: 'var(--accent)', icon: '🛠️', rank: 0 };
 const GENERAL_CATEGORY: Category = { key: 'general', label: 'General', color: 'var(--text-dim)', rank: 1 };
 const VYNUES_KEY = 'vynues';
+
+/** Every quest-derived row (a routine filed under a questline, a loose action, a
+ *  pinned quest) files under its questline — same key, so they group together. */
+const questlineCategory = (ql: Questline): Category =>
+  ({ key: ql.id, label: ql.title, color: categoryColor(ql.color), rank: 2 });
 
 /** One filter chip: category name, a colour dot, and how many are still open. */
 function Chip({ label, icon, color, open, total, active, onClick }: {
@@ -743,9 +787,7 @@ export default function Today() {
         ? { done: r.progress ?? 0, total: r.target }
         : subtaskStats(r.subtasks);
       bits.push(
-        <span key="goal" style={{ fontSize: 11, fontWeight: 600, color: 'var(--page-text-dim)' }}>
-          {stats.done}/{stats.total} this cycle
-        </span>
+        <Caption key="goal">{stats.done}/{stats.total} this cycle</Caption>
       );
     }
     if (!bits.length) return undefined;
@@ -758,8 +800,7 @@ export default function Today() {
   const categoryOfRoutine = (r: Routine): Category => {
     if (r.anchor) return CHUD_CATEGORY;
     const ql = r.questlineId ? questlines.find(q => q.id === r.questlineId) : undefined;
-    if (!ql) return GENERAL_CATEGORY;
-    return { key: ql.id, label: ql.title, color: categoryColor(ql.color), rank: 2 };
+    return ql ? questlineCategory(ql) : GENERAL_CATEGORY;
   };
 
   // Quests pinned as a whole surface on Today as one item each (their actions ride
@@ -826,7 +867,7 @@ export default function Today() {
       return {
         id: action.id,
         title: action.title,
-        category: { key: ql.id, label: ql.title, color: categoryColor(ql.color), rank: 2 },
+        category: questlineCategory(ql),
         completed: done,
         todayDone: false,
         accentHex: done ? 'var(--success)' : categoryColor(ql.color),
@@ -843,7 +884,7 @@ export default function Today() {
       const reset = willReset(quest);
       const done = reset ? false : isQuestComplete(quest);
       const { done: ad, total: at } = questProgress(quest);
-      const cat: Category = { key: ql.id, label: ql.title, color: categoryColor(ql.color), rank: 2 };
+      const cat = questlineCategory(ql);
       return {
         id: quest.id,
         title: cleanQuest(quest.title),
@@ -855,8 +896,8 @@ export default function Today() {
         meta: repeats(quest)
           ? <RecurrenceBadge recurring={quest.recurring} intervalDays={quest.intervalDays} monthlyRule={quest.monthlyRule} />
           : at > 0
-            ? <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--page-text-dim)' }}>Quest · {ad}/{at} tasks</span>
-            : <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--page-text-dim)' }}>Quest</span>,
+            ? <Caption>Quest · {ad}/{at} tasks</Caption>
+            : <Caption>Quest</Caption>,
         subtasks: actionSubNodes(quest.actions, reset),
         subHandlers: {
           onAdd: (t: string) => addAction(ql.id, quest.id, t),
@@ -1161,51 +1202,7 @@ export default function Today() {
 
       {/* ── Day flipper ──────────────────────────────────────────────────────── */}
       <AnimatePresence initial={false}>
-        {!preview ? (
-          <motion.button
-            key="flip-fwd"
-            onClick={() => setPreview(true)}
-            title="Peek at tomorrow — dailies reset, plan the next day"
-            initial={{ opacity: 0, x: 24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: 24 }}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.94 }}
-            className="day-flipper"
-            style={{ position: 'fixed', right: 16, top: '38%', zIndex: 30 }}
-          >
-            <motion.span
-              animate={{ x: [0, 5, 0] }}
-              transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
-              style={{ display: 'block', fontSize: 20, lineHeight: 1 }}
-            >
-              →
-            </motion.span>
-            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.07em' }}>TMRW</span>
-          </motion.button>
-        ) : (
-          <motion.button
-            key="flip-back"
-            onClick={() => setPreview(false)}
-            title="Back to today"
-            initial={{ opacity: 0, x: -24 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -24 }}
-            whileHover={{ scale: 1.08 }}
-            whileTap={{ scale: 0.94 }}
-            className="day-flipper"
-            style={{ position: 'fixed', left: 16, top: '38%', zIndex: 30 }}
-          >
-            <motion.span
-              animate={{ x: [0, -5, 0] }}
-              transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
-              style={{ display: 'block', fontSize: 20, lineHeight: 1 }}
-            >
-              ←
-            </motion.span>
-            <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.07em' }}>TODAY</span>
-          </motion.button>
-        )}
+        <DayFlipper key={preview ? 'flip-back' : 'flip-fwd'} forward={!preview} onClick={() => setPreview(!preview)} />
       </AnimatePresence>
 
       <TaskCreateDrawer open={drawerOpen} initialCategory={drawerCategory} onClose={() => setDrawerOpen(false)} />

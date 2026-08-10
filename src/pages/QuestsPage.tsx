@@ -8,6 +8,7 @@ import AddModal from '../components/AddModal';
 import QuestCreateDrawer from '../components/QuestCreateDrawer';
 import TaskEditDrawer, { type EditTarget } from '../components/TaskEditDrawer';
 import NavBar from '../components/NavBar';
+import IconButton from '../components/IconButton';
 
 // ── General: things to accomplish overall ────────────────────────────────────
 // Uncategorized goals live here alongside the questlines — the "just get it
@@ -77,30 +78,25 @@ function GeneralRow({ r, onEdit }: { r: Routine; onEdit: () => void }) {
         <span style={{ fontSize: 11, fontWeight: 600, color: '#f97316', flexShrink: 0 }}>🔥{r.streak}</span>
       )}
 
-      <button
+      <IconButton
         onClick={onEdit}
         title="Edit everything — name, due date, schedule, steps…"
-        style={{
-          background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, lineHeight: 1, padding: '2px 4px',
-          color: hovered ? 'var(--accent)' : 'var(--text-dim)', flexShrink: 0, transition: 'color 0.15s, opacity 0.15s',
-          opacity: hovered ? 1 : 0.35,
-        }}
+        rest={hovered ? 'var(--accent)' : undefined}
+        opacity={hovered ? 1 : 0.35}
+        style={{ padding: '2px 4px' }}
       >
         ✎
-      </button>
-      <button
+      </IconButton>
+      <IconButton
         onClick={() => deleteRoutine(r.id)}
         title="Delete"
-        style={{
-          background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, lineHeight: 1, padding: '2px 4px',
-          color: 'var(--text-dim)', flexShrink: 0, transition: 'color 0.15s, opacity 0.15s',
-          opacity: hovered ? 1 : 0,
-        }}
-        onMouseEnter={e => (e.currentTarget.style.color = 'var(--danger)')}
-        onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
+        hover="var(--danger)"
+        size={12}
+        opacity={hovered ? 1 : 0}
+        style={{ padding: '2px 4px' }}
       >
         ✕
-      </button>
+      </IconButton>
     </motion.div>
   );
 }

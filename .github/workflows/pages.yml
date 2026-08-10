@@ -1,0 +1,57 @@
+# Builds the web/mobile PWA and publishes it to GitHub Pages (free on public repos).
+# The desktop Electron build is untouched by this — same source, different shell.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Lets you publish without pushing, from the Actions tab.
+  workflow_dispatch:
+
+# Pages deploys are authorised by OIDC, not a PAT — hence id-token.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A newer push should supersede an in-flight deploy rather than queue behind it.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `npm ci` needs the lockfile to match package.json exactly; it will fail
+      # loudly rather than silently resolving different versions than local.
+      - run: npm ci
+
+      # Regenerates public/pwa-*.png from logo.svg so the installed icon can never
+      # drift from the source mark. Icons are gitignored for the same reason.
+      - run: npm run generate-icons
+
+      - run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

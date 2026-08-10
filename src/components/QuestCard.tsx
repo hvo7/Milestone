@@ -8,6 +8,7 @@ import {
 import ProgressBar from './ProgressBar';
 import ActionItem from './ActionItem';
 import AddModal from './AddModal';
+import QuestDoneToggle from './QuestDoneToggle';
 import { categoryColor, cleanQuest } from '../lib/ui';
 
 interface Props { quest: Quest; questline: Questline; }
@@ -115,34 +116,39 @@ export default function QuestCard({ quest, questline }: Props) {
 
         {/* ── Header ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, paddingRight: 72 }}>
-          {editingTitle ? (
-            <input
-              ref={titleInputRef}
-              value={titleDraft}
-              onChange={e => setTitleDraft(e.target.value)}
-              onBlur={commitTitleEdit}
-              onKeyDown={e => { if (e.key === 'Enter') commitTitleEdit(); if (e.key === 'Escape') setEditingTitle(false); }}
-              style={{
-                flex: 1, fontSize: 15, fontWeight: 600, lineHeight: 1.4,
-                background: 'var(--input-bg)', border: '1px solid var(--accent-border)',
-                borderRadius: 6, color: 'var(--page-text)', padding: '2px 6px', outline: 'none',
-                fontFamily: 'inherit',
-              }}
-            />
-          ) : (
-            <h3
-              onDoubleClick={startTitleEdit}
-              title="Double-click to rename"
-              style={{
-                margin: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.4,
-                color: (complete && !quest.recurring) || locked ? 'var(--text-dim)' : 'var(--page-text)',
-                textDecoration: complete && !quest.recurring ? 'line-through' : 'none',
-                cursor: 'text',
-              }}
-            >
-              {cleanQuest(quest.title)}
-            </h3>
-          )}
+          {/* Locked quests already show a padlock among the top-right badges, so
+              the toggle sits this one out rather than repeating it. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+            {!locked && <QuestDoneToggle questlineId={questline.id} quest={quest} />}
+            {editingTitle ? (
+              <input
+                ref={titleInputRef}
+                value={titleDraft}
+                onChange={e => setTitleDraft(e.target.value)}
+                onBlur={commitTitleEdit}
+                onKeyDown={e => { if (e.key === 'Enter') commitTitleEdit(); if (e.key === 'Escape') setEditingTitle(false); }}
+                style={{
+                  flex: 1, fontSize: 15, fontWeight: 600, lineHeight: 1.4,
+                  background: 'var(--input-bg)', border: '1px solid var(--accent-border)',
+                  borderRadius: 6, color: 'var(--page-text)', padding: '2px 6px', outline: 'none',
+                  fontFamily: 'inherit',
+                }}
+              />
+            ) : (
+              <h3
+                onDoubleClick={startTitleEdit}
+                title="Double-click to rename"
+                style={{
+                  margin: 0, fontSize: 15, fontWeight: 600, lineHeight: 1.4,
+                  color: (complete && !quest.recurring) || locked ? 'var(--text-dim)' : 'var(--page-text)',
+                  textDecoration: complete && !quest.recurring ? 'line-through' : 'none',
+                  cursor: 'text',
+                }}
+              >
+                {cleanQuest(quest.title)}
+              </h3>
+            )}
+          </div>
           {editMode && hovered && (
             <div style={{ display: 'flex', gap: 4, flexShrink: 0, paddingLeft: 8 }}>
               <button

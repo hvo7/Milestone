@@ -1,5 +1,5 @@
 import { useEffect, lazy, Suspense } from 'react';
-import { BrowserRouter, HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useQuestStore, useUIStore } from './store';
 import { useVynuesStore } from './vynuesStore';
 import Today from './pages/Today';
@@ -16,9 +16,12 @@ const QuestsPage    = lazy(() => import('./pages/QuestsPage'));
 const QuestlinePage = lazy(() => import('./pages/QuestlinePage'));
 const VynuesPage    = lazy(() => import('./pages/VynuesPage'));
 
-// Electron serves the built app over file://, which requires hash-based routing.
-const isElectron = navigator.userAgent.includes('Electron');
-const Router = isElectron ? HashRouter : BrowserRouter;
+// Hash routing everywhere. Electron serves the built app over file://, which
+// requires it — and the web build is hosted on GitHub Pages, a static file server
+// with no SPA rewrite: under BrowserRouter, /Milestone/quests has no file behind
+// it, so refreshing or sharing any route but the root returns GitHub's 404. Hash
+// routes also sidestep needing a `basename` for the /<repo>/ subpath.
+const Router = HashRouter;
 
 /** Shown only while a route chunk is in flight — locally that's a frame or two,
  *  so it stays deliberately quiet rather than flashing a spinner. */

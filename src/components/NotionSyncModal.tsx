@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQuestStore } from '../store';
+import ModalShell from './ModalShell';
 
 interface Props { onClose: () => void; }
 
@@ -100,22 +100,16 @@ export default function NotionSyncModal({ onClose }: Props) {
   const canPull = !!apiKey.trim() && pullStatus !== 'pulling';
 
   return (
-    <AnimatePresence>
-      <motion.div
-        className="modal-overlay"
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
-        style={{ alignItems: 'flex-start', paddingTop: 48, overflowY: 'auto' }}
-      >
-        <motion.div
-          className="parchment"
-          initial={{ opacity: 0, scale: 0.92, y: 20 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.92, y: 20 }}
-          transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-          onClick={e => e.stopPropagation()}
-          style={{ width: '100%', maxWidth: 580, borderRadius: 10, padding: '32px 28px', border: '1px solid var(--card-border)', marginBottom: 48 }}
-        >
+    // Taller than the others and scrolls with the page, so it top-aligns rather
+    // than centring a panel that can outgrow the viewport.
+    <ModalShell
+      onClose={onClose}
+      maxWidth={580}
+      overlayStyle={{ alignItems: 'flex-start', paddingTop: 48, overflowY: 'auto' }}
+      spring={{ stiffness: 320, damping: 30 }}
+      from={{ scale: 0.92, y: 20 }}
+      style={{ borderRadius: 10, padding: '32px 28px', border: '1px solid var(--card-border)', marginBottom: 48 }}
+    >
           {/* Header */}
           <div style={{ marginBottom: 20 }}>
             <h2 style={{ margin: 0, fontSize: 16, fontWeight: 600, color: 'var(--page-text)' }}>
@@ -226,9 +220,7 @@ export default function NotionSyncModal({ onClose }: Props) {
 
             <button className="btn-ghost" onClick={onClose}>Close</button>
           </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
+    </ModalShell>
   );
 }
 

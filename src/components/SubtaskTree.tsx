@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import IconButton from './IconButton';
 
 /** Store-agnostic node shape — Today routines (`completed`) and Vynues tasks
  *  (`done`) both map into this before rendering. */
@@ -82,20 +83,12 @@ function NodeRow({ node, depth, handlers, readOnly }: {
   }
 
   const iconBtn = (label: string, title: string, onClick: () => void, hoverColor: string) => (
-    <button
-      onClick={onClick}
-      title={title}
-      className="sub-icon-btn"
-      style={{
-        background: 'none', border: 'none', cursor: 'pointer', padding: 0, lineHeight: 1,
-        fontSize: 11, color: 'var(--text-dim)', transition: 'color 0.15s, opacity 0.15s',
-        opacity: hovered ? 1 : 0,
-      }}
-      onMouseEnter={e => (e.currentTarget.style.color = hoverColor)}
-      onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-dim)')}
+    <IconButton
+      onClick={onClick} title={title} hover={hoverColor}
+      size={11} opacity={hovered ? 1 : 0}
     >
       {label}
-    </button>
+    </IconButton>
   );
 
   return (

@@ -2,6 +2,27 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
+import { startCloudSync } from './lib/cloudSync'
+import { APP_VERSION } from './buildInfo'
+
+// Kicked off alongside the first render rather than awaited: the app should come
+// up on local data immediately, and fold in the other computer's changes when the
+// folder read completes a moment later.
+void startCloudSync()
+
+// Offline shell for the web/mobile build, so the installed PWA opens without a
+// network. Skipped under Electron, which already serves everything from disk over
+// file:// (where service workers aren't available anyway), and skipped in dev so
+// a stale worker can't shadow Vite's module graph mid-session.
+if (!navigator.userAgent.includes('Electron') && import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    // Version in the query string: a changed script URL is what makes the browser
+    // fetch a new worker, and it keys the cache so old releases get evicted.
+    void navigator.serviceWorker.register(`./sw.js?v=${APP_VERSION}`).catch(() => {
+      // An unavailable worker costs offline support, nothing more — the app runs.
+    })
+  })
+}
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
