@@ -7,6 +7,12 @@ the same task shows up in both.
 Runs as a Windows desktop app (Electron) and as an installable PWA from the same
 source — see [Builds](#builds).
 
+![The Today tab: everything due, whatever it came from](docs/today.png)
+
+Long-term structure lives in questlines, and anything due surfaces on Today:
+
+![The Quests tab: questlines broken into quests and tasks](docs/quests.png)
+
 ## What's in it
 
 - **Questlines → quests → tasks.** A three-level breakdown, optionally sequential
@@ -22,7 +28,8 @@ source — see [Builds](#builds).
   streak without earning credit, for when a task was genuinely impossible.
 - **Vynues.** A lighter project/task board for work that isn't goal-shaped.
 - **Sync and backup.** Cross-computer sync through any folder your cloud drive
-  already syncs; JSON export/import; optional Notion push/pull.
+  already syncs; automatic rolling local snapshots; JSON export/import; optional
+  Notion push/pull.
 
 ## Running it
 
@@ -32,7 +39,18 @@ npm run dev            # Vite dev server at localhost:5173
 npm run electron:dev   # the desktop shell against that dev server
 ```
 
-`npm run lint` and `npx tsc -b` are the checks.
+Checks:
+
+```bash
+npm test               # vitest — recurrence engine, subtree walks, sync clocks
+npm run lint
+npx tsc -b
+```
+
+The tests cover the logic that fails *silently* — calendar rules, the 5am
+logical-day rollover, streak transitions across skips, day attribution in the
+completion log, and vector-clock comparison. Those are the places where a bug
+looks like "I forgot to do it" rather than like a crash.
 
 ## Builds
 
@@ -59,16 +77,45 @@ OneDrive/Dropbox/Drive is already carrying, and each device only ever writes its
 own file (see `electron/cloudSync.cjs` and `src/lib/cloudSync.ts`).
 
 Back it up from **Sync & Backup → Download backup**. That same JSON restores via
-**Load backup**, and is the format the sync layer parks a rescue copy in when two
-computers were edited independently.
+**Load backup**, and is the format every other recovery path uses too.
+
+### If the data ever disappears
+
+The desktop app keeps rolling snapshots in `%APPDATA%\Milestone\backups\` — one
+per launch, deduplicated, fourteen deep. Restore one from **Sync & Backup →
+Restore**, which lists each snapshot with the number of questlines and tasks in
+it, so a snapshot taken *after* something went wrong is obvious before you use it.
+
+If the app itself can't reach the data — a reset profile, or a copy of
+`%APPDATA%\Milestone` rescued off another machine — read it straight out of the
+Chromium LevelDB:
+
+```bash
+npm run recover-profile                 # scans the usual profile locations
+npm run recover-profile -- <profile-dir>
+```
+
+It only reads, prints what it found in each profile, and writes a bundle to your
+home directory for **Load backup**.
 
 ## Layout
 
 ```
-electron/     main process — window, Notion IPC, cloud-folder sync + watcher
+electron/     main process — window, Notion IPC, cloud-folder sync, local backups
+scripts/      icon generation, and the LevelDB profile recovery tool
 src/pages/    Today, Quests, All, Questline detail, Vynues
 src/components/  row/drawer/modal UI
 src/lib/      pure helpers — recurrence rules, subtask trees, sync reconciliation
 src/store.ts  quest + routine state (zustand, persisted); the recurrence engine
 src/vynuesStore.ts  the Vynues half of the same
+*.test.ts     beside the module they cover
 ```
+
+Two notes for anyone reading the code:
+
+- **The Notion API key is encrypted at rest** via Electron's `safeStorage` (DPAPI
+  on Windows). Configs written by older builds are upgraded in place on first read.
+- **Sync tracks each store independently.** Quests, Vynues projects and UI
+  preferences carry their own vector clocks, so editing quests on one machine and
+  Vynues on another isn't a conflict — both sides fast-forward. Only a store
+  edited on *both* machines forces a choice, and only that store pays for it.

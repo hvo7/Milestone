@@ -4,6 +4,7 @@ import { QUEST_STORE_KEY as STORE_KEY } from '../store';
 import { APP_VERSION, VERSION_LABEL, buildDateLabel } from '../buildInfo';
 import { noteExternalWrite } from '../lib/cloudSync';
 import CloudSyncCard from './CloudSyncCard';
+import AutoBackupCard from './AutoBackupCard';
 import ModalShell from './ModalShell';
 
 interface Props { onClose: () => void; }
@@ -91,8 +92,9 @@ export default function DataModal({ onClose }: Props) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-            {/* Sync — hides itself outside the desktop app */}
+            {/* Sync and automatic backups — both hide outside the desktop app */}
             <CloudSyncCard />
+            <AutoBackupCard />
 
             {/* Export */}
             <div style={{ background: 'var(--input-bg)', border: '1px solid var(--card-border)', borderRadius: 10, padding: '14px 16px' }}>

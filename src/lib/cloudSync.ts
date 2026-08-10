@@ -16,23 +16,41 @@
  *   equal      — same version                                 → nothing to do
  *   concurrent — both edited without seeing the other         → a genuine conflict
  *
+ * ── Slots are tracked independently ─────────────────────────────────────────
+ * The three persisted stores — quests, Vynues projects, UI preferences — are
+ * unrelated to each other, so each carries its own clock. Editing a quest here
+ * while a Vynues task was edited there is not a conflict: each side is simply
+ * ahead on a different slot, and both fast-forward. Only a slot edited on *both*
+ * machines is a genuine conflict, and only that slot pays for it.
+ *
+ * A single doc-level clock (what this used to be) collapsed all three together
+ * and made any pair of unrelated edits look like a conflict, throwing away one
+ * side's quests to resolve a disagreement about the theme.
+ *
  * ── What happens on a genuine conflict ──────────────────────────────────────
  * The data model has no per-item edit times (a quest doesn't record when its
- * title changed), so there is no honest way to merge two divergent versions
- * item by item — a merge would have to guess whether a missing quest was
- * deleted over there or created over here. Rather than guess, the more recently
- * written version wins wholesale and the losing side is written to `backups/` in
- * the folder, in the same bundle format the Data panel's "Load backup" reads.
- * Nothing is silently dropped, and the UI says so. In practice this is rare: it
- * needs edits on both machines with no sync in between.
+ * title changed), so there is no honest way to merge two divergent versions of
+ * one slot item by item — a merge would have to guess whether a missing quest
+ * was deleted over there or created over here. Rather than guess, the more
+ * recently written version of *that slot* wins and the losing copy is written to
+ * `backups/` in the folder, in the same bundle format the Data panel's "Load
+ * backup" reads. Nothing is silently dropped, and the UI says so.
+ *
+ * ── Talking to older builds ─────────────────────────────────────────────────
+ * A doc written before per-slot clocks has only `clock`. It's read as though
+ * every slot carried that clock, which is exactly what it meant, so a machine
+ * still on the old build converges correctly — it just can't benefit from the
+ * finer granularity until it updates.
  */
 import { create } from 'zustand';
 import { QUEST_STORE_KEY, UI_STORE_KEY, useQuestStore, useUIStore } from '../store';
 import { VYNUES_STORE_KEY, useVynuesStore } from '../vynuesStore';
 import { APP_VERSION } from '../buildInfo';
 
-type Clock = Record<string, number>;
-type Slot = 'quest' | 'vynues' | 'ui';
+export type Clock = Record<string, number>;
+export type Slot = 'quest' | 'vynues' | 'ui';
+
+export const SLOT_NAMES: Slot[] = ['quest', 'vynues', 'ui'];
 
 export interface SyncDoc {
   _milestoneSync: 1;
@@ -40,7 +58,11 @@ export interface SyncDoc {
   deviceName: string;
   /** Informational, and the tiebreak when two versions are genuinely concurrent. */
   updatedAt: string;
+  /** Doc-level clock. Kept for builds that predate `slotClocks`, and written as
+   *  the union of the slot clocks so those builds still converge. */
   clock: Clock;
+  /** Per-slot clocks. Absent on documents written by older builds. */
+  slotClocks?: Partial<Record<Slot, Clock>>;
   stores: Partial<Record<Slot, string>>;
 }
 
@@ -89,7 +111,9 @@ export const dismissNotice = () => setStatus({ notice: null });
 
 const at = (clock: Clock, key: string) => clock[key] ?? 0;
 
-function compareClocks(a: Clock, b: Clock): 'ahead' | 'behind' | 'equal' | 'concurrent' {
+export type ClockRelation = 'ahead' | 'behind' | 'equal' | 'concurrent';
+
+export function compareClocks(a: Clock, b: Clock): ClockRelation {
   let ahead = false, behind = false;
   for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
     if (at(a, key) > at(b, key)) ahead = true;
@@ -98,11 +122,21 @@ function compareClocks(a: Clock, b: Clock): 'ahead' | 'behind' | 'equal' | 'conc
   return ahead && behind ? 'concurrent' : ahead ? 'ahead' : behind ? 'behind' : 'equal';
 }
 
-function mergeClocks(a: Clock, b: Clock): Clock {
+export function mergeClocks(a: Clock, b: Clock): Clock {
   const out: Clock = { ...a };
   for (const key of Object.keys(b)) out[key] = Math.max(at(a, key), at(b, key));
   return out;
 }
+
+/** A document's clock for one slot. Older documents have only the doc-level
+ *  clock, which stood for all three slots at once — so that is what they get. */
+export const slotClock = (doc: Pick<SyncDoc, 'clock' | 'slotClocks'>, slot: Slot): Clock =>
+  doc.slotClocks?.[slot] ?? doc.clock ?? {};
+
+/** The doc-level clock to publish alongside per-slot ones: the union, so a build
+ *  that only understands `clock` still sees us move forward whenever any slot does. */
+export const unionClocks = (slots: Partial<Record<Slot, Clock>>): Clock =>
+  SLOT_NAMES.reduce<Clock>((acc, slot) => mergeClocks(acc, slots[slot] ?? {}), {});
 
 // ── Local state ───────────────────────────────────────────────────────────────
 
@@ -116,16 +150,42 @@ let pullChain: Promise<void> = Promise.resolve();
 
 const bridge = () => window.electronAPI?.sync;
 
-function loadMeta(): { clock: Clock } {
+interface Meta {
+  /** What this device believes it has seen, per slot. */
+  slots: Record<Slot, Clock>;
+  /** Last published content per slot, so a publish only bumps slots that moved.
+   *  Without this every write would advance all three and re-create exactly the
+   *  false conflicts per-slot clocks exist to avoid. */
+  published: Partial<Record<Slot, string>>;
+}
+
+const emptyMeta = (): Meta => ({ slots: { quest: {}, vynues: {}, ui: {} }, published: {} });
+
+function loadMeta(): Meta {
   try {
     const raw = localStorage.getItem(META_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
-    if (parsed && typeof parsed.clock === 'object' && parsed.clock) return { clock: parsed.clock as Clock };
+    if (parsed?.slots) {
+      const meta = emptyMeta();
+      for (const slot of SLOT_NAMES) {
+        if (parsed.slots[slot] && typeof parsed.slots[slot] === 'object') meta.slots[slot] = parsed.slots[slot] as Clock;
+      }
+      if (parsed.published && typeof parsed.published === 'object') meta.published = parsed.published;
+      return meta;
+    }
+    // Upgrade from the single-clock format: that one clock described all three
+    // slots, so seed each with it rather than starting from zero (which would
+    // read as "never seen anything" and re-adopt a peer we're already level with).
+    if (parsed && typeof parsed.clock === 'object' && parsed.clock) {
+      const meta = emptyMeta();
+      for (const slot of SLOT_NAMES) meta.slots[slot] = { ...parsed.clock as Clock };
+      return meta;
+    }
   } catch { /* corrupt meta is recoverable — start from an empty clock */ }
-  return { clock: {} };
+  return emptyMeta();
 }
 
-const saveMeta = (meta: { clock: Clock }) => localStorage.setItem(META_KEY, JSON.stringify(meta));
+const saveMeta = (meta: Meta) => localStorage.setItem(META_KEY, JSON.stringify(meta));
 
 /** The three persisted stores exactly as they sit in localStorage. Shipping the
  *  raw strings (rather than re-serialising parsed state) keeps this byte-identical
@@ -172,15 +232,28 @@ const backupBundle = () => {
 
 /**
  * Writes this device's document to the folder.
- * `bump` advances our own clock entry — true for a real local edit, false when
- * we're only re-stating a version a peer already ought to have.
+ *
+ * `bump` advances our own entry — true for a real local edit, false when we're
+ * only re-stating a version a peer already ought to have. Even on a real edit,
+ * only slots whose *content* changed since our last publish move: bumping a slot
+ * nobody touched would tell peers we have news about it, and manufacture the
+ * conflicts this design exists to avoid.
  */
 async function publish(bump: boolean) {
   const api = bridge();
   if (!api || !config?.enabled) return;
 
   const meta = loadMeta();
-  if (bump) meta.clock[config.deviceId] = at(meta.clock, config.deviceId) + 1;
+  const stores = snapshot();
+
+  if (bump) {
+    for (const slot of SLOT_NAMES) {
+      const current = stores[slot];
+      if (current === meta.published[slot]) continue;      // untouched slot
+      meta.slots[slot] = { ...meta.slots[slot], [config.deviceId]: at(meta.slots[slot], config.deviceId) + 1 };
+    }
+  }
+  meta.published = { ...stores };
   saveMeta(meta);
 
   const doc: SyncDoc = {
@@ -188,8 +261,9 @@ async function publish(bump: boolean) {
     deviceId: config.deviceId,
     deviceName: config.deviceName,
     updatedAt: new Date().toISOString(),
-    clock: meta.clock,
-    stores: snapshot(),
+    clock: unionClocks(meta.slots),
+    slotClocks: meta.slots,
+    stores,
   };
 
   const res = await api.write(doc);
@@ -207,33 +281,55 @@ function scheduleWrite() {
 
 // ── Pull ──────────────────────────────────────────────────────────────────────
 
-/** Of two peer documents, the one that supersedes the other — or, if neither
- *  does, the more recently written. */
-function preferred(a: SyncDoc, b: SyncDoc): SyncDoc {
-  const rel = compareClocks(a.clock, b.clock);
+/** Of two peer documents, the one that supersedes the other *for one slot* — or,
+ *  if neither does, the more recently written. */
+function preferredForSlot(a: SyncDoc, b: SyncDoc, slot: Slot): SyncDoc {
+  const rel = compareClocks(slotClock(a, slot), slotClock(b, slot));
   if (rel === 'ahead') return a;
   if (rel === 'behind') return b;
   return a.updatedAt >= b.updatedAt ? a : b;
 }
 
-async function adopt(doc: SyncDoc, opts: { conflict: boolean }) {
+/** What this device should do about one slot, given the best peer for it. */
+interface SlotPlan {
+  slot: Slot;
+  source: SyncDoc;
+  relation: ClockRelation;
+}
+
+/**
+ * Applies the slots we decided to take, in one pass, and folds their clocks into
+ * ours. Everything else on this machine is left exactly as it is — that is the
+ * whole point of tracking slots separately.
+ */
+async function adoptSlots(plans: SlotPlan[], conflicted: SlotPlan[]) {
   const api = bridge();
-  if (opts.conflict && api) {
-    // This machine's version is about to be replaced by one that isn't a
-    // descendant of it, so park a restorable copy before it goes.
+
+  if (conflicted.length && api) {
+    // Some slot on this machine is about to be replaced by a version that isn't
+    // a descendant of it, so park a restorable copy before it goes.
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const res = await api.writeBackup(`${config?.deviceName ?? 'device'}-${stamp}.json`, backupBundle());
+    const names = conflicted.map(p => SLOT_LABEL[p.slot]).join(' and ');
+    const from = conflicted[0].source.deviceName;
     setStatus({
       notice: res.ok
-        ? `Both computers had been edited since the last sync, so “${doc.deviceName}” (the more recent) was used. This computer's version was saved to backups/ in the sync folder — restore it with Load backup if it was the one you wanted.`
-        : `Both computers had been edited since the last sync, so “${doc.deviceName}” (the more recent) was used. This computer's version could NOT be backed up: ${res.error}`,
+        ? `Both computers had edited ${names} since the last sync, so “${from}” (the more recent) was used. This computer's version was saved to backups/ in the sync folder — restore it with Load backup if it was the one you wanted.`
+        : `Both computers had edited ${names} since the last sync, so “${from}” (the more recent) was used. This computer's version could NOT be backed up: ${res.error}`,
     });
   }
 
-  applyStores(doc.stores);
+  const incoming: Partial<Record<Slot, string>> = {};
+  for (const plan of plans) {
+    const raw = plan.source.stores[plan.slot];
+    if (typeof raw === 'string') incoming[plan.slot] = raw;
+  }
+  applyStores(incoming);
 
   const meta = loadMeta();
-  meta.clock = mergeClocks(meta.clock, doc.clock);
+  for (const plan of plans) {
+    meta.slots[plan.slot] = mergeClocks(meta.slots[plan.slot], slotClock(plan.source, plan.slot));
+  }
   saveMeta(meta);
   setStatus({ lastSyncedAt: new Date().toISOString(), error: null });
 
@@ -241,6 +337,13 @@ async function adopt(doc: SyncDoc, opts: { conflict: boolean }) {
   // second conflict over the same divergence.
   await publish(false);
 }
+
+/** Human names for the notice text — "quests", not "quest". */
+const SLOT_LABEL: Record<Slot, string> = {
+  quest: 'quests and tasks',
+  vynues: 'Vynues projects',
+  ui: 'display settings',
+};
 
 async function pullOnce() {
   const api = bridge();
@@ -257,16 +360,23 @@ async function pullOnce() {
 
   if (peers.length === 0) { await publish(false); return; } // nobody else yet — make sure we're on record
 
-  const winner = peers.reduce(preferred);
   const meta = loadMeta();
-  switch (compareClocks(winner.clock, meta.clock)) {
-    case 'equal':  break;
-    case 'behind': await publish(false); break;             // peer is out of date — re-state ours
-    case 'ahead':  await adopt(winner, { conflict: false }); break;
-    // Both sides edited without seeing each other. `preferred` already picked the
-    // more recently written of the peers; adopt handles the rescue copy.
-    case 'concurrent': await adopt(winner, { conflict: true }); break;
+  const take: SlotPlan[] = [];
+  const conflicted: SlotPlan[] = [];
+  let weAreAhead = false;
+
+  // Each slot is decided on its own evidence: an edit to quests over there and
+  // to Vynues over here means both sides fast-forward, with nothing discarded.
+  for (const slot of SLOT_NAMES) {
+    const source = peers.reduce((a, b) => preferredForSlot(a, b, slot));
+    const relation = compareClocks(slotClock(source, slot), meta.slots[slot]);
+    if (relation === 'ahead') take.push({ slot, source, relation });
+    else if (relation === 'concurrent') { const plan = { slot, source, relation }; take.push(plan); conflicted.push(plan); }
+    else if (relation === 'behind') weAreAhead = true;
   }
+
+  if (take.length) await adoptSlots(take, conflicted);
+  else if (weAreAhead) await publish(false);   // peers are out of date — re-state ours
 }
 
 /** Serialised so a burst of watcher events can't run two reconciliations over
@@ -327,20 +437,32 @@ export async function enableSync(folder: string, mode: 'adopt' | 'push') {
     const peers = (res.ok ? res.peers ?? [] : []) as SyncDoc[];
 
     if (mode === 'push') {
-      // Absorb every peer's clock, then bump: the result strictly supersedes all
-      // of them, so they fast-forward to us instead of seeing a conflict.
+      // Absorb every peer's clock on every slot, then bump: the result strictly
+      // supersedes all of them, so they fast-forward instead of seeing conflicts.
       const meta = loadMeta();
-      for (const peer of peers) meta.clock = mergeClocks(meta.clock, peer.clock);
+      for (const peer of peers) {
+        for (const slot of SLOT_NAMES) meta.slots[slot] = mergeClocks(meta.slots[slot], slotClock(peer, slot));
+      }
+      // Force every slot to count as changed, so the bump below reaches all three
+      // even where our content happens to match what we last published.
+      meta.published = {};
       saveMeta(meta);
       await publish(true);
       if (peers.length) setStatus({ notice: 'This computer\'s data is now the shared copy. The other computer will pick it up next time it syncs.' });
     } else if (peers.length) {
-      const winner = peers.reduce(preferred);
       // Explicitly discarding this machine's data, so keep a rescue copy.
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
       await api.writeBackup(`${config.deviceName}-before-adopt-${stamp}.json`, backupBundle());
-      await adopt(winner, { conflict: false });
-      setStatus({ notice: `Loaded the data from “${winner.deviceName}”. This computer's previous data was saved to backups/ in the sync folder.` });
+      // Take every slot from the best peer for it — this is the deliberate
+      // "replace what's here", so no slot is exempt.
+      const plans = SLOT_NAMES.map(slot => ({
+        slot,
+        source: peers.reduce((a, b) => preferredForSlot(a, b, slot)),
+        relation: 'ahead' as const,
+      }));
+      await adoptSlots(plans, []);
+      const names = [...new Set(plans.map(p => p.source.deviceName))].join('” and “');
+      setStatus({ notice: `Loaded the data from “${names}”. This computer's previous data was saved to backups/ in the sync folder.` });
     } else {
       await publish(true);
     }

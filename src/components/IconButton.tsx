@@ -37,6 +37,9 @@ export default function IconButton({
     <button
       type="button"
       title={title}
+      // The label is the only thing a screen reader has to go on: the content is
+      // a bare glyph (✎, ✕, an SVG), and `title` alone is not reliably announced.
+      aria-label={title}
       onClick={e => { if (stopPropagation) e.stopPropagation(); onClick(e); }}
       className="icon-btn"
       style={{

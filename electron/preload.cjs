@@ -25,4 +25,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('sync:changed', listener);
     },
   },
+  /** Rolling on-disk snapshots of the stores — see electron/backups.cjs. */
+  backup: {
+    save:   (bundle) => ipcRenderer.invoke('backup:save', bundle),
+    list:   ()       => ipcRenderer.invoke('backup:list'),
+    read:   (name)   => ipcRenderer.invoke('backup:read', name),
+    reveal: ()       => ipcRenderer.invoke('backup:reveal'),
+  },
 });

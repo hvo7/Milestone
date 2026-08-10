@@ -366,7 +366,9 @@ function dayCredit(r: Routine, dayKey: string): number {
 }
 
 function clearActions(actions: Action[]): Action[] {
-  return actions.map(a => ({ ...a, completed: false, trackedToday: false }));
+  // completedAt goes with `completed`: a new cycle has earned nothing yet, and a
+  // stale stamp would aim the next un-check at the previous cycle's day.
+  return actions.map(a => ({ ...a, completed: false, completedAt: undefined, trackedToday: false }));
 }
 
 /** Normalise a CounterConfig into the routine fields it sets (or nothing). */
@@ -389,7 +391,7 @@ function processQuestlines(questlines: Questline[]): Questline[] {
       return {
         ...ql, lastResetAt: now,
         streak: (done === total && total > 0) ? (ql.streak ?? 0) + 1 : 0,
-        quests: ql.quests.map(q => ({ ...q, actions: clearActions(q.actions), completed: false, lastResetAt: now })),
+        quests: ql.quests.map(q => ({ ...q, actions: clearActions(q.actions), completed: false, completedAt: undefined, lastResetAt: now })),
       };
     }
     let out = ql;
@@ -403,7 +405,7 @@ function processQuestlines(questlines: Questline[]): Questline[] {
           if (!quest.lastResetAt) return { ...quest, lastResetAt: now, streak: 0 };
           if (periodExpired(quest)) {
             const wasComplete = isQuestComplete(quest);
-            return { ...quest, actions: clearActions(quest.actions), completed: false, lastResetAt: now, streak: wasComplete ? (quest.streak ?? 0) + 1 : 0 };
+            return { ...quest, actions: clearActions(quest.actions), completed: false, completedAt: undefined, lastResetAt: now, streak: wasComplete ? (quest.streak ?? 0) + 1 : 0 };
           }
           return quest;
         }
@@ -412,7 +414,7 @@ function processQuestlines(questlines: Questline[]): Questline[] {
           actions: quest.actions.map(a => {
             if (!a.recurring && !a.intervalDays && !a.monthlyRule) return a;
             if (!a.lastResetAt) return { ...a, lastResetAt: now };
-            if (periodExpired(a)) return { ...a, completed: false, trackedToday: a.recurring === 'daily', lastResetAt: now };
+            if (periodExpired(a)) return { ...a, completed: false, completedAt: undefined, trackedToday: a.recurring === 'daily', lastResetAt: now };
             return a;
           }),
         };
@@ -485,11 +487,25 @@ export function logicalDateKey(d: Date = new Date()): string {
   return dateKey(logicalDayStart(d));
 }
 
-function bumpLog(log: Record<string, number>, delta: number): Record<string, number> {
-  const key = logicalDateKey();
-  const next = Math.max(0, (log[key] ?? 0) + delta);
-  return { ...log, [key]: next };
+/**
+ * Move a day's heatmap credit.
+ *
+ * `dayKey` matters: crediting is always "today", but *un*-crediting has to name
+ * the day the work was actually completed. Unchecking on Tuesday something you
+ * finished on Monday used to decrement Tuesday — Monday kept credit for work
+ * that no longer existed, and Tuesday silently lost a square it never earned
+ * (clamped at zero, so it just disappeared). Routines never had this bug because
+ * they go through `mutateRoutine`'s day-credit diffing; the quest paths did.
+ */
+function bumpLog(log: Record<string, number>, delta: number, dayKey: string = logicalDateKey()): Record<string, number> {
+  const next = Math.max(0, (log[dayKey] ?? 0) + delta);
+  return { ...log, [dayKey]: next };
 }
+
+/** The logical day an item's completion belongs to, falling back to today when
+ *  the item predates completion stamps. */
+const completedDay = (completedAt?: string): string =>
+  completedAt ? logicalDateKey(new Date(completedAt)) : logicalDateKey();
 
 /** Apply `mutate` to one routine and settle its heatmap credit for today: the
  *  completion log moves by the *difference* in dayCredit, so every path into a
@@ -608,6 +624,10 @@ interface QuestData {
     questlineId?: string | null; questId?: string | null; anchor?: boolean;
     counter?: CounterConfig | null;
   }) => void;
+  /** Fill an empty app with the demo questlines. Opt-in from the first-run card
+   *  — a fresh install starts genuinely empty rather than pretending three
+   *  fabricated goals are yours. Refuses once there is anything to lose. */
+  loadSampleData:       () => void;
   toggleRoutine:        (rId: string) => void;
   toggleRoutineTracked: (rId: string) => void;
   toggleRoutineHidden:  (rId: string) => void;
@@ -620,20 +640,37 @@ interface QuestData {
 export const useQuestStore = create<QuestData>()(
   persist(
     (set) => ({
-      questlines: sampleData,
+      // A new install starts empty. Seeding the demo questlines used to make a
+      // first launch look like someone else's half-finished goals, and on the
+      // public web build that is the first thing a stranger sees. The Today and
+      // Quests pages offer to load them instead — see loadSampleData.
+      questlines: [],
       routines: [],
       completionLog: {},
       todoOrder: {},
+
+      loadSampleData: () =>
+        set(s => (s.questlines.length || s.routines.length ? {} : { questlines: sampleData })),
 
       checkAndResetRecurring: () =>
         set(s => ({ questlines: processQuestlines(s.questlines), routines: processRoutines(purgeExpiredArchive(s.routines)) })),
 
       toggleAction: (qlId, qId, aId) =>
         set(s => {
-          const was = findQuest(s.questlines, qlId, qId)?.actions.find(a => a.id === aId)?.completed ?? false;
+          const before = findQuest(s.questlines, qlId, qId)?.actions.find(a => a.id === aId);
+          if (!before) return {};
+          const now = new Date().toISOString();
+          const checking = !before.completed;
           return {
-            questlines: mapAction(s.questlines, qlId, qId, aId, a => ({ ...a, completed: !a.completed })),
-            completionLog: bumpLog(s.completionLog, was ? -1 : 1),
+            questlines: mapAction(s.questlines, qlId, qId, aId, a => ({
+              ...a,
+              completed: checking,
+              completedAt: checking ? now : undefined,
+            })),
+            // Un-crediting targets the day the action was actually completed.
+            completionLog: checking
+              ? bumpLog(s.completionLog, 1)
+              : bumpLog(s.completionLog, -1, completedDay(before.completedAt)),
           };
         }),
 
@@ -652,21 +689,37 @@ export const useQuestStore = create<QuestData>()(
           const quest = findQuest(s.questlines, qlId, qId);
           if (!quest) return {};
           const visible = quest.actions.filter(a => !a.hidden);
-          let delta: number;
+          const now = new Date().toISOString();
+          let log = s.completionLog;
           let nextQuest: Quest;
+
           if (visible.length === 0) {
             if (!!quest.completed === complete) return {};   // no change
-            delta = complete ? 1 : -1;
-            nextQuest = { ...quest, completed: complete };
+            log = complete
+              ? bumpLog(log, 1)
+              : bumpLog(log, -1, completedDay(quest.completedAt));
+            nextQuest = { ...quest, completed: complete, completedAt: complete ? now : undefined };
           } else {
-            const before = visible.filter(a => a.completed).length;
-            const after  = complete ? visible.length : 0;
-            delta = after - before;
-            nextQuest = { ...quest, actions: quest.actions.map(a => a.hidden ? a : { ...a, completed: complete }) };
+            // Each action carries its own credit day, so the log moves per action
+            // rather than by one lump delta against today.
+            for (const a of visible) {
+              if (complete && !a.completed) log = bumpLog(log, 1);
+              else if (!complete && a.completed) log = bumpLog(log, -1, completedDay(a.completedAt));
+            }
+            nextQuest = {
+              ...quest,
+              actions: quest.actions.map(a => a.hidden ? a : {
+                ...a,
+                completed: complete,
+                // Keep an existing stamp: re-completing an already-done action
+                // must not move its credit to today.
+                completedAt: complete ? (a.completedAt ?? now) : undefined,
+              }),
+            };
           }
           return {
             questlines: mapQuest(s.questlines, qlId, qId, () => nextQuest),
-            completionLog: delta === 0 ? s.completionLog : bumpLog(s.completionLog, delta),
+            completionLog: log,
           };
         }),
 
@@ -1016,8 +1069,22 @@ export const useQuestStore = create<QuestData>()(
       setRoutineCompleted: (rId, completed) =>
         set(s => ({ routines: mapById(s.routines, rId, r => ({ ...r, completed, completedAt: completed ? (r.completedAt ?? new Date().toISOString()) : undefined })) })),
 
+      // Notion pull only. Deliberately does not touch the completion log: the work
+      // was recorded on the other side, and crediting it here would inflate the
+      // heatmap on every pull. It still stamps completedAt so the data stays
+      // consistent with every other completion path.
       setAllActionsComplete: (qlId, qId, complete) =>
-        set(s => ({ questlines: mapQuest(s.questlines, qlId, qId, q => ({ ...q, actions: q.actions.map(a => ({ ...a, completed: complete })) })) })),
+        set(s => {
+          const now = new Date().toISOString();
+          return { questlines: mapQuest(s.questlines, qlId, qId, q => ({
+            ...q,
+            actions: q.actions.map(a => ({
+              ...a,
+              completed: complete,
+              completedAt: complete ? (a.completedAt ?? now) : undefined,
+            })),
+          })) };
+        }),
     }),
     { name: QUEST_STORE_KEY }
   )

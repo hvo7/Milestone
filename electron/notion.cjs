@@ -10,7 +10,7 @@
  * Runs in the Electron main process — uses native fetch (Node 22 / Electron 36).
  */
 
-const { app } = require('electron');
+const { app, safeStorage } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -22,10 +22,54 @@ const NOTION_VER = '2022-06-28';
 const configFile = () => path.join(app.getPath('userData'), 'notion-config.json');
 const idMapFile  = () => path.join(app.getPath('userData'), 'notion-id-map.json');
 
+/**
+ * The API key is a live credential with write access to the user's Notion
+ * workspace, and it used to sit in plain text in a JSON file next to the
+ * profile — readable by anything running as this user, and easy to sweep up in
+ * a backup or a synced folder.
+ *
+ * `safeStorage` wraps the OS keystore (DPAPI on Windows, Keychain on macOS,
+ * libsecret on Linux), so the ciphertext is bound to this user account on this
+ * machine. Where the OS can't provide that, encryption is unavailable and the
+ * key is stored as before rather than refusing to work — the file records which
+ * of the two it is, so reads never have to guess.
+ */
+const canEncrypt = () => {
+  try { return safeStorage.isEncryptionAvailable(); } catch { return false; }
+};
+
 function loadConfig() {
-  try { return JSON.parse(fs.readFileSync(configFile(), 'utf8')); } catch { return null; }
+  let raw;
+  try { raw = JSON.parse(fs.readFileSync(configFile(), 'utf8')); } catch { return null; }
+  if (!raw) return null;
+
+  if (raw.apiKeyEncrypted) {
+    try {
+      return { ...raw, apiKey: safeStorage.decryptString(Buffer.from(raw.apiKeyEncrypted, 'base64')), apiKeyEncrypted: undefined };
+    } catch {
+      // A profile copied to another machine or account can't be decrypted here.
+      // Losing the key means re-entering it, which is recoverable; pretending the
+      // config is fine and sending an empty Authorization header is not.
+      return { ...raw, apiKey: '', apiKeyEncrypted: undefined };
+    }
+  }
+  // Plaintext from an older build. Upgrade it in place rather than waiting for
+  // the user to happen to re-save — the whole point is that it stops being
+  // readable on disk, and "next time you edit settings" may be never.
+  if (raw.apiKey && canEncrypt()) {
+    try { saveConfig(raw); } catch { /* keep going; the key still works in memory */ }
+  }
+  return raw;
 }
-function saveConfig(c) { fs.writeFileSync(configFile(), JSON.stringify(c, null, 2), 'utf8'); }
+
+function saveConfig(c) {
+  const out = { ...c };
+  if (out.apiKey && canEncrypt()) {
+    out.apiKeyEncrypted = safeStorage.encryptString(out.apiKey).toString('base64');
+    delete out.apiKey;
+  }
+  fs.writeFileSync(configFile(), JSON.stringify(out, null, 2), 'utf8');
+}
 
 function loadIdMap() {
   try { return JSON.parse(fs.readFileSync(idMapFile(), 'utf8')); }

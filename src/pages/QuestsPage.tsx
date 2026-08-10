@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Quest, Routine } from '../types';
 import { useQuestStore, useUIStore, isArchivedRoutine, logicalDateKey, subtaskStats } from '../store';
@@ -6,9 +6,12 @@ import { RepeatPicker, RecurrenceBadge, type RepeatValue } from '../recurrence';
 import QuestlineAccordionItem from '../components/QuestlineAccordionItem';
 import AddModal from '../components/AddModal';
 import QuestCreateDrawer from '../components/QuestCreateDrawer';
-import TaskEditDrawer, { type EditTarget } from '../components/TaskEditDrawer';
+import type { EditTarget } from '../components/TaskEditDrawer';
 import NavBar from '../components/NavBar';
 import IconButton from '../components/IconButton';
+
+// Opened on demand, so it stays out of the page's own chunk.
+const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
 
 // ── General: things to accomplish overall ────────────────────────────────────
 // Uncategorized goals live here alongside the questlines — the "just get it
@@ -290,7 +293,9 @@ export default function QuestsPage() {
         onClose={() => { setQuestDrawerOpen(false); setEditingQuest(null); }}
       />
 
-      <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />
+      <Suspense fallback={null}>
+        {editTarget && <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />}
+      </Suspense>
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence, Reorder, useDragControls, type PanInfo } from 'framer-motion';
 import type { Routine, Schedule, Action, Questline } from '../types';
 import {
@@ -9,12 +9,20 @@ import { useVynuesStore, getTaskDueInfo, vynuesCategoryKey } from '../vynuesStor
 import type { VynuesTask } from '../vynuesStore';
 import { RecurrenceBadge } from '../recurrence';
 import NavBar from '../components/NavBar';
-import TaskCreateDrawer, { ANCHOR_CATEGORY } from '../components/TaskCreateDrawer';
-import TaskEditDrawer, { type EditTarget } from '../components/TaskEditDrawer';
+// The two drawers are the heaviest thing on this page and neither is on screen
+// until the user asks for one — so they load on demand rather than sitting in
+// the chunk that has to arrive before anything renders.
+const TaskCreateDrawer = lazy(() => import('../components/TaskCreateDrawer'));
+const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
+// `import type`, not `import { type ... }`: under verbatimModuleSyntax the latter
+// still emits the import statement, which pins the module into this chunk and
+// silently undoes the lazy() above.
+import type { EditTarget } from '../components/TaskEditDrawer';
 import SubtaskTree, { type SubNode, type SubtaskTreeHandlers } from '../components/SubtaskTree';
-import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, countSubNodes, ANCHOR_LABEL, ANCHOR_TAG, ANCHOR_ICON } from '../lib/ui';
+import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, countSubNodes, ANCHOR_LABEL, ANCHOR_TAG, ANCHOR_ICON, ANCHOR_CATEGORY } from '../lib/ui';
 import Heatmap from '../components/Heatmap';
 import IconButton from '../components/IconButton';
+import FirstRunCard from '../components/FirstRunCard';
 
 /** A quest's visible actions mapped into Today check-off steps. `forceOpen`
  *  renders them unchecked (tomorrow preview of a quest that will have reset). */
@@ -124,6 +132,10 @@ interface DragHandlers {
   onDragStart: () => void;
   onDrag: (e: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) => void;
   onDragEnd: () => void;
+  /** Keyboard equivalents of the drag. Pointer-only reordering is unusable
+   *  without a mouse, and the grip is otherwise unreachable by tab. */
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }
 
 /** Scrolls the window while a reorder-drag is active and the pointer sits near
@@ -386,13 +398,24 @@ function TaskRow({
     <>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         {drag && (
-          <span
-            // The row itself is draggable; this stays as the visual affordance
-            // (and the touch target, where `touch-action` has to be suppressed).
+          <button
+            type="button"
+            // A real button, not a span: the grip has to be reachable by tab, and
+            // arrow keys have to do what dragging does. The row itself is still
+            // draggable from anywhere; this stays the visual affordance (and the
+            // touch target, where `touch-action` has to be suppressed).
             onPointerDown={e => dragControls.start(e)}
-            title="Drag to reorder"
+            onKeyDown={e => {
+              if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+              // Otherwise the arrow scrolls the page out from under the row.
+              e.preventDefault();
+              if (e.key === 'ArrowUp') drag.onMoveUp(); else drag.onMoveDown();
+            }}
+            title="Drag to reorder, or focus and use ↑ ↓"
+            aria-label={`Reorder ${title}. Press up or down arrow to move it.`}
             style={{
               flexShrink: 0, color: 'var(--text-dim)', fontSize: 16, lineHeight: 1,
+              background: 'none', border: 'none', padding: 0,
               cursor: 'grab', userSelect: 'none', touchAction: 'none',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               width: 24, height: 28, borderRadius: 6,
@@ -400,7 +423,7 @@ function TaskRow({
             }}
           >
             ⠿
-          </span>
+          </button>
         )}
         {isCounter ? (
           <CounterControl
@@ -420,6 +443,9 @@ function TaskRow({
             checked={completed}
             onChange={onToggle}
             disabled={readOnly}
+            // Without this the row announces only "checkbox, unchecked" — the
+            // title sits in a sibling element the checkbox has no relation to.
+            aria-label={title}
             title={readOnly ? 'Come back tomorrow to check this off' : subCount.total > 0 ? 'Completes every step too' : undefined}
             style={{ flexShrink: 0, marginTop: sourceLine ? 2 : 0, ...(readOnly ? { cursor: 'default', opacity: 0.6 } : {}) }}
           />
@@ -990,6 +1016,18 @@ export default function Today() {
   const byId = new Map(todoOpen.map(it => [it.id, it] as const));
   const orderedTodoOpen = orderedIds.map(id => byId.get(id)).filter((it): it is TodoItem => !!it);
 
+  /** Keyboard reordering: swap with the neighbour and persist immediately.
+   *  Unlike a drag there's no in-flight state to hold — each press is a complete
+   *  move, so the store is the only place the order needs to live. */
+  const moveTodo = (id: string, delta: number) => {
+    const ids = [...orderedIds];
+    const from = ids.indexOf(id);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    [ids[from], ids[to]] = [ids[to], ids[from]];
+    reorderTodo(ids);
+  };
+
   const todoRows = orderedTodoOpen.map(it => (
     <TaskRow
       key={it.id}
@@ -1010,6 +1048,8 @@ export default function Today() {
         onDragStart: dragTodo.onDragStart,
         onDrag: dragTodo.onDrag,
         onDragEnd: dragTodo.onDragEnd,
+        onMoveUp: () => moveTodo(it.id, -1),
+        onMoveDown: () => moveTodo(it.id, 1),
       } : undefined}
       target={it.target}
       progress={it.progress}
@@ -1083,7 +1123,12 @@ export default function Today() {
           </div>
         )}
 
-        <ProgressSummary label={progressLabel} done={done} total={total} />
+        {/* Shows only on a genuinely empty app, and takes the place of the
+            progress bar — "0/0 done" is not a useful first impression. */}
+        <FirstRunCard onCreate={openDrawer} />
+        {(questlines.length > 0 || routines.length > 0) && (
+          <ProgressSummary label={progressLabel} done={done} total={total} />
+        )}
 
         {/* ── One list, everything in it ──────────────────────────────────── */}
         <section style={{ marginBottom: 36 }}>
@@ -1175,7 +1220,9 @@ export default function Today() {
             </>
           )}
 
-          {todoItems.length === 0 && (
+          {/* Suppressed on a first run, where FirstRunCard above already explains
+              the empty screen — two "nothing here yet" messages read as a fault. */}
+          {todoItems.length === 0 && (questlines.length > 0 || routines.length > 0) && (
             <p style={{ fontSize: 13, color: 'var(--page-text-dim)', padding: '14px 0', lineHeight: 1.7 }}>
               {preview
                 ? <>Nothing on tomorrow’s plate yet. Hit <strong>＋ New task</strong> to plan ahead.</>
@@ -1205,8 +1252,12 @@ export default function Today() {
         <DayFlipper key={preview ? 'flip-back' : 'flip-fwd'} forward={!preview} onClick={() => setPreview(!preview)} />
       </AnimatePresence>
 
-      <TaskCreateDrawer open={drawerOpen} initialCategory={drawerCategory} onClose={() => setDrawerOpen(false)} />
-      <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />
+      {/* No fallback: a drawer slides in over the page, so an empty frame for the
+          moment it takes to arrive is exactly the right thing to show. */}
+      <Suspense fallback={null}>
+        {drawerOpen && <TaskCreateDrawer open={drawerOpen} initialCategory={drawerCategory} onClose={() => setDrawerOpen(false)} />}
+        {editTarget && <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />}
+      </Suspense>
     </div>
   );
 }

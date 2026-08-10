@@ -5,10 +5,7 @@ import { useVynuesStore, vynuesCategoryKey, vynuesProjectId } from '../vynuesSto
 import { RepeatPicker, type RepeatValue } from '../recurrence';
 import { MenuSelect } from '../vynuesUi';
 import Field from './Field';
-import { cleanQuest, ANCHOR_LABEL, ANCHOR_ICON } from '../lib/ui';
-
-/** Sentinel category key for the anchor-habit group. */
-export const ANCHOR_CATEGORY = '__anchor__';
+import { cleanQuest, ANCHOR_LABEL, ANCHOR_ICON, ANCHOR_CATEGORY } from '../lib/ui';
 
 /**
  * Right-hand slide-in panel for creating a task. The same drawer covers both

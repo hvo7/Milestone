@@ -10,6 +10,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "recover-profile": "node scripts/recover-profile.mjs",
     "preview": "vite preview",
     "generate-icons": "node scripts/generate-icons.mjs",
     "electron:dev": "electron .",
@@ -40,11 +43,13 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "jsdom": "^30.0.1",
     "png-to-ico": "^2.1.8",
     "sharp": "^0.34.0",
     "tailwindcss": "^4.3.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
-    "vite": "^8.0.12"
+    "vite": "^8.0.12",
+    "vitest": "^4.1.10"
   }
 }

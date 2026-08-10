@@ -442,6 +442,13 @@ body::before {
   color: var(--icon-btn-hover, var(--accent));
   opacity: 1;
 }
+/* Reveal-on-hover buttons are driven by an inline opacity from the parent row's
+   hover state, which a stylesheet rule can't outrank — hence !important. Without
+   it a keyboard user tabs onto a button that is focused but invisible. */
+.icon-btn:focus-visible {
+  opacity: 1 !important;
+  color: var(--icon-btn-hover, var(--accent));
+}
 
 /* ══════════════════════════════════════════════
    INPUT (.rune-input — legacy name kept)

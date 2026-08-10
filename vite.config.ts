@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -20,5 +21,26 @@ export default defineConfig({
     // `vite dev` never produces a packaged build, so mark it plainly rather than
     // letting a dev session masquerade as a release.
     __BUILD_MODE__:  JSON.stringify(process.env.NODE_ENV === 'production' ? 'release' : 'dev'),
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split the big third-party dependencies out of the app chunk. They only
+        // change on upgrade, so a normal release ships a small app chunk and
+        // leaves the vendor code sitting in the browser's cache untouched.
+        manualChunks(id: string) {
+          if (!id.includes('node_modules')) return
+          if (id.includes('framer-motion') || id.includes('motion-dom') || id.includes('motion-utils')) return 'vendor-motion'
+          if (/node_modules[\\/](react|react-dom|scheduler|react-router)/.test(id)) return 'vendor-react'
+        },
+      },
+    },
+  },
+  test: {
+    // The stores construct zustand `persist` middleware at import time, which
+    // reaches for localStorage — so even the pure helpers need a DOM to be
+    // importable.
+    environment: 'jsdom',
+    include: ['src/**/*.test.ts'],
   },
 })

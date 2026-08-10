@@ -51,6 +51,11 @@ export interface Action {
   id: string;
   title: string;
   completed: boolean;
+  /** ISO instant this action was checked off. Records *which day* earned the
+   *  heatmap credit, so unchecking it later removes the credit from that day
+   *  rather than from today. Absent on actions completed before this was added
+   *  (they fall back to today, which is the old behaviour). */
+  completedAt?: string;
   trackedToday?: boolean;
   hidden?: boolean;
   recurring?: RecurringType | null;
@@ -83,6 +88,9 @@ export interface Quest {
    *  fallback for the action-less case, so such a quest can still be checked off
    *  on Today. Ignored while the quest has visible actions. */
   completed?: boolean;
+  /** ISO instant an action-less quest was checked off — the heatmap day its
+   *  credit belongs to. See `Action.completedAt`. */
+  completedAt?: string;
 }
 
 export interface Questline {

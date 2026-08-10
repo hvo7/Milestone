@@ -111,6 +111,7 @@ function NodeRow({ node, depth, handlers, readOnly }: {
           checked={node.done}
           onChange={() => handlers.onToggle?.(node.id)}
           disabled={!canToggle}
+          aria-label={node.title}
           title={kids.length ? 'Checks every step under it too' : undefined}
           style={{ flexShrink: 0, ...(!canToggle ? { cursor: 'default', opacity: 0.6 } : {}) }}
         />

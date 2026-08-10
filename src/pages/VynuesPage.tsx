@@ -1,11 +1,14 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NavBar from '../components/NavBar';
 import VynuesProjectModal from '../components/VynuesProjectModal';
 import VynuesTaskCreateDrawer, { type VynuesDrawerTarget } from '../components/VynuesTaskCreateDrawer';
-import TaskEditDrawer, { type EditTarget } from '../components/TaskEditDrawer';
+import type { EditTarget } from '../components/TaskEditDrawer';
 import SubtaskTree from '../components/SubtaskTree';
 import IconButton from '../components/IconButton';
+
+// Opened on demand, so it stays out of the page's own chunk.
+const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
 import { PRIORITY_META, MenuSelect, PROJECT_COLOR_VAR as COLOR_VAR } from '../vynuesUi';
 import { vynuesSubNodes } from '../lib/ui';
 import { repeats } from '../store';
@@ -325,7 +328,9 @@ export default function VynuesPage() {
         onClose={() => setDrawerOpen(false)}
       />
 
-      <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />
+      <Suspense fallback={null}>
+        {editTarget && <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />}
+      </Suspense>
     </>
   );
 }

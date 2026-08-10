@@ -21,6 +21,11 @@ export const ANCHOR_LABEL = 'Anchor Habits';
 export const ANCHOR_TAG   = 'Anchor';
 export const ANCHOR_ICON  = '🛠️';
 
+/** Sentinel category key for the anchor-habit group in the create/edit drawers.
+ *  Lives here rather than in a drawer so pages can reference it without pulling
+ *  a lazily-loaded drawer into the entry chunk. */
+export const ANCHOR_CATEGORY = '__anchor__';
+
 /** Questline/project accent hexes — the fixed palette, mirrored from index.css
  *  `--color-*` for the places that need a raw value rather than a CSS var. */
 export const CATEGORY_HEX: Record<string, string> = {

@@ -34,6 +34,10 @@ jobs:
       # loudly rather than silently resolving different versions than local.
       - run: npm ci
 
+      # Deploying a build whose recurrence engine is broken is worse than not
+      # deploying: the failure is silent and lands in someone's saved data.
+      - run: npm test
+
       # Regenerates public/pwa-*.png from logo.svg so the installed icon can never
       # drift from the source mark. Icons are gitignored for the same reason.
       - run: npm run generate-icons

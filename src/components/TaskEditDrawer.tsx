@@ -6,7 +6,7 @@ import { RepeatPicker, type RepeatValue } from '../recurrence';
 import { MenuSelect, PrioritySegmented, PROJECT_COLOR_VAR, toDateTimeLocalInput } from '../vynuesUi';
 import SubtaskTree from './SubtaskTree';
 import Field from './Field';
-import { cleanQuest, routineSubNodes, vynuesSubNodes, ANCHOR_LABEL, ANCHOR_ICON } from '../lib/ui';
+import { cleanQuest, routineSubNodes, vynuesSubNodes, ANCHOR_LABEL, ANCHOR_ICON, ANCHOR_CATEGORY as ANCHOR_KEY } from '../lib/ui';
 
 /** Which task the drawer is editing. One drawer covers all three stores. */
 export type EditTarget =
@@ -14,7 +14,6 @@ export type EditTarget =
   | { kind: 'vynues'; projectId: string; taskId: string }
   | { kind: 'action'; qlId: string; qId: string; aId: string };
 
-const ANCHOR_KEY = '__anchor__';
 
 // ── Routine editor ────────────────────────────────────────────────────────────
 

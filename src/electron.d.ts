@@ -23,6 +23,32 @@ declare global {
         /** Returns an unsubscribe function. */
         onChanged:   (callback: () => void) => () => void;
       };
+      /** Rolling on-disk snapshots of the stores — see electron/backups.cjs. */
+      backup: {
+        save:   (bundle: unknown) => Promise<{ ok: boolean; name?: string; at?: string; skipped?: string; error?: string }>;
+        list:   () => Promise<AutoBackup[]>;
+        read:   (name: string) => Promise<{ ok: boolean; bundle?: MilestoneBundle; error?: string }>;
+        reveal: () => Promise<string>;
+      };
     };
+  }
+
+  /** One automatic snapshot, as listed for the restore picker. */
+  interface AutoBackup {
+    name: string;
+    savedAt: string;
+    bytes: number;
+    questlines: number;
+    routines: number;
+  }
+
+  /** The export/backup file format shared by the Data panel, the sync layer's
+   *  rescue copies, and the automatic snapshots. */
+  interface MilestoneBundle {
+    _milestone: number;
+    appVersion?: string;
+    exportedAt?: string;
+    quest?: string;
+    vynues?: string;
   }
 }

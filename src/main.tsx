@@ -3,7 +3,13 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { startCloudSync } from './lib/cloudSync'
+import { startAutoBackup } from './lib/autoBackup'
 import { APP_VERSION } from './buildInfo'
+
+// Snapshot to disk *before* sync starts: adopting a peer's data legitimately
+// replaces everything on this machine, and the copy it replaced should already
+// be on disk by then.
+startAutoBackup()
 
 // Kicked off alongside the first render rather than awaited: the app should come
 // up on local data immediately, and fold in the other computer's changes when the

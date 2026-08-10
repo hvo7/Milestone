@@ -21,6 +21,12 @@ release
 # app icon drift from the source mark.
 public/pwa-*.png
 
+# Exported/recovered data bundles. These are verbatim dumps of personal task
+# data — never commit one, especially now the repo is public. Ignored by pattern
+# so an accidental export into the checkout can't be staged.
+milestone-backup-*.json
+milestone-recovered-*.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
