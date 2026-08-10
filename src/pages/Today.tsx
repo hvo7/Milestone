@@ -12,7 +12,7 @@ import NavBar from '../components/NavBar';
 import TaskCreateDrawer, { ANCHOR_CATEGORY } from '../components/TaskCreateDrawer';
 import TaskEditDrawer, { type EditTarget } from '../components/TaskEditDrawer';
 import SubtaskTree, { type SubNode, type SubtaskTreeHandlers } from '../components/SubtaskTree';
-import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, countSubNodes } from '../lib/ui';
+import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, countSubNodes, ANCHOR_LABEL, ANCHOR_TAG, ANCHOR_ICON } from '../lib/ui';
 import Heatmap from '../components/Heatmap';
 import IconButton from '../components/IconButton';
 
@@ -637,7 +637,7 @@ interface Category {
   rank: number;
 }
 
-const CHUD_CATEGORY: Category    = { key: 'chud',    label: 'Fixing my Chud life', tagLabel: 'Chud life', color: 'var(--accent)', icon: '🛠️', rank: 0 };
+const ANCHOR_GROUP: Category    = { key: 'anchor',  label: ANCHOR_LABEL, tagLabel: ANCHOR_TAG, color: 'var(--accent)', icon: ANCHOR_ICON, rank: 0 };
 const GENERAL_CATEGORY: Category = { key: 'general', label: 'General', color: 'var(--text-dim)', rank: 1 };
 const VYNUES_KEY = 'vynues';
 
@@ -798,7 +798,7 @@ export default function Today() {
   const liveRoutines = byOrder(routines.filter(r => !r.hidden && showsOnDay(r, viewKey, viewStart)));
 
   const categoryOfRoutine = (r: Routine): Category => {
-    if (r.anchor) return CHUD_CATEGORY;
+    if (r.anchor) return ANCHOR_GROUP;
     const ql = r.questlineId ? questlines.find(q => q.id === r.questlineId) : undefined;
     return ql ? questlineCategory(ql) : GENERAL_CATEGORY;
   };
@@ -1031,7 +1031,7 @@ export default function Today() {
     const key = activeChip?.category.key;
     const firstProject = vynuesProjects.find(p => p.status === 'active');
     const preset =
-      key === CHUD_CATEGORY.key           ? ANCHOR_CATEGORY :
+      key === ANCHOR_GROUP.key           ? ANCHOR_CATEGORY :
       key === VYNUES_KEY                  ? (firstProject ? vynuesCategoryKey(firstProject.id) : '') :
       key && key !== GENERAL_CATEGORY.key ? key :
                                             '';
@@ -1179,7 +1179,7 @@ export default function Today() {
             <p style={{ fontSize: 13, color: 'var(--page-text-dim)', padding: '14px 0', lineHeight: 1.7 }}>
               {preview
                 ? <>Nothing on tomorrow’s plate yet. Hit <strong>＋ New task</strong> to plan ahead.</>
-                : <>A clear day ahead. Hit <strong>＋ New task</strong> to add one — General by default, or file it under a questline, Vynues project, or your Chud-life habits.</>}
+                : <>A clear day ahead. Hit <strong>＋ New task</strong> to add one — General by default, or file it under a questline, Vynues project, or your anchor habits.</>}
             </p>
           )}
 

@@ -168,9 +168,9 @@ export interface Routine {
   questlineId?: string;
   /** Optional specific quest (within questlineId) this task is connected to. */
   questId?: string;
-  /** Belongs to the highlighted "Fixing my Chud life" comeback category on Today.
-   *  Anchor habits are standalone (no questline) but still reset + build a streak
-   *  each period, unlike ordinary standalone todos. */
+  /** Belongs to the highlighted anchor-habit category on Today (see ANCHOR_LABEL
+   *  in lib/ui.ts). Anchor habits are standalone (no questline) but still reset +
+   *  build a streak each period, unlike ordinary standalone todos. */
   anchor?: boolean;
   /** Manual sort position within its Today group (lower = higher up). */
   order?: number;

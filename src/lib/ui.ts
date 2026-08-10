@@ -9,6 +9,18 @@ import type { SubNode } from '../components/SubtaskTree';
  * of this file is what lets fast refresh work on both.)
  */
 
+/**
+ * Display name for the anchor-habit group — the highlighted standalone habits
+ * that reset and build a streak each period (`routine.anchor`).
+ *
+ * Purely cosmetic, and deliberately in one place: the stored identity is the
+ * `anchor` flag on the routine itself, so this can be re-worded freely without
+ * touching a single saved task.
+ */
+export const ANCHOR_LABEL = 'Anchor Habits';
+export const ANCHOR_TAG   = 'Anchor';
+export const ANCHOR_ICON  = '🛠️';
+
 /** Questline/project accent hexes — the fixed palette, mirrored from index.css
  *  `--color-*` for the places that need a raw value rather than a CSS var. */
 export const CATEGORY_HEX: Record<string, string> = {

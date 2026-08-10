@@ -580,7 +580,7 @@ interface QuestData {
   addRoutine:           (title: string, desc: string, recurring: RecurringType | null, questlineId?: string, intervalDays?: number, questId?: string, dueDate?: string | null, counter?: CounterConfig, monthlyRule?: MonthlyRule | null) => void;
   /** Set/clear a one-time task's due date ('YYYY-MM-DD' or null). */
   setRoutineDueDate:    (rId: string, dueDate: string | null) => void;
-  /** Add a habit to the highlighted "Fixing my Chud life" category (Today tab). */
+  /** Add a habit to the highlighted anchor-habit category (Today tab). */
   addAnchorRoutine:     (title: string, recurring: 'daily' | 'weekly', counter?: CounterConfig) => void;
   /** Nudge a counter task's progress by `delta` (clamped to 0…target); auto-completes at target. */
   incrementRoutine:     (rId: string, delta: number) => void;

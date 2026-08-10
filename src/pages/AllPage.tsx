@@ -5,7 +5,7 @@ import { useQuestStore, recurrenceLabel, isArchivedRoutine, ARCHIVE_RETENTION_DA
 import { useVynuesStore } from '../vynuesStore';
 import { RepeatPicker, RecurrenceBadge, type RepeatValue } from '../recurrence';
 import NavBar from '../components/NavBar';
-import { categoryColor, cleanQuest } from '../lib/ui';
+import { categoryColor, cleanQuest, ANCHOR_LABEL, ANCHOR_ICON } from '../lib/ui';
 
 /** A task normalised across the quest, routine and Vynues stores so every group
  *  renders and edits through one shape. */
@@ -390,9 +390,9 @@ export default function AllPage() {
           }
         />
 
-        {/* Fixing my Chud life */}
+        {/* Anchor habits */}
         {anchorTasks.length > 0 && (
-          <GroupPanel group={{ id: 'anchor', name: '🛠️ Fixing my Chud life', color: 'var(--accent)', tasks: anchorTasks }} />
+          <GroupPanel group={{ id: 'anchor', name: `${ANCHOR_ICON} ${ANCHOR_LABEL}`, color: 'var(--accent)', tasks: anchorTasks }} />
         )}
 
         {/* Per questline */}

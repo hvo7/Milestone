@@ -5,9 +5,9 @@ import { useVynuesStore, vynuesCategoryKey, vynuesProjectId } from '../vynuesSto
 import { RepeatPicker, type RepeatValue } from '../recurrence';
 import { MenuSelect } from '../vynuesUi';
 import Field from './Field';
-import { cleanQuest } from '../lib/ui';
+import { cleanQuest, ANCHOR_LABEL, ANCHOR_ICON } from '../lib/ui';
 
-/** Sentinel category key for the "Fixing my Chud life" anchor-habit group. */
+/** Sentinel category key for the anchor-habit group. */
 export const ANCHOR_CATEGORY = '__anchor__';
 
 /**
@@ -24,7 +24,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '' }
 
   const [title, setTitle]             = useState('');
   const [description, setDescription] = useState('');
-  const [questlineId, setQuestlineId] = useState('');   // '' = General, ANCHOR_CATEGORY = Chud life
+  const [questlineId, setQuestlineId] = useState('');   // '' = General, ANCHOR_CATEGORY = anchor habits
   const [questId, setQuestId]         = useState('');    // '' = whole questline
   const [repeat, setRepeat]           = useState<RepeatValue>({ recurring: null });
   const [dueDate, setDueDate]         = useState('');    // one-time tasks default to today
@@ -150,7 +150,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '' }
                   onChange={v => { setQuestlineId(v); setQuestId(''); }}
                   options={[
                     { key: '', label: 'General' },
-                    { key: ANCHOR_CATEGORY, label: '🛠️ Fixing my Chud life' },
+                    { key: ANCHOR_CATEGORY, label: `${ANCHOR_ICON} ${ANCHOR_LABEL}` },
                     ...visibleQuestlines.map(q => ({ key: q.id, label: q.title })),
                     ...activeProjects.map(p => ({ key: vynuesCategoryKey(p.id), label: `🚩 Vynues · ${p.name}` })),
                   ]}

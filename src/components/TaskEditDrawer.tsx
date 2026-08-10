@@ -6,7 +6,7 @@ import { RepeatPicker, type RepeatValue } from '../recurrence';
 import { MenuSelect, PrioritySegmented, PROJECT_COLOR_VAR, toDateTimeLocalInput } from '../vynuesUi';
 import SubtaskTree from './SubtaskTree';
 import Field from './Field';
-import { cleanQuest, routineSubNodes, vynuesSubNodes } from '../lib/ui';
+import { cleanQuest, routineSubNodes, vynuesSubNodes, ANCHOR_LABEL, ANCHOR_ICON } from '../lib/ui';
 
 /** Which task the drawer is editing. One drawer covers all three stores. */
 export type EditTarget =
@@ -98,7 +98,7 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
             onChange={v => { setCategory(v); setQuestId(''); }}
             options={[
               { key: '', label: 'General' },
-              { key: ANCHOR_KEY, label: '🛠️ Fixing my Chud life' },
+              { key: ANCHOR_KEY, label: `${ANCHOR_ICON} ${ANCHOR_LABEL}` },
               ...questlines.filter(q => !q.hidden).map(q => ({ key: q.id, label: q.title })),
             ]}
           />
