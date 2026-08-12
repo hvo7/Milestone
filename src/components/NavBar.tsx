@@ -9,6 +9,7 @@ import { VERSION_LABEL, BUILD_MODE, buildSummary } from '../buildInfo';
 // panel drags in the whole sync/backup surface. Loaded when actually opened.
 const NotionSyncModal = lazy(() => import('./NotionSyncModal'));
 const DataModal = lazy(() => import('./DataModal'));
+const RemindersModal = lazy(() => import('./RemindersModal'));
 
 const isElectron = !!window.electronAPI;
 
@@ -19,8 +20,10 @@ export default function NavBar() {
   const projects     = useVynuesStore(s => s.projects);
   const theme        = useUIStore(s => s.theme);
   const toggleTheme  = useUIStore(s => s.toggleTheme);
+  const reminders    = useUIStore(s => s.reminders);
   const [syncOpen,  setSyncOpen]  = useState(false);
   const [dataOpen,  setDataOpen]  = useState(false);
+  const [remindOpen, setRemindOpen] = useState(false);
 
   const dailyRemaining =
     routines.filter(r => r.recurring === 'daily' && !r.completed && !r.hidden).length +
@@ -166,6 +169,16 @@ export default function NavBar() {
           </button>
 
           <button
+            onClick={() => setRemindOpen(true)}
+            title={reminders?.enabled ? `Daily reminder at ${reminders.time}` : 'Daily reminder — off'}
+            style={{ ...iconBtnStyle(), ...(reminders?.enabled ? { color: 'var(--accent)', borderColor: 'var(--accent-border)' } : {}) }}
+            onMouseEnter={hoverOn}
+            onMouseLeave={e => { if (!reminders?.enabled) hoverOff(e); }}
+          >
+            🔔
+          </button>
+
+          <button
             onClick={() => setDataOpen(true)}
             title="Export / Import data"
             style={iconBtnStyle()}
@@ -190,8 +203,9 @@ export default function NavBar() {
       </nav>
 
       <Suspense fallback={null}>
-        {syncOpen && <NotionSyncModal onClose={() => setSyncOpen(false)} />}
-        {dataOpen && <DataModal       onClose={() => setDataOpen(false)} />}
+        {syncOpen   && <NotionSyncModal onClose={() => setSyncOpen(false)} />}
+        {dataOpen   && <DataModal       onClose={() => setDataOpen(false)} />}
+        {remindOpen && <RemindersModal  onClose={() => setRemindOpen(false)} />}
       </Suspense>
     </>
   );

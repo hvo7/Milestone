@@ -38,12 +38,23 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
   const [target, setTarget]   = useState(String(routine?.target ?? 3));
   const [step, setStep]       = useState(String(routine?.step ?? 1));
   const [unit, setUnit]       = useState(routine?.unit ?? '');
+  // `undefined` means "follow the default derived from the task's shape"; once the
+  // user touches the toggle it becomes an explicit yes/no stored on the routine.
+  const [oncePerDay, setOncePerDay] = useState<boolean | undefined>(routine?.oncePerDay);
 
   if (!routine) return null;
 
   const ql = questlines.find(q => q.id === category);
   const isRepeating = !!repeat.recurring || !!repeat.intervalDays || !!repeat.monthlyRule;
   const canPin = (routine.recurring && routine.recurring !== 'daily') || !!routine.intervalDays || !!routine.monthlyRule;
+  // The "counts days" choice only exists for a goal whose cycle spans several
+  // days — mirrors isMultiDayCycle, but against the *pending* edits rather than
+  // the saved task, so the option appears the moment you pick "weekly".
+  const spansDays = !repeat.monthlyRule
+    && (repeat.intervalDays ? repeat.intervalDays > 1 : repeat.recurring === 'weekly' || repeat.recurring === 'monthly');
+  // Unset falls back to the same default the store derives: no unit means you are
+  // counting occurrences, a unit means you are counting quantity.
+  const countsDays = oncePerDay ?? !unit.trim();
 
   function save() {
     if (!routine) return;
@@ -62,6 +73,7 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
       counter: counterOn && goal > 0
         ? { target: goal, step: per > 1 ? per : undefined, unit: unit.trim() || undefined }
         : null,
+      oncePerDay: oncePerDay ?? null,
     });
     onClose();
   }
@@ -175,6 +187,30 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
                 <input type="number" min={1} className="rune-input" value={step} onChange={e => setStep(e.target.value)}
                   style={{ width: 64, fontSize: 14, padding: '8px 10px', textAlign: 'center' }} />
               </div>
+
+              {/* Only meaningful on a multi-day cycle: on a daily task "once a
+                  day" is just what the task already is. */}
+              {spansDays && (
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    className="rune-check"
+                    checked={countsDays}
+                    onChange={e => setOncePerDay(e.target.checked)}
+                    style={{ marginTop: 2 }}
+                  />
+                  <span>
+                    <span style={{ display: 'block', fontSize: 13, color: 'var(--page-text)' }}>
+                      Counts days, not taps
+                    </span>
+                    <span style={{ display: 'block', fontSize: 12, color: 'var(--text-dim)', marginTop: 2, lineHeight: 1.5 }}>
+                      For goals like “go to the gym 3 times a week”, where one day can only
+                      count once. A strip of the week appears under the task — tap a day to
+                      log it, or an earlier one to fill in a session you forgot.
+                    </span>
+                  </span>
+                </label>
+              )}
             </div>
           )}
         </Field>

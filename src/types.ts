@@ -169,6 +169,28 @@ export interface Routine {
   /** ISO instant of the last counter progress (+ tap). For multi-day goals
    *  ("gym 3× a week") this is what marks *today's session* done on Today. */
   lastProgressAt?: string;
+  /**
+   * Which logical days of the *current cycle* a session was logged on.
+   *
+   * For a goal like "go to the gym 3 times a week", the unit of progress is a
+   * day, not a tap — you cannot go twice on Tuesday and be two-thirds done. So
+   * these tasks count days rather than increments: `progress` is derived from
+   * this array's length, which makes one-per-day true by construction instead of
+   * by a guard that can be tapped around.
+   *
+   * Ascending 'YYYY-MM-DD' keys. Cleared when the cycle rolls over, alongside
+   * `progress`. See `sessionMode` for which tasks use this.
+   */
+  sessionDays?: string[];
+  /**
+   * Count days, not taps (see `sessionDays`).
+   *
+   * Undefined means "decide from the shape of the task" — a multi-day counter
+   * with no unit is counting occurrences ("3 times"), one with a unit is counting
+   * quantity ("64 oz"). Set explicitly to override either way, so an existing
+   * task's behaviour is never silently rewritten in storage.
+   */
+  oncePerDay?: boolean;
   trackedToday: boolean;
   lastResetAt?: string;
   streak?: number;

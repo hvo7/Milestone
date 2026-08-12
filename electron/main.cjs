@@ -4,12 +4,17 @@ const path = require('path');
 const { loadConfig, saveConfig, testConnection, syncToNotion, pullFromNotion } = require('./notion.cjs');
 const cloudSync = require('./cloudSync.cjs');
 const backups = require('./backups.cjs');
+const tray = require('./tray.cjs');
 
 // ── Identity ─────────────────────────────────────────────────────────────────
 // Electron derives userData from the app name, and npm names must be lowercase —
 // so set the display name explicitly to keep the profile at %APPDATA%\Milestone
 // rather than %APPDATA%\milestone. This must run before anything reads userData.
 app.setName('Milestone');
+// Windows attributes a toast to an AppUserModelID, not to the process. Without
+// this the reminder arrives labelled "electron.app.Milestone" — or, on some
+// setups, doesn't arrive at all.
+if (process.platform === 'win32') app.setAppUserModelId('Milestone');
 
 /** The pre-rename profile, back when the npm name was still 'rpg-quest-tracker'. */
 const LEGACY_USER_DATA = path.join(app.getPath('appData'), 'rpg-quest-tracker');
@@ -128,8 +133,25 @@ function createWindow() {
     win.webContents.openDevTools();
   }
 
+  // "Keep running in the tray" turns ✕ into a hide. Strictly opt-in (see
+  // tray.cjs): an app that quietly refuses to close is a worse problem than a
+  // missed reminder, so this only fires once the setting is on.
+  win.on('close', e => {
+    if (!tray.shouldHideOnClose()) return;
+    e.preventDefault();
+    win.hide();
+  });
+
   mainWindow = win;
   win.on('closed', () => { if (mainWindow === win) mainWindow = null; });
+}
+
+/** Bring the window back — from the tray icon, its menu, or a notification click. */
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) { createWindow(); return; }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
 }
 
 // ── Notion IPC handlers ───────────────────────────────────────────────────────
@@ -179,9 +201,17 @@ ipcMain.handle('backup:list', () => backups.list());
 ipcMain.handle('backup:read', (_event, name) => backups.read(name));
 ipcMain.handle('backup:reveal', () => shell.openPath(backups.folder()));
 
+// ── Reminders ─────────────────────────────────────────────────────────────────
+// Display only. Whether a nudge is due is decided in src/lib/reminders.ts, which
+// is the side that can actually read the stores.
+
+ipcMain.handle('notify', (_event, { title, body }) => tray.notify(title, body));
+ipcMain.handle('tray:update', (_event, state) => tray.update(state));
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+  tray.init(showMainWindow);
   createWindow();
   cloudSync.initWatcher(() => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed');
@@ -191,6 +221,13 @@ app.whenReady().then(() => {
   });
 });
 
+// Menu "Quit", ⌘Q and a system shutdown all arrive here first — after this the
+// close handler must let the window actually close.
+app.on('before-quit', () => tray.markQuitting());
+
 app.on('window-all-closed', () => {
+  // With the tray holding the app open there are no windows by design; quitting
+  // here would defeat the setting that was just switched on.
+  if (tray.shouldHideOnClose()) return;
   if (process.platform !== 'darwin') app.quit();
 });

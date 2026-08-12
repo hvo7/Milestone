@@ -32,4 +32,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     read:   (name)   => ipcRenderer.invoke('backup:read', name),
     reveal: ()       => ipcRenderer.invoke('backup:reveal'),
   },
+  /** Show a desktop notification — see electron/tray.cjs. */
+  notify: (title, body) => ipcRenderer.invoke('notify', { title, body }),
+  tray: {
+    /** Push today's open count and the keep-running setting to the tray. */
+    update: (state) => ipcRenderer.invoke('tray:update', state),
+  },
 });

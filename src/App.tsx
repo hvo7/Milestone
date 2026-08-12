@@ -3,6 +3,9 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useQuestStore, useUIStore } from './store';
 import { useVynuesStore } from './vynuesStore';
 import Today from './pages/Today';
+import UndoToast from './components/UndoToast';
+import CommandPalette from './components/CommandPalette';
+import { startReminders } from './lib/reminders';
 
 // Today is the landing route, so it ships in the main bundle — splitting it would
 // only add a flash on launch. The other tabs are pulled in the first time they're
@@ -45,6 +48,10 @@ function AppRoutes() {
     return () => clearInterval(interval);
   }, [checkAndResetRecurring, checkAndResetVynues]);
 
+  // Reminders own their own timer (see lib/reminders.ts) and the call is
+  // idempotent, so StrictMode's double-mount in development can't double-nudge.
+  useEffect(() => { startReminders(); }, []);
+
   return (
     <Suspense fallback={<RouteFallback />}>
       <Routes>
@@ -63,6 +70,11 @@ export default function App() {
   return (
     <Router>
       <AppRoutes />
+      {/* Both live above the routes: a delete should be undoable after navigating
+          away from what it deleted, and search is most useful when it can move
+          you between pages. */}
+      <CommandPalette />
+      <UndoToast />
     </Router>
   );
 }

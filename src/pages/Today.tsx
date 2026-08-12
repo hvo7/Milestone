@@ -1,12 +1,23 @@
-import { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
-import { motion, AnimatePresence, Reorder, useDragControls, type PanInfo } from 'framer-motion';
+/**
+ * The Today tab: everything due right now, from every source, as one list.
+ *
+ * This page's job is *derivation* — normalising routines, quest actions, pinned
+ * quests and Vynues tasks into a single row shape that can sort, filter, drag and
+ * reorder together. The row itself, the drag plumbing and the surrounding
+ * furniture live in components/today/; the "does this belong on this day"
+ * predicates live in lib/today.ts, where the reminder scheduler and the tests can
+ * reach them without rendering a page.
+ */
+import { useState, lazy, Suspense } from 'react';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import type { Routine, Schedule, Action, Questline } from '../types';
 import {
   useQuestStore, logicalDateKey, logicalDayStart, dateKey, dueOnDay, periodExpired, skipActive,
   isMultiDayCycle, isGoalRoutine, engagedOnDay, subtaskStats, repeats, isQuestComplete, questProgress, DAY_RESET_HOUR,
+  sessionMode, cycleDayKeys,
 } from '../store';
-import { useVynuesStore, getTaskDueInfo, vynuesCategoryKey } from '../vynuesStore';
-import type { VynuesTask } from '../vynuesStore';
+import { showsOnDay, vynuesShowsOnDay } from '../lib/today';
+import { useVynuesStore, vynuesCategoryKey } from '../vynuesStore';
 import { RecurrenceBadge } from '../recurrence';
 import NavBar from '../components/NavBar';
 // The two drawers are the heaviest thing on this page and neither is on screen
@@ -18,638 +29,20 @@ const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
 // still emits the import statement, which pins the module into this chunk and
 // silently undoes the lazy() above.
 import type { EditTarget } from '../components/TaskEditDrawer';
-import SubtaskTree, { type SubNode, type SubtaskTreeHandlers } from '../components/SubtaskTree';
-import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, countSubNodes, ANCHOR_LABEL, ANCHOR_TAG, ANCHOR_ICON, ANCHOR_CATEGORY } from '../lib/ui';
+import type { SubNode, SubtaskTreeHandlers } from '../components/SubtaskTree';
+import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, hasCheckpoints, ANCHOR_LABEL, ANCHOR_TAG, ANCHOR_ICON, ANCHOR_CATEGORY } from '../lib/ui';
 import Heatmap from '../components/Heatmap';
-import IconButton from '../components/IconButton';
+import Consistency from '../components/Consistency';
 import FirstRunCard from '../components/FirstRunCard';
+import TaskRow, { type RowStrip } from '../components/today/TaskRow';
+import { useReorder } from '../components/today/useReorder';
+import { Caption, DueLabel, VynuesDueLabel } from '../components/today/labels';
+import { ProgressSummary, Chip, DayFlipper } from '../components/today/chrome';
 
 /** A quest's visible actions mapped into Today check-off steps. `forceOpen`
  *  renders them unchecked (tomorrow preview of a quest that will have reset). */
 function actionSubNodes(actions: Action[], forceOpen: boolean): SubNode[] {
   return actions.filter(a => !a.hidden).map(a => ({ id: a.id, title: a.title, done: forceOpen ? false : a.completed }));
-}
-
-/** Decides whether a routine belongs on the given logical day's list. `dayKey` is a
- *  'YYYY-MM-DD' key and `dayStart` is that day's midnight — they travel together so
- *  the tomorrow preview can ask the same question about the next day.
- *  - Daily tasks always surface.
- *  - Multi-day *goals* (weekly "gym 3×" counters, or weekly tasks with steps) surface
- *    every day while open — they're built to be chipped away at — and, once fully
- *    complete, linger only through the day they were finished.
- *  - Other weekly / monthly / interval tasks surface on the day their period ends
- *    (or when pinned) — that list is for work due *that day*.
- *  - A one-off surfaces from its due date on; a completed one lingers only through
- *    its completion day. */
-function showsOnDay(r: Routine, dayKey: string, dayStart: Date): boolean {
-  if (repeats(r)) {
-    if (r.recurring === 'daily' && !r.intervalDays && !r.monthlyRule) return true;
-    if (isGoalRoutine(r)) {
-      if (r.completed) return !!r.completedAt && logicalDateKey(new Date(r.completedAt)) === dayKey;
-      return true;
-    }
-    return !!r.trackedToday || dueOnDay(r, dayStart);
-  }
-  if (r.dueDate && r.dueDate > dayKey) return false;
-  if (r.completed) return !!r.completedAt && logicalDateKey(new Date(r.completedAt)) === dayKey;
-  return true;
-}
-
-/** The Vynues equivalent of `showsOnDay`. */
-function vynuesShowsOnDay(t: VynuesTask, dayKey: string, dayStart: Date): boolean {
-  if (repeats(t)) {
-    if (t.recurring === 'daily' && !t.intervalDays && !t.monthlyRule) return true;
-    return !!t.tracked || dueOnDay(t, dayStart);
-  }
-  const due = t.tracked || (!!t.dueDate && t.dueDate.slice(0, 10) <= dayKey);
-  if (!due) return false;
-  if (t.done) return !!t.completedAt && logicalDateKey(new Date(t.completedAt)) === dayKey;
-  return true;
-}
-
-/** The small caption under a row's title — due dates, "3/5 this cycle", and the
- *  like. One style, so they all sit on the same line consistently. */
-const Caption = ({ color = 'var(--page-text-dim)', children }: { color?: string; children: React.ReactNode }) =>
-  <span style={{ fontSize: 11, fontWeight: 600, color }}>{children}</span>;
-
-/** Compact due-date pill for a one-time To-Do row. */
-function DueLabel({ dueDate, todayKey }: { dueDate: string; todayKey: string }) {
-  const overdue = dueDate < todayKey;
-  const today = dueDate === todayKey;
-  const text = overdue ? 'Overdue' : today ? 'Due today'
-    : `Due ${new Date(`${dueDate}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
-  return <Caption color={overdue ? 'var(--danger)' : today ? 'var(--accent)' : 'var(--text-dim)'}>{text}</Caption>;
-}
-
-/** Due pill for a Vynues task, whose due dates can carry a time of day. */
-function VynuesDueLabel({ dueDate }: { dueDate: string }) {
-  const { text, urgency } = getTaskDueInfo(dueDate);
-  return (
-    <Caption color={urgency === 'overdue' ? 'var(--danger)' : urgency === 'urgent' ? 'var(--accent)' : 'var(--text-dim)'}>
-      {text}
-    </Caption>
-  );
-}
-
-// ── Today progress summary ────────────────────────────────────────────────────
-
-function ProgressSummary({ label, done, total }: { label: string; done: number; total: number }) {
-  const pct = total === 0 ? 0 : Math.round((done / total) * 100);
-  const allDone = total > 0 && done === total;
-  return (
-    <div className="parchment glass-card" style={{ borderRadius: 16, padding: '20px 24px', marginBottom: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--page-text)' }}>
-          {label}
-        </span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: allDone ? 'var(--success)' : 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>
-          {done}/{total} {allDone ? '· all done ✦' : 'done'}
-        </span>
-      </div>
-      <div style={{ height: 8, background: 'var(--track-bg)', borderRadius: 999, overflow: 'hidden' }}>
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          className={allDone ? 'bar-fill bar-fill-done' : 'bar-fill'}
-          style={{ height: '100%', borderRadius: 999 }}
-        />
-      </div>
-      {total === 0 && (
-        <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-dim)' }}>
-          Add tasks below to start tracking your day.
-        </p>
-      )}
-    </div>
-  );
-}
-
-// ── Task row ──────────────────────────────────────────────────────────────────
-
-interface DragHandlers {
-  /** This row's identity for framer-motion's `Reorder.Group`. */
-  value: string;
-  onDragStart: () => void;
-  onDrag: (e: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) => void;
-  onDragEnd: () => void;
-  /** Keyboard equivalents of the drag. Pointer-only reordering is unusable
-   *  without a mouse, and the grip is otherwise unreachable by tab. */
-  onMoveUp: () => void;
-  onMoveDown: () => void;
-}
-
-/** Scrolls the window while a reorder-drag is active and the pointer sits near
- *  the top or bottom edge of the *viewport*, so a long list can be reordered
- *  without first scrolling by hand to make room for the drop target: hold the
- *  row against an edge and the page comes to you. Speed eases in quadratically
- *  across the band — a slow creep where the band starts, topping out only once
- *  the pointer is hard against (or past) the screen edge — and is expressed in
- *  px/second against the real frame delta, so it feels the same on a 60Hz and a
- *  144Hz display.
- *
- *  Fed by the pointer position `Reorder.Item`'s `onDrag` reports — there's no
- *  native drag event to listen for the way HTML5 DnD has one. That position is
- *  in *page* coordinates (framer reads `pageX`/`pageY`), so `report` takes the
- *  scroll offset back off before the loop compares it to the viewport edges.
- *  Skipping that conversion is what made this run away: once the page was
- *  scrolled at all, page-Y was past `innerHeight` almost everywhere, every
- *  position read as "below the bottom edge", and the un-clamped ramp beyond the
- *  band squared it into a jump straight to the end of the list. */
-function useDragAutoScroll(active: boolean) {
-  // null until this drag reports its first position — an unseeded 0 would read
-  // as "pointer pinned to the top of the screen" and yank the page up on grab.
-  const pointerYRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!active) return;
-    const MIN_SPEED = 90, MAX_SPEED = 1000; // px/s entering the band / at the edge
-    let previous = performance.now();
-    let carry = 0; // sub-pixel remainder — scrollBy can't move less than a pixel
-    let raf = requestAnimationFrame(function tick(now) {
-      raf = requestAnimationFrame(tick);
-      // Clamp the delta so one stalled frame (GC pause, window restore) spends
-      // its backlog at ~50ms of travel instead of teleporting the page.
-      const dt = Math.min(now - previous, 50) / 1000;
-      previous = now;
-      const y = pointerYRef.current;
-      if (y === null) return;
-      // Band scales with the window, bounded so it stays easy to hit on a short
-      // one without swallowing a third of a tall one.
-      const vh = window.innerHeight;
-      const edge = Math.min(180, Math.max(90, vh * 0.2));
-      const past = y < edge ? edge - y : y > vh - edge ? y - (vh - edge) : 0;
-      if (!past) { carry = 0; return; }
-      // Dragging past the screen edge is just full speed, never more.
-      const t = Math.min(1, past / edge);
-      const speed = MIN_SPEED + (MAX_SPEED - MIN_SPEED) * t * t;
-      const step = carry + (y < edge ? -speed : speed) * dt;
-      const whole = Math.trunc(step);
-      carry = step - whole;
-      if (whole) window.scrollBy(0, whole);
-    });
-    return () => { cancelAnimationFrame(raf); pointerYRef.current = null; };
-  }, [active]);
-  /** Feed the loop the pointer's latest page Y. */
-  return useCallback((pageY: number) => { pointerYRef.current = pageY - window.scrollY; }, []);
-}
-
-/** Drag-to-reorder state for the To-Do list, built on framer-motion's `Reorder`
- *  primitives: the dragged row follows the pointer directly and its neighbours
- *  slide out of the way immediately, rather than the row staying put next to a
- *  separate gap marker. The live order lives in local state while dragging and
- *  is only written to the store once, on release — so a mid-drag reflow (a
- *  recurring task resetting, say) can't yank the list out from under a finger. */
-function useReorder(reorder: (ids: string[]) => void) {
-  const [dragging, setDragging] = useState(false);
-  const [liveOrder, setLiveOrderState] = useState<string[] | null>(null);
-  const liveOrderRef = useRef<string[] | null>(null);
-  const reportPointerY = useDragAutoScroll(dragging);
-
-  // Dragging across text otherwise leaves a trail of blue selection highlight
-  // over every row the cursor crosses, which reads as the UI glitching.
-  useEffect(() => {
-    if (!dragging) return;
-    document.body.classList.add('reordering');
-    return () => document.body.classList.remove('reordering');
-  }, [dragging]);
-
-  const setLiveOrder = (v: string[] | null) => { liveOrderRef.current = v; setLiveOrderState(v); };
-
-  return {
-    dragging,
-    /** The order to render right now: the live in-progress order while dragging,
-     *  else whatever the caller's own sort produces. */
-    orderOf: (baseIds: string[]) => liveOrder ?? baseIds,
-    onReorder: setLiveOrder,
-    onDragStart: () => setDragging(true),
-    onDrag: (_e: PointerEvent | MouseEvent | TouchEvent, info: PanInfo) => reportPointerY(info.point.y),
-    onDragEnd: () => {
-      setDragging(false);
-      if (liveOrderRef.current) reorder(liveOrderRef.current);
-      setLiveOrder(null);
-    },
-  };
-}
-
-/** Counter control that replaces the checkbox for counter tasks: −  2/3 oz  ＋,
- *  with a slim progress bar. The task completes once progress reaches target. */
-function CounterControl({ progress, target, step = 1, unit, complete, accentHex, onIncrement, readOnly = false }: {
-  progress: number; target: number; step?: number; unit?: string;
-  complete: boolean; accentHex: string; onIncrement: (delta: number) => void;
-  readOnly?: boolean;
-}) {
-  const pct = target > 0 ? Math.min(100, Math.round((progress / target) * 100)) : 0;
-  const color = complete ? 'var(--success)' : accentHex;
-  const stepBtn = (label: string, delta: number, blocked: boolean) => {
-    const disabled = readOnly || blocked;
-    return (
-    <button
-      type="button"
-      onClick={e => { e.stopPropagation(); onIncrement(delta); }}
-      disabled={disabled}
-      title={delta > 0 ? `+${step}` : `−${step}`}
-      className="counter-btn"
-      style={{
-        width: 23, height: 23, borderRadius: 7, flexShrink: 0,
-        border: '1px solid var(--page-border)', background: 'var(--page-surface)',
-        color: disabled ? 'var(--page-text-dim)' : 'var(--page-text)',
-        cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.4 : 1,
-        fontSize: 14, lineHeight: 1, fontFamily: 'inherit',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'border-color 0.15s, color 0.15s, transform 0.1s',
-      }}
-    >
-      {label}
-    </button>
-    );
-  };
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, minWidth: 104, alignSelf: 'center' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-        {stepBtn('−', -step, progress <= 0)}
-        <span style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 700, color, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-          {progress}/{target}{unit ? ` ${unit}` : ''}
-        </span>
-        {stepBtn('＋', step, complete)}
-      </div>
-      <div style={{ height: 3.5, background: 'var(--track-bg)', borderRadius: 999, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 999, transition: 'width 0.3s cubic-bezier(.22,1,.36,1)' }} />
-      </div>
-    </div>
-  );
-}
-
-/** Skip-forward glyph (⏭) — marks a task skipped for today. */
-function SkipIcon({ size = 13 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style={{ display: 'block' }}>
-      <path d="M4 5.5a1 1 0 0 1 1.55-.83l8.2 5.5a1 1 0 0 1 0 1.66l-8.2 5.5A1 1 0 0 1 4 16.5v-11Z" />
-      <path d="M16.5 5a1 1 0 0 1 1 1v12a1 1 0 0 1-2 0V6a1 1 0 0 1 1-1Z" />
-    </svg>
-  );
-}
-
-const SKIP_COLOR = '#fbbf24';
-
-/** Controls inside a task row that must keep working as controls — a pointer-down
- *  on one of these starts a click, not a drag. */
-const INTERACTIVE_SEL = 'button, input, textarea, select, a, label, [contenteditable]';
-
-
-interface TaskRowProps {
-  title: string;
-  /** The whole task is finished (weekly goal hit 3/3, checkbox ticked…). */
-  completed: boolean;
-  /** Today's share of a multi-day goal is done (a session was logged) even though
-   *  the goal itself is still open — renders the teal "done for today" state. */
-  todayDone?: boolean;
-  skipped?: boolean;
-  onSkip?: () => void;
-  streak?: number;
-  accentHex: string;
-  sourceLine?: React.ReactNode;
-  tag?: { label: string; color: string };
-  onToggle: () => void;
-  onDelete?: () => void;
-  onRename?: (title: string) => void;
-  /** Opens the full edit panel (due date, schedule, category, steps — everything). */
-  onEdit?: () => void;
-  drag?: DragHandlers;
-  subtasks?: SubNode[];
-  subHandlers?: SubtaskTreeHandlers;
-  target?: number;
-  progress?: number;
-  step?: number;
-  unit?: string;
-  onIncrement?: (delta: number) => void;
-  readOnly?: boolean;
-}
-
-function TaskRow({
-  title, completed, todayDone = false, skipped, onSkip, streak, accentHex, sourceLine, tag, onToggle, onDelete, onRename, onEdit, drag,
-  subtasks, subHandlers,
-  target, progress, step, unit, onIncrement, readOnly = false,
-}: TaskRowProps) {
-  const [hovered, setHovered] = useState(false);
-  const [addingSub, setAddingSub] = useState(false);
-  // Always called (rules of hooks) but only wired up when `drag` is present —
-  // it's what lets the grip start the row's drag without the whole row being
-  // a drag source (so the checkbox, buttons, etc. stay clickable).
-  const dragControls = useDragControls();
-
-  // Inline rename — double-click the title. The ✎ pencil opens the full editor.
-  const [editing, setEditing] = useState(false);
-  const [titleDraft, setTitleDraft] = useState(title);
-  const editRef = useRef<HTMLInputElement>(null);
-  const cancelRef = useRef(false);
-
-  function startEdit() {
-    if (!onRename) return;
-    setTitleDraft(title);
-    setEditing(true);
-  }
-  function commitEdit() {
-    setEditing(false);
-    if (cancelRef.current) { cancelRef.current = false; return; }
-    const t = titleDraft.trim();
-    if (t && t !== title) onRename?.(t);
-  }
-
-  const subtasksEnabled = !!subHandlers?.onAdd;
-  const subs = subtasks ?? [];
-  const subCount = countSubNodes(subs);
-  const isCounter = target != null && !!onIncrement;
-
-  const edgeColor = completed ? 'var(--success)' : todayDone ? 'var(--success)' : skipped ? SKIP_COLOR : accentHex;
-
-  const rowStyle: React.CSSProperties = {
-    // `position: relative` is what lets the lifted row's z-index actually raise it
-    // above its neighbours while it's being dragged over them.
-    position: 'relative',
-    display: 'flex',
-    flexDirection: 'column',
-    padding: '13px 16px',
-    // Draggable rows are spaced by the group's `gap` instead: framer measures
-    // bounding boxes, which exclude margin, so a margin would leave an unmeasured
-    // dead band between rows and make the crossover points feel imprecise.
-    ...(drag ? {} : { marginBottom: 8 }),
-    background: hovered && !completed && !skipped ? 'var(--page-surface-hover)' : 'var(--page-surface)',
-    border: '1px solid var(--page-border)',
-    borderLeft: `3px solid ${edgeColor}`,
-    borderRadius: 12,
-    // NB: `transform` must stay out of this CSS transition on a draggable row —
-    // framer drives the drag and the reorder shuffle through transform, and a CSS
-    // ease layered on top makes the row lag behind the cursor instead of tracking it.
-    transition: drag
-      ? 'background 0.15s, border-color 0.12s, border-left-color 0.3s'
-      : 'background 0.15s, border-color 0.12s, border-left-color 0.3s, box-shadow 0.2s, transform 0.2s',
-    boxShadow: hovered && !completed && !skipped ? 'var(--row-shadow-hover)' : 'var(--row-shadow)',
-    cursor: drag ? 'grab' : undefined,
-  };
-
-  // Grabbing the row anywhere drags it — the way reorderable lists behave
-  // elsewhere — while clicks on the controls inside it still do their own thing.
-  function startRowDrag(e: React.PointerEvent) {
-    if (!drag || e.button !== 0) return;
-    if ((e.target as HTMLElement).closest(INTERACTIVE_SEL)) return;
-    dragControls.start(e);
-  }
-
-  const rowContent = (
-    <>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-        {drag && (
-          <button
-            type="button"
-            // A real button, not a span: the grip has to be reachable by tab, and
-            // arrow keys have to do what dragging does. The row itself is still
-            // draggable from anywhere; this stays the visual affordance (and the
-            // touch target, where `touch-action` has to be suppressed).
-            onPointerDown={e => dragControls.start(e)}
-            onKeyDown={e => {
-              if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
-              // Otherwise the arrow scrolls the page out from under the row.
-              e.preventDefault();
-              if (e.key === 'ArrowUp') drag.onMoveUp(); else drag.onMoveDown();
-            }}
-            title="Drag to reorder, or focus and use ↑ ↓"
-            aria-label={`Reorder ${title}. Press up or down arrow to move it.`}
-            style={{
-              flexShrink: 0, color: 'var(--text-dim)', fontSize: 16, lineHeight: 1,
-              background: 'none', border: 'none', padding: 0,
-              cursor: 'grab', userSelect: 'none', touchAction: 'none',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              width: 24, height: 28, borderRadius: 6,
-              opacity: hovered ? 0.85 : 0.45, transition: 'opacity 0.15s',
-            }}
-          >
-            ⠿
-          </button>
-        )}
-        {isCounter ? (
-          <CounterControl
-            progress={progress ?? 0}
-            target={target!}
-            step={step}
-            unit={unit}
-            complete={completed || (progress ?? 0) >= target!}
-            accentHex={todayDone ? 'var(--success)' : accentHex}
-            onIncrement={onIncrement!}
-            readOnly={readOnly}
-          />
-        ) : (
-          <input
-            type="checkbox"
-            className="rune-check"
-            checked={completed}
-            onChange={onToggle}
-            disabled={readOnly}
-            // Without this the row announces only "checkbox, unchecked" — the
-            // title sits in a sibling element the checkbox has no relation to.
-            aria-label={title}
-            title={readOnly ? 'Come back tomorrow to check this off' : subCount.total > 0 ? 'Completes every step too' : undefined}
-            style={{ flexShrink: 0, marginTop: sourceLine ? 2 : 0, ...(readOnly ? { cursor: 'default', opacity: 0.6 } : {}) }}
-          />
-        )}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {editing ? (
-            <input
-              ref={editRef}
-              autoFocus
-              className="rune-input"
-              value={titleDraft}
-              onFocus={e => e.currentTarget.select()}
-              onChange={e => setTitleDraft(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') editRef.current?.blur();
-                if (e.key === 'Escape') { cancelRef.current = true; editRef.current?.blur(); }
-              }}
-              onBlur={commitEdit}
-              style={{ width: '100%', fontSize: 14, fontWeight: 500, padding: '4px 8px' }}
-            />
-          ) : (
-            <span
-              onDoubleClick={startEdit}
-              title={onRename ? 'Double-click to rename' : undefined}
-              style={{
-                display: 'block',
-                fontSize: 14,
-                fontWeight: 500,
-                color: completed || skipped ? 'var(--page-text-dim)' : 'var(--page-text)',
-                textDecoration: completed ? 'line-through' : 'none',
-                lineHeight: 1.4,
-                cursor: onRename ? 'text' : undefined,
-              }}
-            >
-              {tag && (
-                <>
-                  <span style={{ fontWeight: 700, color: tag.color }}>{tag.label}</span>
-                  <span style={{ color: 'var(--page-text-dim)', opacity: 0.7 }}> — </span>
-                </>
-              )}
-              {title}
-              {todayDone && !completed && (
-                <span className="pill-today-done">✓ TODAY</span>
-              )}
-              {skipped && (
-                <span style={{
-                  marginLeft: 8, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em',
-                  color: SKIP_COLOR, border: `1px solid ${SKIP_COLOR}`,
-                  padding: '1px 6px', borderRadius: 999, whiteSpace: 'nowrap',
-                }}>
-                  SKIPPED
-                </span>
-              )}
-              {subCount.total > 0 && (
-                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: subCount.done === subCount.total ? 'var(--success)' : 'var(--page-text-dim)', fontVariantNumeric: 'tabular-nums' }}>
-                  {subCount.done}/{subCount.total}
-                </span>
-              )}
-            </span>
-          )}
-          {sourceLine && (
-            <span style={{ display: 'block', marginTop: 4 }}>
-              {sourceLine}
-            </span>
-          )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, marginTop: 2 }}>
-          {(streak ?? 0) > 1 && (
-            <span style={{ fontSize: 11, fontWeight: 600, color: '#f97316' }}>
-              🔥{streak}
-            </span>
-          )}
-          {/* Skip — stays visible while skipped so it can be undone. */}
-          {onSkip && !completed && (hovered || skipped) && (
-            <IconButton
-              onClick={onSkip}
-              title={skipped
-                ? 'Skipped today — click to un-skip'
-                : "Skip just today — streak safe, back tomorrow. A weekly goal keeps its progress."}
-              rest={skipped ? SKIP_COLOR : undefined}
-              hover={SKIP_COLOR}
-              style={{ display: 'flex', alignItems: 'center' }}
-            >
-              <SkipIcon />
-            </IconButton>
-          )}
-          {subtasksEnabled && !completed && !skipped && (hovered || subs.length > 0) && (
-            <IconButton onClick={() => setAddingSub(v => !v)} title="Add a step" size={15}>
-              ＋
-            </IconButton>
-          )}
-          {onEdit && (hovered || editing) && (
-            <IconButton onClick={onEdit} title="Edit everything — name, due date, schedule, steps…" size={12}>
-              ✎
-            </IconButton>
-          )}
-          {onDelete && hovered && !completed && (
-            <IconButton onClick={onDelete} title="Delete" hover="var(--danger)" size={12}>
-              ✕
-            </IconButton>
-          )}
-        </div>
-      </div>
-
-      {/* Steps — infinitely nestable */}
-      {(subs.length > 0 || addingSub) && subHandlers && (
-        <div style={{ marginTop: 9, paddingLeft: drag ? 42 : 30 }}>
-          <SubtaskTree
-            nodes={subs}
-            handlers={subHandlers}
-            readOnly={readOnly}
-            showRootAdd={addingSub}
-            onDismissRootAdd={() => setAddingSub(false)}
-          />
-        </div>
-      )}
-    </>
-  );
-
-  const opacityTarget = completed ? 0.68 : skipped ? 0.55 : 1;
-  const sharedMotionProps = {
-    exit: { opacity: 0, height: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0 },
-    onMouseEnter: () => setHovered(true),
-    onMouseLeave: () => setHovered(false),
-    className: 'task-row',
-    style: rowStyle,
-  };
-
-  // A draggable row renders as a Reorder.Item, so it can follow the pointer and
-  // slide its neighbours out of the way live; a non-draggable one (a filtered
-  // view, or the "Done" group) stays a plain motion.div.
-  if (drag) {
-    return (
-      <Reorder.Item
-        as="div"
-        value={drag.value}
-        dragListener={false}
-        dragControls={dragControls}
-        onPointerDown={startRowDrag}
-        // No rubber-banding and no post-release drift — the row should track the
-        // pointer exactly and stop dead the instant it's released, not slide on.
-        dragElastic={0}
-        dragMomentum={false}
-        // Only depth, never scale: framer decides where a row lands by measuring
-        // bounding boxes, and scaling the one under the cursor moves the very
-        // edges those crossover points are computed from — that reads as jitter.
-        whileDrag={{ boxShadow: '0 14px 30px rgba(0,0,0,0.28)', zIndex: 5 }}
-        onDragStart={drag.onDragStart}
-        onDrag={drag.onDrag}
-        onDragEnd={drag.onDragEnd}
-        // Deliberately no `y` in initial/animate here. Drag and the reorder
-        // shuffle both write the y transform, and a `y` animation target would be
-        // re-applied on every re-render mid-drag (they fire constantly, on each
-        // crossover) — snapping the held row back toward its origin under the cursor.
-        initial={{ opacity: 0 }}
-        animate={{ opacity: opacityTarget }}
-        transition={{ duration: 0.22, layout: { type: 'spring', stiffness: 700, damping: 46 } }}
-        {...sharedMotionProps}
-      >
-        {rowContent}
-      </Reorder.Item>
-    );
-  }
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: -4 }}
-      animate={{ opacity: opacityTarget, y: 0 }}
-      transition={{ duration: 0.22 }}
-      {...sharedMotionProps}
-    >
-      {rowContent}
-    </motion.div>
-  );
-}
-
-/** The edge button that flips between today and the tomorrow preview. The two
- *  directions are the same button mirrored — side, arrow, nudge and label all
- *  follow from `forward`. */
-function DayFlipper({ forward, onClick }: { forward: boolean; onClick: () => void }) {
-  const sign = forward ? 1 : -1;
-  return (
-    <motion.button
-      onClick={onClick}
-      title={forward ? 'Peek at tomorrow — dailies reset, plan the next day' : 'Back to today'}
-      initial={{ opacity: 0, x: sign * 24 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: sign * 24 }}
-      whileHover={{ scale: 1.08 }}
-      whileTap={{ scale: 0.94 }}
-      className="day-flipper"
-      style={{ position: 'fixed', [forward ? 'right' : 'left']: 16, top: '38%', zIndex: 30 }}
-    >
-      <motion.span
-        animate={{ x: [0, sign * 5, 0] }}
-        transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
-        style={{ display: 'block', fontSize: 20, lineHeight: 1 }}
-      >
-        {forward ? '→' : '←'}
-      </motion.span>
-      <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.07em' }}>{forward ? 'TMRW' : 'TODAY'}</span>
-    </motion.button>
-  );
 }
 
 // ── Categories ────────────────────────────────────────────────────────────────
@@ -671,25 +64,6 @@ const VYNUES_KEY = 'vynues';
  *  pinned quest) files under its questline — same key, so they group together. */
 const questlineCategory = (ql: Questline): Category =>
   ({ key: ql.id, label: ql.title, color: categoryColor(ql.color), rank: 2 });
-
-/** One filter chip: category name, a colour dot, and how many are still open. */
-function Chip({ label, icon, color, open, total, active, onClick }: {
-  label: string; icon?: string; color?: string;
-  open: number; total: number; active: boolean; onClick: () => void;
-}) {
-  const cleared = total > 0 && open === 0;
-  return (
-    <button type="button" className="chip" data-active={active} onClick={onClick}>
-      {icon
-        ? <span style={{ fontSize: 12, lineHeight: 1 }}>{icon}</span>
-        : color && <span className="chip-dot" style={{ background: color }} />}
-      <span>{label}</span>
-      <span className="chip-count" style={cleared ? { color: 'var(--success)' } : undefined}>
-        {cleared ? '✓' : open}
-      </span>
-    </button>
-  );
-}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -715,6 +89,8 @@ interface TodoItem {
   step?: number;
   unit?: string;
   onIncrement?: (delta: number) => void;
+  /** Day strip / checkpoint ladder drawn under this row, where it applies. */
+  strip?: RowStrip;
   subtasks?: SubNode[];
   subHandlers?: SubtaskTreeHandlers;
   onToggle: () => void;
@@ -733,6 +109,8 @@ export default function Today() {
   const toggleRoutine  = useQuestStore(s => s.toggleRoutine);
   const skipRoutine    = useQuestStore(s => s.skipRoutine);
   const incrementRoutine = useQuestStore(s => s.incrementRoutine);
+  const toggleSession    = useQuestStore(s => s.toggleSession);
+  const setRoutineProgress = useQuestStore(s => s.setRoutineProgress);
   const toggleAction   = useQuestStore(s => s.toggleAction);
   const toggleTracked  = useQuestStore(s => s.toggleTracked);
   const deleteAction   = useQuestStore(s => s.deleteAction);
@@ -796,6 +174,35 @@ export default function Today() {
     step: r.step, unit: r.unit,
     onIncrement: r.target != null ? (d: number) => incrementRoutine(r.id, d) : undefined,
   });
+
+  /**
+   * What to draw under this row — a day strip, a checkpoint ladder, or nothing.
+   *
+   * Deliberately narrow. A goal that counts days ("gym 3× a week") gets the
+   * strip; a counter you chip at in fixed portions ("64 oz", step 16) gets the
+   * ladder; everything else — plain checkboxes, one-offs, fine-grained counters
+   * with too many rungs to tap — grows nothing at all.
+   *
+   * Suppressed in the tomorrow preview, where the row is read-only and a strip
+   * showing today's sessions on tomorrow's card would simply be wrong.
+   */
+  const stripOf = (r: Routine): RowStrip | undefined => {
+    if (preview || r.target == null) return undefined;
+    if (sessionMode(r)) {
+      const days = cycleDayKeys(r);
+      // A cycle too long to draw (monthly) still enforces one-per-day; it just
+      // has no readable strip, so the counter stands on its own.
+      if (!days) return undefined;
+      return {
+        kind: 'sessions',
+        days,
+        logged: (r.sessionDays ?? []).filter(d => days.includes(d)),
+        onToggle: (dayKey: string) => toggleSession(r.id, dayKey),
+      };
+    }
+    if (!hasCheckpoints(r.target, r.step ?? 1)) return undefined;
+    return { kind: 'checkpoints', onSet: (value: number) => setRoutineProgress(r.id, value) };
+  };
 
   // Skips are day-scoped now: today's skip never spills into tomorrow, so the
   // preview simply shows everything unskipped.
@@ -879,6 +286,7 @@ export default function Today() {
         streak: r.streak,
         accentHex: fullyDone || todayDone ? 'var(--success)' : cat.color,
         meta: routineMeta(r),
+        strip: stripOf(r),
         ...counterOf(r),
         ...skipOf(r),
         ...routineSubProps(r),
@@ -1056,6 +464,7 @@ export default function Today() {
       step={it.step}
       unit={it.unit}
       onIncrement={it.onIncrement}
+      strip={it.strip}
       readOnly={preview}
       subtasks={it.subtasks}
       subHandlers={it.subHandlers}
@@ -1213,6 +622,7 @@ export default function Today() {
                     step={it.step}
                     unit={it.unit}
                     onIncrement={it.onIncrement}
+                    strip={it.strip}
                     readOnly={preview}
                   />
                 ))}
@@ -1226,7 +636,7 @@ export default function Today() {
             <p style={{ fontSize: 13, color: 'var(--page-text-dim)', padding: '14px 0', lineHeight: 1.7 }}>
               {preview
                 ? <>Nothing on tomorrow’s plate yet. Hit <strong>＋ New task</strong> to plan ahead.</>
-                : <>A clear day ahead. Hit <strong>＋ New task</strong> to add one — General by default, or file it under a questline, Vynues project, or your anchor habits.</>}
+                : <>A clear day ahead. Hit <strong>＋ New task</strong> to add one — General by default, or file it under a questline, Vynues project, or your {ANCHOR_TAG} habits.</>}
             </p>
           )}
 
@@ -1245,6 +655,7 @@ export default function Today() {
         </AnimatePresence>
 
         <Heatmap />
+        <Consistency />
       </div>
 
       {/* ── Day flipper ──────────────────────────────────────────────────────── */}

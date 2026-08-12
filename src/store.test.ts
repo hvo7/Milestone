@@ -420,11 +420,16 @@ describe('checkAndResetRecurring', () => {
 // ── Counters ─────────────────────────────────────────────────────────────────
 
 describe('incrementRoutine', () => {
+  // A *quantity* counter — 3 litres, not 3 gym visits. The unit is what tells
+  // the two apart: a multi-day count with no unit is counting occurrences and
+  // goes through sessions instead, where a day can only be logged once (see
+  // store.sessions.test.ts). Without the unit here these would be exercising
+  // that mode rather than this one.
   beforeEach(() => {
     vi.setSystemTime(localTime(2026, AUG, 10, 12));
     useQuestStore.setState({
-      questlines: [], completionLog: {}, todoOrder: {},
-      routines: [routine({ recurring: 'weekly', target: 3, progress: 0 })],
+      questlines: [], completionLog: {}, taskHistory: {}, todoOrder: {},
+      routines: [routine({ recurring: 'weekly', target: 3, progress: 0, unit: 'L' })],
     });
   });
 
@@ -443,10 +448,144 @@ describe('incrementRoutine', () => {
   });
 
   it('counts a multi-day goal only once per day in the heatmap', () => {
-    // Three gym sessions logged on one day is still one day of credit.
+    // Three top-ups logged on one day is still one day of credit.
     useQuestStore.getState().incrementRoutine('r1', 1);
     useQuestStore.getState().incrementRoutine('r1', 1);
     useQuestStore.getState().incrementRoutine('r1', 1);
     expect(useQuestStore.getState().completionLog['2026-08-10']).toBe(1);
+  });
+});
+
+// ── Per-task history ─────────────────────────────────────────────────────────
+// The aggregate completionLog can say "three things on Tuesday" but never which
+// three, so it can never answer the question that changes behaviour: which habit
+// have I been quietly failing? These record that going forward — and must stay in
+// lockstep with the log, since two counters that can disagree eventually will.
+
+describe('taskHistory', () => {
+  const seedRoutine = (over: Partial<Routine> = {}) => useQuestStore.setState({
+    questlines: [], completionLog: {}, taskHistory: {}, todoOrder: {},
+    routines: [routine({ recurring: 'daily', ...over })],
+  });
+
+  it('records the day a task was completed on', () => {
+    vi.setSystemTime(localTime(2026, AUG, 10, 12));
+    seedRoutine();
+    useQuestStore.getState().toggleRoutine('r1');
+    expect(useQuestStore.getState().taskHistory['r1']).toEqual(['2026-08-10']);
+  });
+
+  it('withdraws the day when the task is unchecked', () => {
+    vi.setSystemTime(localTime(2026, AUG, 10, 12));
+    seedRoutine();
+    useQuestStore.getState().toggleRoutine('r1');
+    useQuestStore.getState().toggleRoutine('r1');
+    expect(useQuestStore.getState().taskHistory['r1']).toBeUndefined();
+  });
+
+  it('keeps days in ascending order across a gap, and a new cycle keeps the old ones', () => {
+    vi.setSystemTime(localTime(2026, AUG, 10, 12));
+    seedRoutine({ lastResetAt: localTime(2026, AUG, 10, 6).toISOString() });
+    useQuestStore.getState().toggleRoutine('r1');
+
+    // Roll the cycle (missing the 11th entirely), then finish it on the 12th.
+    vi.setSystemTime(localTime(2026, AUG, 12, 12));
+    useQuestStore.getState().checkAndResetRecurring();
+    expect(useQuestStore.getState().routines[0].completed).toBe(false);
+    // The reset must not withdraw the 10th — a new cycle starting is not evidence
+    // that the previous one didn't happen.
+    expect(useQuestStore.getState().taskHistory['r1']).toEqual(['2026-08-10']);
+
+    useQuestStore.getState().toggleRoutine('r1');
+    expect(useQuestStore.getState().taskHistory['r1']).toEqual(['2026-08-10', '2026-08-12']);
+  });
+
+  it('counts a multi-day goal once per day, like the log', () => {
+    vi.setSystemTime(localTime(2026, AUG, 10, 12));
+    seedRoutine({ recurring: 'weekly', target: 3, progress: 0 });
+    useQuestStore.getState().incrementRoutine('r1', 1);
+    useQuestStore.getState().incrementRoutine('r1', 1);
+    expect(useQuestStore.getState().taskHistory['r1']).toEqual(['2026-08-10']);
+    expect(useQuestStore.getState().completionLog['2026-08-10']).toBe(1);
+  });
+
+  it('holds no credit for a skipped day', () => {
+    vi.setSystemTime(localTime(2026, AUG, 10, 12));
+    seedRoutine();
+    useQuestStore.getState().toggleRoutine('r1');
+    useQuestStore.getState().skipRoutine('r1');
+    // A skip is a neutral day: the streak survives, but nothing was done.
+    expect(useQuestStore.getState().taskHistory['r1']).toBeUndefined();
+    expect(useQuestStore.getState().completionLog['2026-08-10']).toBe(0);
+  });
+
+  it('attributes an un-check to the original day, not today', () => {
+    useQuestStore.setState({
+      questlines: [{
+        id: 'ql', title: 'QL', description: '', icon: '', color: 'amber',
+        quests: [{ id: 'q1', title: 'Q', description: '', order: 1, actions: [{ id: 'a1', title: 'One', completed: false }] }],
+      }],
+      routines: [], completionLog: {}, taskHistory: {}, todoOrder: {},
+    });
+    vi.setSystemTime(localTime(2026, AUG, 9, 12));
+    useQuestStore.getState().toggleAction('ql', 'q1', 'a1');
+    vi.setSystemTime(localTime(2026, AUG, 10, 12));
+    useQuestStore.getState().toggleAction('ql', 'q1', 'a1');
+    // The 9th loses it; the 10th never had it and must not go negative-then-zero.
+    expect(useQuestStore.getState().taskHistory['a1']).toBeUndefined();
+    expect(useQuestStore.getState().completionLog['2026-08-09']).toBe(0);
+  });
+
+  it('records each action of a quest completed as a unit', () => {
+    vi.setSystemTime(localTime(2026, AUG, 10, 12));
+    useQuestStore.setState({
+      questlines: [{
+        id: 'ql', title: 'QL', description: '', icon: '', color: 'amber',
+        quests: [{
+          id: 'q1', title: 'Q', description: '', order: 1,
+          actions: [
+            { id: 'a1', title: 'One', completed: false },
+            { id: 'a2', title: 'Two', completed: false },
+          ],
+        }],
+      }],
+      routines: [], completionLog: {}, taskHistory: {}, todoOrder: {},
+    });
+    useQuestStore.getState().setQuestComplete('ql', 'q1', true);
+    const h = useQuestStore.getState().taskHistory;
+    expect(h['a1']).toEqual(['2026-08-10']);
+    expect(h['a2']).toEqual(['2026-08-10']);
+  });
+
+  it('prunes days past the retention window', () => {
+    vi.setSystemTime(localTime(2026, AUG, 10, 12));
+    useQuestStore.setState({
+      questlines: [], routines: [routine({ recurring: 'daily' })], completionLog: {}, todoOrder: {},
+      taskHistory: { r1: ['2024-01-01', '2026-08-09'] },
+    });
+    useQuestStore.getState().checkAndResetRecurring();
+    expect(useQuestStore.getState().taskHistory['r1']).toEqual(['2026-08-09']);
+  });
+
+  it('keeps a just-deleted task’s history, so undo restores it whole', () => {
+    vi.setSystemTime(localTime(2026, AUG, 10, 12));
+    useQuestStore.setState({
+      questlines: [], routines: [], completionLog: {}, todoOrder: {},
+      taskHistory: { gone: ['2026-08-09'] },
+    });
+    useQuestStore.getState().checkAndResetRecurring();
+    // Orphaned, but recent — dropping it here would make an undo seconds later
+    // restore a task with no past.
+    expect(useQuestStore.getState().taskHistory['gone']).toEqual(['2026-08-09']);
+  });
+
+  it('eventually drops an orphan whose days have all aged out', () => {
+    vi.setSystemTime(localTime(2026, AUG, 10, 12));
+    useQuestStore.setState({
+      questlines: [], routines: [], completionLog: {}, todoOrder: {},
+      taskHistory: { gone: ['2026-05-01'] },
+    });
+    useQuestStore.getState().checkAndResetRecurring();
+    expect(useQuestStore.getState().taskHistory['gone']).toBeUndefined();
   });
 });

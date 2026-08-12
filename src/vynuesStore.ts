@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { periodExpired, sameRule } from './store';
 import { migrateLegacyStorage } from './lib/storageMigration';
 import { flattenTree, mapNode, insertNode, removeNode } from './lib/subtree';
+import { pushUndo, insertAt, reinsert, deleteLabel } from './lib/undo';
 import type { RecurringType, MonthlyRule } from './types';
 
 // Also called from ./store — whichever module loads first wins, and it's idempotent.
@@ -235,7 +236,14 @@ export const useVynuesStore = create<VynuesState>()(
         set(s => ({ projects: s.projects.map(p => p.id !== id ? p : { ...p, ...updates }) })),
 
       deleteProject: (id) =>
-        set(s => ({ projects: s.projects.filter(p => p.id !== id) })),
+        set(s => {
+          const index = s.projects.findIndex(p => p.id === id);
+          if (index < 0) return {};
+          const project = s.projects[index];
+          pushUndo(deleteLabel(project.name, [[project.tasks.length, 'task']]), () =>
+            set(cur => ({ projects: cur.projects.some(p => p.id === id) ? cur.projects : insertAt(cur.projects, index, project) })));
+          return { projects: s.projects.filter(p => p.id !== id) };
+        }),
 
       addTask: (projectId, title, priority = 'medium', dueDate = null, recurring = null, intervalDays, notes, tracked, subtasks, monthlyRule) =>
         set(s => {
@@ -316,11 +324,21 @@ export const useVynuesStore = create<VynuesState>()(
         })),
 
       deleteTask: (projectId, taskId) =>
-        set(s => ({
-          projects: s.projects.map(p => p.id !== projectId ? p : {
-            ...p, tasks: p.tasks.filter(t => t.id !== taskId),
-          }),
-        })),
+        set(s => {
+          const project = s.projects.find(p => p.id === projectId);
+          const index = project?.tasks.findIndex(t => t.id === taskId) ?? -1;
+          if (!project || index < 0) return {};
+          const task = project.tasks[index];
+          pushUndo(deleteLabel(task.title), () =>
+            set(cur => ({
+              projects: cur.projects.map(p => p.id !== projectId ? p : { ...p, tasks: reinsert(p.tasks, [{ index, item: task }]) }),
+            })));
+          return {
+            projects: s.projects.map(p => p.id !== projectId ? p : {
+              ...p, tasks: p.tasks.filter(t => t.id !== taskId),
+            }),
+          };
+        }),
 
       // ── Subtasks ──────────────────────────────────────────────────────────
       // Completion rolls *up*: a task is done exactly when every node of its
@@ -366,21 +384,32 @@ export const useVynuesStore = create<VynuesState>()(
         }),
 
       deleteSubtask: (projectId, taskId, subtaskId) =>
-        set(s => ({
-          projects: mapTask(s.projects, projectId, taskId, task => {
-            const subtasks = removeNode(task.subtasks ?? [], subtaskId);
-            const all = flattenVynuesSubtasks(subtasks);
-            // Removing the last open subtask can complete the task; removing them all
-            // hands the decision back to the task's own checkbox (left as-is).
-            const done = all.length > 0 ? all.every(st => st.done) : task.done;
-            return {
-              ...task,
-              subtasks,
-              done,
-              completedAt: done ? (task.completedAt ?? new Date().toISOString()) : undefined,
-            };
-          }),
-        })),
+        set(s => {
+          const task0 = s.projects.find(p => p.id === projectId)?.tasks.find(t => t.id === taskId);
+          const step = task0 && flattenVynuesSubtasks(task0.subtasks).find(st => st.id === subtaskId);
+          if (task0 && step) {
+            // Restores the tree and the roll-up it drove — not the title or due
+            // date, which are not this undo's business if they changed since.
+            const { subtasks, done, completedAt } = task0;
+            pushUndo(deleteLabel(step.title), () =>
+              set(cur => ({ projects: mapTask(cur.projects, projectId, taskId, t => ({ ...t, subtasks, done, completedAt })) })));
+          }
+          return {
+            projects: mapTask(s.projects, projectId, taskId, task => {
+              const tree = removeNode(task.subtasks ?? [], subtaskId);
+              const all = flattenVynuesSubtasks(tree);
+              // Removing the last open subtask can complete the task; removing them all
+              // hands the decision back to the task's own checkbox (left as-is).
+              const isDone = all.length > 0 ? all.every(st => st.done) : task.done;
+              return {
+                ...task,
+                subtasks: tree,
+                done: isDone,
+                completedAt: isDone ? (task.completedAt ?? new Date().toISOString()) : undefined,
+              };
+            }),
+          };
+        }),
     }),
     { name: VYNUES_STORE_KEY }
   )

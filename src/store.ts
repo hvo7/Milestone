@@ -4,6 +4,7 @@ import type { Questline, Quest, Action, GuildColor, RecurringType, Routine, Subt
 import { sampleData } from './data/sampleData';
 import { migrateLegacyStorage } from './lib/storageMigration';
 import { flattenTree, mapTree, mapNode, insertNode, removeNode } from './lib/subtree';
+import { pushUndo, insertAt, reinsert, captureRemoved, deleteLabel } from './lib/undo';
 import {
   occursOn, lastOccurrenceOnOrBefore, nextOccurrenceAfter,
   monthlyRuleLabel, monthlyRuleShort,
@@ -322,6 +323,63 @@ export function isGoalRoutine(r: Routine): boolean {
   return isMultiDayCycle(r) && (r.target != null || (r.subtasks?.length ?? 0) > 0);
 }
 
+// ── Sessions: counting days instead of taps ──────────────────────────────────
+//
+// "Go to the gym 3 times a week" and "drink 64 oz of water" look like the same
+// counter and are not. The gym goal's unit of progress is a *day* — you can't go
+// twice on Tuesday and be two-thirds done — while the water goal's unit is a
+// quantity you can chip at all day. Modelling both as a bare number is why the
+// gym goal could be completed from the sofa: three taps on Monday counted.
+//
+// So a session-mode task counts the days it happened on. One-per-day then holds
+// by construction rather than by a guard, and every downstream number — the
+// streak, the heatmap, the per-task history — starts telling the truth.
+
+/**
+ * Does this task count days rather than taps?
+ *
+ * Derived rather than stored when `oncePerDay` is unset, so existing tasks pick
+ * up the right behaviour without anything rewriting their saved data: a
+ * multi-day counter with no unit is counting occurrences ("3 times"), one with a
+ * unit is counting quantity ("64 oz"). An explicit `oncePerDay` always wins.
+ */
+export function sessionMode(r: Routine): boolean {
+  if (!isMultiDayCycle(r) || r.target == null) return false;
+  return r.oncePerDay ?? !r.unit;
+}
+
+/** Was a session logged on this logical day? */
+export const sessionOn = (r: Routine, dayKey: string): boolean =>
+  (r.sessionDays ?? []).includes(dayKey);
+
+/** How many days of the strip to draw before it stops being readable. A weekly
+ *  goal is seven; a monthly one would be thirty, which is a heatmap, not a row. */
+export const MAX_STRIP_DAYS = 14;
+
+/**
+ * The logical days making up this task's current cycle, ascending — the row the
+ * session strip draws. Null when the cycle is too long to render as pips.
+ *
+ * Weeks are anchored to the logical week (Sunday 5am), matching the reset, so the
+ * strip's last pip really is the day the cycle turns over. Intervals run from
+ * their own `lastResetAt` instead, since that is what their reset measures from.
+ */
+export function cycleDayKeys(r: Routine, at: Date = new Date()): string[] | null {
+  const span = (start: Date, days: number): string[] =>
+    Array.from({ length: days }, (_, i) => dateKey(new Date(start.getTime() + i * 86_400_000)));
+
+  if (r.intervalDays && r.intervalDays > 1) {
+    if (r.intervalDays > MAX_STRIP_DAYS || !r.lastResetAt) return null;
+    return span(logicalDayStart(new Date(r.lastResetAt)), r.intervalDays);
+  }
+  if (r.recurring === 'weekly') return span(logicalDayStart(thisWeekReset(at)), 7);
+  return null;   // monthly and longer — thirty pips is a heatmap, not a row
+}
+
+/** Single-letter weekday headings for the strip, aligned to the keys above. */
+export const dayInitial = (dayKey: string): string =>
+  ['S', 'M', 'T', 'W', 'T', 'F', 'S'][new Date(`${dayKey}T12:00:00`).getDay()];
+
 /** Every node of a (possibly nested) subtask tree, flattened. */
 export const flattenSubtasks = (list: Subtask[] | undefined): Subtask[] => flattenTree(list);
 
@@ -348,6 +406,10 @@ const resetSubtaskTree = (list: Subtask[] | undefined): Subtask[] | undefined =>
 /** Did this multi-day task see real progress on `dayKey`? Counts a completion,
  *  a counter increment, or any subtask checked that day. */
 export function engagedOnDay(r: Routine, dayKey: string): boolean {
+  // A session-mode task keeps an explicit record of which days it happened on.
+  // That record is the answer — inferring it from the last tap's timestamp would
+  // get a backfilled day wrong in both directions.
+  if (sessionMode(r)) return sessionOn(r, dayKey);
   const on = (iso?: string) => !!iso && logicalDateKey(new Date(iso)) === dayKey;
   if (on(r.completedAt)) return true;
   if (on(r.lastProgressAt)) return true;
@@ -361,6 +423,10 @@ export function engagedOnDay(r: Routine, dayKey: string): boolean {
  *  the *difference* in this value, so no path can double-count a day. */
 function dayCredit(r: Routine, dayKey: string): number {
   if (skipActive(r, dayKey)) return 0;
+  // A session-mode goal earns credit on exactly the days it happened — not on
+  // every day once it completes, which is what would let a backfilled Tuesday
+  // move today's square.
+  if (sessionMode(r)) return sessionOn(r, dayKey) ? 1 : 0;
   if (isMultiDayCycle(r)) return r.completed || engagedOnDay(r, dayKey) ? 1 : 0;
   return r.completed ? 1 : 0;
 }
@@ -458,6 +524,9 @@ function processRoutines(routines: Routine[]): Routine[] {
         streak: wasComplete ? (base.streak ?? 0) + 1 : wasSkipped ? (base.streak ?? 0) : 0,
         // Counter tasks start the new cycle back at zero.
         progress: base.target != null ? 0 : base.progress,
+        // Sessions are scoped to the cycle that just ended — the new week starts
+        // with an empty strip. The days themselves survive in taskHistory.
+        sessionDays: undefined,
         subtasks: resetSubtaskTree(base.subtasks),
       };
     }
@@ -507,23 +576,157 @@ function bumpLog(log: Record<string, number>, delta: number, dayKey: string = lo
 const completedDay = (completedAt?: string): string =>
   completedAt ? logicalDateKey(new Date(completedAt)) : logicalDateKey();
 
+// ── Per-task history ─────────────────────────────────────────────────────────
+//
+// `completionLog` counts tasks per day. It can say "you finished three things on
+// Tuesday" but never *which* three, so it cannot answer the question that
+// actually matters — which habit have I been quietly failing for a month? Streaks
+// only carry a current value, so they can't answer it either.
+//
+// This records the logical days each task earned credit on. It is not
+// reconstructible after the fact: nothing already stored says which task a past
+// day's count belonged to, so the history only ever starts from now.
+
+/** Task id → the logical day keys ('YYYY-MM-DD') it was completed on, ascending. */
+export type TaskHistory = Record<string, string[]>;
+
+/** How far back per-task history is kept. Comfortably longer than any view of
+ *  it, and bounded so a years-old install doesn't carry an ever-growing map. */
+export const HISTORY_RETENTION_DAYS = 400;
+
+/** How long a deleted task's history outlives the task. Not zero: undo can bring
+ *  a task back seconds later, and its history should come back with it. */
+const ORPHAN_RETENTION_DAYS = 30;
+
+/** Record (or withdraw) one task's credit for one logical day. Idempotent in both
+ *  directions — the callers diff day-credit, and a no-op must not clone the map. */
+function markHistory(h: TaskHistory, id: string, dayKey: string, on: boolean): TaskHistory {
+  const days = h[id] ?? [];
+  if (on === days.includes(dayKey)) return h;
+  if (!on) {
+    const next = days.filter(d => d !== dayKey);
+    if (next.length) return { ...h, [id]: next };
+    // Last day gone: drop the key entirely rather than leaving an empty array,
+    // so "has this task ever been done" stays a simple presence check.
+    const rest = { ...h };
+    delete rest[id];
+    return rest;
+  }
+  return { ...h, [id]: [...days, dayKey].sort() };
+}
+
+/** Days a task has been completed on, newest last. */
+export const historyOf = (h: TaskHistory | undefined, id: string): string[] => h?.[id] ?? [];
+
+/**
+ * Drop what can no longer be read: days past the retention window, and entries
+ * for tasks that no longer exist and haven't for a while. Runs in the periodic
+ * reset pass.
+ *
+ * The orphan grace period is what keeps undo whole — a task deleted a moment ago
+ * still has recent days, so its history survives until long after the undo offer
+ * has expired.
+ */
+function pruneHistory(h: TaskHistory, liveIds: Set<string>): TaskHistory {
+  const dayFloor = dateKey(new Date(logicalDayStart().getTime() - HISTORY_RETENTION_DAYS * 86_400_000));
+  const orphanFloor = dateKey(new Date(logicalDayStart().getTime() - ORPHAN_RETENTION_DAYS * 86_400_000));
+  let changed = false;
+  const out: TaskHistory = {};
+  for (const [id, days] of Object.entries(h)) {
+    const kept = days.filter(d => d >= dayFloor);
+    // An orphan is only dropped once even its newest day has aged out.
+    if (!kept.length || (!liveIds.has(id) && kept[kept.length - 1] < orphanFloor)) { changed = true; continue; }
+    if (kept.length !== days.length) changed = true;
+    out[id] = kept;
+  }
+  return changed ? out : h;
+}
+
+/** Every id per-task history can legitimately be keyed by, for orphan pruning. */
+function liveTaskIds(questlines: Questline[], routines: Routine[]): Set<string> {
+  const ids = new Set<string>(routines.map(r => r.id));
+  for (const ql of questlines) {
+    for (const q of ql.quests) {
+      ids.add(q.id);
+      for (const a of q.actions) ids.add(a.id);
+    }
+  }
+  return ids;
+}
+
 /** Apply `mutate` to one routine and settle its heatmap credit for today: the
  *  completion log moves by the *difference* in dayCredit, so every path into a
- *  routine (checkbox, counter tap, subtask, skip) counts a day at most once. */
-function mutateRoutine(
-  s: { routines: Routine[]; completionLog: Record<string, number> },
+ *  routine (checkbox, counter tap, subtask, skip) counts a day at most once.
+ *  Per-task history rides the same diff, so the two can never disagree. */
+function mutateRoutineOnDay(
+  s: { routines: Routine[]; completionLog: Record<string, number>; taskHistory?: TaskHistory },
   rId: string,
+  dayKey: string,
   mutate: (r: Routine) => Routine,
-): Partial<{ routines: Routine[]; completionLog: Record<string, number> }> {
+): Partial<{ routines: Routine[]; completionLog: Record<string, number>; taskHistory: TaskHistory }> {
   const r0 = s.routines.find(r => r.id === rId);
   if (!r0) return {};
-  const key = logicalDateKey();
   const r1 = mutate(r0);
-  const diff = dayCredit(r1, key) - dayCredit(r0, key);
+  const diff = dayCredit(r1, dayKey) - dayCredit(r0, dayKey);
   return {
     routines: s.routines.map(r => (r.id === rId ? r1 : r)),
-    completionLog: diff === 0 ? s.completionLog : bumpLog(s.completionLog, diff),
+    completionLog: diff === 0 ? s.completionLog : bumpLog(s.completionLog, diff, dayKey),
+    taskHistory: diff === 0 ? (s.taskHistory ?? {}) : markHistory(s.taskHistory ?? {}, rId, dayKey, diff > 0),
   };
+}
+
+/** The common case: settle today. Backfilling an earlier day goes through
+ *  `mutateRoutineOnDay` directly, so its credit lands on the day it belongs to. */
+const mutateRoutine = (
+  s: { routines: Routine[]; completionLog: Record<string, number>; taskHistory?: TaskHistory },
+  rId: string,
+  mutate: (r: Routine) => Routine,
+) => mutateRoutineOnDay(s, rId, logicalDateKey(), mutate);
+
+/**
+ * Log (or un-log) one day of a session-mode goal.
+ *
+ * A pure patch rather than an action of its own, because two entry points need
+ * exactly these semantics — the strip under the row, and the counter's ＋/− —
+ * and a second copy is a second thing to get subtly different.
+ *
+ * The whole point of the mode is here: a day is either done or it isn't, so
+ * tapping the same day twice can never advance the goal. Credit settles on
+ * `dayKey`, so backfilling the Tuesday you forgot puts the square on Tuesday.
+ */
+function sessionPatch(
+  s: { routines: Routine[]; completionLog: Record<string, number>; taskHistory?: TaskHistory },
+  rId: string,
+  dayKey: string,
+) {
+  const r0 = s.routines.find(r => r.id === rId);
+  if (!r0 || !sessionMode(r0)) return {};
+  // A day that hasn't happened yet isn't a session you can have done.
+  if (dayKey > logicalDateKey()) return {};
+
+  const today = logicalDateKey();
+  return mutateRoutineOnDay(s, rId, dayKey, r => {
+    const wasOn = sessionOn(r, dayKey);
+    const days = wasOn
+      ? (r.sessionDays ?? []).filter(d => d !== dayKey)
+      : [...(r.sessionDays ?? []), dayKey].sort();
+    // A fourth visit in a 3× week is allowed and shows on the strip; progress
+    // just doesn't run past the goal.
+    const progress = Math.min(r.target!, days.length);
+    const complete = progress >= r.target!;
+    const now = new Date().toISOString();
+    const touchedToday = dayKey === today;
+    return {
+      ...r,
+      sessionDays: days.length ? days : undefined,
+      progress,
+      completed: complete,
+      completedAt: complete ? (r.completedAt ?? now) : undefined,
+      lastProgressAt: touchedToday ? (wasOn ? undefined : now) : r.lastProgressAt,
+      // Logging today's session un-skips the day — you evidently did it after all.
+      skippedOn: touchedToday && !wasOn ? undefined : r.skippedOn,
+    };
+  });
 }
 
 // ── One-time task archive ─────────────────────────────────────────────────────
@@ -557,6 +760,11 @@ interface QuestData {
   routines: Routine[];
   /** Tasks completed per local day, keyed 'YYYY-MM-DD'. Drives the heatmap. */
   completionLog: Record<string, number>;
+  /** Which days each individual task was completed on — the per-task detail the
+   *  aggregate log above throws away. Optional: saves written before it existed
+   *  simply have none, and it starts filling from the first completion after
+   *  upgrading. See TaskHistory. */
+  taskHistory: TaskHistory;
   /** Manual order for the unified Today "To Do" list, keyed by task id. */
   todoOrder: Record<string, number>;
 
@@ -598,8 +806,16 @@ interface QuestData {
   setRoutineDueDate:    (rId: string, dueDate: string | null) => void;
   /** Add a habit to the highlighted anchor-habit category (Today tab). */
   addAnchorRoutine:     (title: string, recurring: 'daily' | 'weekly', counter?: CounterConfig) => void;
-  /** Nudge a counter task's progress by `delta` (clamped to 0…target); auto-completes at target. */
+  /** Nudge a counter task's progress by `delta` (clamped to 0…target); auto-completes at target.
+   *  On a session-mode goal this means "I did it today" / "I didn't" — see sessionPatch. */
   incrementRoutine:     (rId: string, delta: number) => void;
+  /** Log (or un-log) one logical day of a session-mode goal — "went to the gym on
+   *  Tuesday". Refuses days in the future, and credits the day itself rather than
+   *  today, so a backfill lands where it belongs. */
+  toggleSession:        (rId: string, dayKey: string) => void;
+  /** Set a counter straight to a value — the checkpoint pips under the row, where
+   *  tapping the third of four means 48/64 rather than three separate nudges. */
+  setRoutineProgress:   (rId: string, value: number) => void;
   /** Toggle "skipped today" on a recurring task — a neutral day that earns no heatmap
    *  credit but preserves the streak (e.g. a walk on a rainy day). It returns next period. */
   skipRoutine:          (rId: string) => void;
@@ -623,6 +839,9 @@ interface QuestData {
     dueDate?: string | null;
     questlineId?: string | null; questId?: string | null; anchor?: boolean;
     counter?: CounterConfig | null;
+    /** Count days rather than taps. `null` hands the choice back to the default
+     *  derived from the task's shape — see sessionMode. */
+    oncePerDay?: boolean | null;
   }) => void;
   /** Fill an empty app with the demo questlines. Opt-in from the first-run card
    *  — a fresh install starts genuinely empty rather than pretending three
@@ -647,13 +866,24 @@ export const useQuestStore = create<QuestData>()(
       questlines: [],
       routines: [],
       completionLog: {},
+      taskHistory: {},
       todoOrder: {},
 
       loadSampleData: () =>
         set(s => (s.questlines.length || s.routines.length ? {} : { questlines: sampleData })),
 
       checkAndResetRecurring: () =>
-        set(s => ({ questlines: processQuestlines(s.questlines), routines: processRoutines(purgeExpiredArchive(s.routines)) })),
+        set(s => {
+          const questlines = processQuestlines(s.questlines);
+          const routines = processRoutines(purgeExpiredArchive(s.routines));
+          return {
+            questlines,
+            routines,
+            // Pruned against the *post*-purge lists, so a task the archive just
+            // retired stops holding its history open.
+            taskHistory: pruneHistory(s.taskHistory ?? {}, liveTaskIds(questlines, routines)),
+          };
+        }),
 
       toggleAction: (qlId, qId, aId) =>
         set(s => {
@@ -661,6 +891,9 @@ export const useQuestStore = create<QuestData>()(
           if (!before) return {};
           const now = new Date().toISOString();
           const checking = !before.completed;
+          // The same day both the log and the history move on, so the two can
+          // never drift: today when crediting, the completion's own day when not.
+          const day = checking ? logicalDateKey() : completedDay(before.completedAt);
           return {
             questlines: mapAction(s.questlines, qlId, qId, aId, a => ({
               ...a,
@@ -668,9 +901,8 @@ export const useQuestStore = create<QuestData>()(
               completedAt: checking ? now : undefined,
             })),
             // Un-crediting targets the day the action was actually completed.
-            completionLog: checking
-              ? bumpLog(s.completionLog, 1)
-              : bumpLog(s.completionLog, -1, completedDay(before.completedAt)),
+            completionLog: bumpLog(s.completionLog, checking ? 1 : -1, day),
+            taskHistory: markHistory(s.taskHistory ?? {}, aId, day, checking),
           };
         }),
 
@@ -691,20 +923,23 @@ export const useQuestStore = create<QuestData>()(
           const visible = quest.actions.filter(a => !a.hidden);
           const now = new Date().toISOString();
           let log = s.completionLog;
+          let history = s.taskHistory ?? {};
           let nextQuest: Quest;
 
           if (visible.length === 0) {
             if (!!quest.completed === complete) return {};   // no change
-            log = complete
-              ? bumpLog(log, 1)
-              : bumpLog(log, -1, completedDay(quest.completedAt));
+            const day = complete ? logicalDateKey() : completedDay(quest.completedAt);
+            log = bumpLog(log, complete ? 1 : -1, day);
+            history = markHistory(history, qId, day, complete);
             nextQuest = { ...quest, completed: complete, completedAt: complete ? now : undefined };
           } else {
             // Each action carries its own credit day, so the log moves per action
             // rather than by one lump delta against today.
             for (const a of visible) {
-              if (complete && !a.completed) log = bumpLog(log, 1);
-              else if (!complete && a.completed) log = bumpLog(log, -1, completedDay(a.completedAt));
+              if (complete === a.completed) continue;
+              const day = complete ? logicalDateKey() : completedDay(a.completedAt);
+              log = bumpLog(log, complete ? 1 : -1, day);
+              history = markHistory(history, a.id, day, complete);
             }
             nextQuest = {
               ...quest,
@@ -720,6 +955,7 @@ export const useQuestStore = create<QuestData>()(
           return {
             questlines: mapQuest(s.questlines, qlId, qId, () => nextQuest),
             completionLog: log,
+            taskHistory: history,
           };
         }),
 
@@ -750,7 +986,15 @@ export const useQuestStore = create<QuestData>()(
         set(s => ({ questlines: mapQuest(s.questlines, qlId, qId, q => ({ ...q, actions: [...q.actions, { id: `a-${uid()}`, title, completed: false, trackedToday: false }] })) })),
 
       deleteAction: (qlId, qId, aId) =>
-        set(s => ({ questlines: mapQuest(s.questlines, qlId, qId, q => ({ ...q, actions: q.actions.filter(a => a.id !== aId) })) })),
+        set(s => {
+          const quest = findQuest(s.questlines, qlId, qId);
+          const index = quest?.actions.findIndex(a => a.id === aId) ?? -1;
+          if (!quest || index < 0) return {};
+          const action = quest.actions[index];
+          pushUndo(deleteLabel(action.title), () =>
+            set(cur => ({ questlines: mapQuest(cur.questlines, qlId, qId, q => ({ ...q, actions: reinsert(q.actions, [{ index, item: action }]) })) })));
+          return { questlines: mapQuest(s.questlines, qlId, qId, q => ({ ...q, actions: q.actions.filter(a => a.id !== aId) })) };
+        }),
 
       toggleQuestlineHidden: (qlId) =>
         set(s => ({ questlines: mapById(s.questlines, qlId, ql => ({ ...ql, hidden: !ql.hidden })) })),
@@ -822,20 +1066,57 @@ export const useQuestStore = create<QuestData>()(
           };
         }),
 
+      // Removing a questline also removes its nested quests/actions (they live inside it)
+      // and any standalone routines linked to it, so nothing is orphaned in the Today
+      // list. That cascade is the whole reason this is undoable: a single ✕ can take
+      // months of streak history with it, and nothing on screen says how much until
+      // the toast names it.
       deleteQuestline: (qlId) =>
-        // Removing a questline also removes its nested quests/actions (they live inside it)
-        // and any standalone routines linked to it, so nothing is orphaned in the Today list.
-        set(s => ({
-          questlines: s.questlines.filter(ql => ql.id !== qlId),
-          routines: s.routines.filter(r => r.questlineId !== qlId),
-        })),
+        set(s => {
+          const index = s.questlines.findIndex(ql => ql.id === qlId);
+          if (index < 0) return {};
+          const questline = s.questlines[index];
+          const linked = captureRemoved(s.routines, r => r.questlineId === qlId);
+          pushUndo(
+            deleteLabel(questline.title, [[questline.quests.length, 'quest'], [linked.length, 'task']]),
+            () => set(cur => ({
+              questlines: cur.questlines.some(ql => ql.id === qlId) ? cur.questlines : insertAt(cur.questlines, index, questline),
+              routines: reinsert(cur.routines, linked),
+            })),
+          );
+          return {
+            questlines: s.questlines.filter(ql => ql.id !== qlId),
+            routines: s.routines.filter(r => r.questlineId !== qlId),
+          };
+        }),
 
       deleteQuest: (qlId, qId) =>
-        set(s => ({
-          questlines: mapById(s.questlines, qlId, ql => ({ ...ql, quests: ql.quests.filter(q => q.id !== qId).map((q, i) => ({ ...q, order: i + 1 })) })),
-          // Detach (but keep) any linked tasks that pointed at the deleted quest.
-          routines: s.routines.map(r => r.questId === qId ? { ...r, questId: undefined } : r),
-        })),
+        set(s => {
+          const questline = s.questlines.find(ql => ql.id === qlId);
+          const index = questline?.quests.findIndex(q => q.id === qId) ?? -1;
+          if (!questline || index < 0) return {};
+          const quest = questline.quests[index];
+          // Linked tasks are detached rather than deleted, so undo re-attaches
+          // exactly the ones that were pointing here — not every task that has
+          // since been linked to something else.
+          const detached = s.routines.filter(r => r.questId === qId).map(r => r.id);
+          pushUndo(
+            deleteLabel(quest.title, [[quest.actions.length, 'task']]),
+            () => set(cur => ({
+              questlines: mapById(cur.questlines, qlId, ql => ({
+                ...ql,
+                quests: (ql.quests.some(q => q.id === qId) ? ql.quests : insertAt(ql.quests, index, quest))
+                  .map((q, i) => ({ ...q, order: i + 1 })),
+              })),
+              routines: cur.routines.map(r => (detached.includes(r.id) && !r.questId ? { ...r, questId: qId } : r)),
+            })),
+          );
+          return {
+            questlines: mapById(s.questlines, qlId, ql => ({ ...ql, quests: ql.quests.filter(q => q.id !== qId).map((q, i) => ({ ...q, order: i + 1 })) })),
+            // Detach (but keep) any linked tasks that pointed at the deleted quest.
+            routines: s.routines.map(r => r.questId === qId ? { ...r, questId: undefined } : r),
+          };
+        }),
 
       reorderQuests: (qlId, orderedIds) =>
         set(s => ({
@@ -888,7 +1169,19 @@ export const useQuestStore = create<QuestData>()(
         }),
 
       deleteRoutine: (rId) =>
-        set(s => ({ routines: s.routines.filter(r => r.id !== rId) })),
+        set(s => {
+          const index = s.routines.findIndex(r => r.id === rId);
+          if (index < 0) return {};
+          const routine = s.routines[index];
+          // The streak is the part of a task that can't be rebuilt by re-typing
+          // it, so name it when there is one.
+          const streak = routine.streak ?? 0;
+          pushUndo(
+            deleteLabel(routine.title) + (streak > 1 ? ` · ${streak}-day streak` : ''),
+            () => set(cur => ({ routines: reinsert(cur.routines, [{ index, item: routine }]) })),
+          );
+          return { routines: s.routines.filter(r => r.id !== rId) };
+        }),
 
       setRoutineQuest: (rId, questId) =>
         set(s => ({ routines: mapById(s.routines, rId, r => ({ ...r, questId: questId ?? undefined })) })),
@@ -928,15 +1221,25 @@ export const useQuestStore = create<QuestData>()(
         set(s => ({ routines: mapById(s.routines, rId, r => ({ ...r, subtasks: mapNode(r.subtasks ?? [], sId, st => ({ ...st, title })) })) })),
 
       deleteRoutineSubtask: (rId, sId) =>
-        set(s => mutateRoutine(s, rId, r => {
-          const subtasks = removeNode(r.subtasks ?? [], sId);
-          const all = flattenSubtasks(subtasks);
-          const now = new Date().toISOString();
-          // Deleting the last open step can complete the task; deleting every step
-          // hands the decision back to the task's own checkbox.
-          const completed = all.length > 0 ? all.every(st => st.completed) : r.completed;
-          return { ...r, subtasks, completed, completedAt: completed ? (r.completedAt ?? now) : undefined };
-        })),
+        set(s => {
+          const before = s.routines.find(r => r.id === rId);
+          const step = before && flattenSubtasks(before.subtasks).find(st => st.id === sId);
+          if (!before || !step) return {};
+          // Restores the tree and the roll-up it drove, and nothing else — a title
+          // or schedule changed in the meantime is not this undo's business.
+          const { subtasks, completed, completedAt } = before;
+          pushUndo(deleteLabel(step.title), () =>
+            set(cur => ({ routines: mapById(cur.routines, rId, r => ({ ...r, subtasks, completed, completedAt })) })));
+          return mutateRoutine(s, rId, r => {
+            const tree = removeNode(r.subtasks ?? [], sId);
+            const all = flattenSubtasks(tree);
+            const now = new Date().toISOString();
+            // Deleting the last open step can complete the task; deleting every step
+            // hands the decision back to the task's own checkbox.
+            const done = all.length > 0 ? all.every(st => st.completed) : r.completed;
+            return { ...r, subtasks: tree, completed: done, completedAt: done ? (r.completedAt ?? now) : undefined };
+          });
+        }),
 
       updateRoutine: (rId, u) =>
         set(s => ({
@@ -957,12 +1260,23 @@ export const useQuestStore = create<QuestData>()(
             if (u.counter !== undefined) {
               if (u.counter === null) {
                 next.target = undefined; next.progress = undefined; next.step = undefined; next.unit = undefined;
+                // No counter, no sessions to count.
+                next.sessionDays = undefined; next.oncePerDay = undefined;
               } else if (u.counter.target > 0) {
                 next.target   = Math.floor(u.counter.target);
                 next.step     = u.counter.step && u.counter.step > 1 ? Math.floor(u.counter.step) : undefined;
                 next.unit     = u.counter.unit?.trim() || undefined;
                 next.progress = Math.min(next.target, r.progress ?? 0);
               }
+            }
+            if (u.oncePerDay !== undefined) next.oncePerDay = u.oncePerDay ?? undefined;
+            // Switching a task into session mode re-derives its progress from the
+            // days actually logged: carrying over a tapped-up number would import
+            // exactly the overcount the mode exists to prevent.
+            if (sessionMode(next) && !sessionMode(r)) {
+              next.sessionDays = next.sessionDays ?? [];
+              next.progress = Math.min(next.target ?? 0, next.sessionDays.length);
+              next.completed = next.target != null && next.progress >= next.target;
             }
             // Cadence: same reset semantics as setRoutineRecurring — a real change
             // restarts the clock and keeps the streak; re-saving the same value is a no-op.
@@ -1030,10 +1344,21 @@ export const useQuestStore = create<QuestData>()(
           });
         }),
 
+      toggleSession: (rId, dayKey) => set(s => sessionPatch(s, rId, dayKey)),
+
       incrementRoutine: (rId, delta) =>
         set(s => {
           const r0 = s.routines.find(r => r.id === rId);
           if (!r0 || r0.target == null) return {};
+          // In session mode the counter's ＋/− mean "I did it today" / "I didn't",
+          // and go through the very same day rule the strip uses. Without this the
+          // buttons would still be a way to tap three gym visits into one
+          // afternoon — the bug the mode exists to close.
+          if (sessionMode(r0)) {
+            const today = logicalDateKey();
+            if ((delta > 0) === sessionOn(r0, today)) return {};   // already in the wanted state
+            return sessionPatch(s, rId, today);
+          }
           return mutateRoutine(s, rId, r => {
             const target = r.target!;
             const next = Math.max(0, Math.min(target, (r.progress ?? 0) + delta));
@@ -1048,6 +1373,31 @@ export const useQuestStore = create<QuestData>()(
               // ＋ marks today's session; − takes today's session back.
               lastProgressAt: delta > 0 ? now : hadSessionToday ? undefined : r.lastProgressAt,
               skippedOn: delta > 0 ? undefined : r.skippedOn,   // making progress un-skips the day
+            };
+          });
+        }),
+
+      setRoutineProgress: (rId, value) =>
+        set(s => {
+          const r0 = s.routines.find(r => r.id === rId);
+          if (!r0 || r0.target == null) return {};
+          // Sessions are days, not a dial — a checkpoint tap has no meaning there.
+          if (sessionMode(r0)) return {};
+          return mutateRoutine(s, rId, r => {
+            const next = Math.max(0, Math.min(r.target!, Math.round(value)));
+            const rising = next > (r.progress ?? 0);
+            const nowComplete = next >= r.target!;
+            const now = new Date().toISOString();
+            const hadSessionToday = !!r.lastProgressAt && logicalDateKey(new Date(r.lastProgressAt)) === logicalDateKey();
+            return {
+              ...r,
+              progress: next,
+              completed: nowComplete,
+              completedAt: nowComplete ? (r.completedAt ?? now) : undefined,
+              // Same rule the ＋/− follow: moving up marks today's session, moving
+              // back down takes it away again.
+              lastProgressAt: rising ? now : hadSessionToday ? undefined : r.lastProgressAt,
+              skippedOn: rising ? undefined : r.skippedOn,
             };
           });
         }),
@@ -1091,23 +1441,45 @@ export const useQuestStore = create<QuestData>()(
 );
 
 // ── UI state ──────────────────────────────────────────────────────────────────
+
+/** Daily reminder settings. See lib/reminders.ts — the app is otherwise entirely
+ *  passive, and a habit tracker you have to remember to open is one that only
+ *  works on the days you didn't need it. */
+export interface ReminderSettings {
+  enabled: boolean;
+  /** Local 'HH:MM' the nudge fires at, on days with something still open. */
+  time: string;
+  /** Desktop only: closing the window hides it to the tray instead of quitting,
+   *  so the reminder can still arrive. Off by default — silently not-quitting
+   *  when someone hits ✕ is exactly the kind of surprise an app shouldn't spring. */
+  keepInTray: boolean;
+}
+
+export const DEFAULT_REMINDERS: ReminderSettings = { enabled: false, time: '19:00', keepInTray: false };
+
 interface UIStore {
   editMode: boolean;
   theme: 'dark' | 'light';
+  reminders: ReminderSettings;
   toggleEditMode: () => void;
   toggleTheme: () => void;
+  setReminders: (patch: Partial<ReminderSettings>) => void;
 }
 export const useUIStore = create<UIStore>()(
   persist(
     (set) => ({
       editMode: false,
       theme: 'dark' as 'dark' | 'light',
+      reminders: DEFAULT_REMINDERS,
       toggleEditMode: () => set(s => ({ editMode: !s.editMode })),
       toggleTheme: () => set(s => {
         const next = s.theme === 'dark' ? 'light' : 'dark';
         document.documentElement.setAttribute('data-theme', next);
         return { theme: next };
       }),
+      // Merged over the defaults, not over `s.reminders` alone: a save written by
+      // a build that predates a field would otherwise leave it undefined.
+      setReminders: (patch) => set(s => ({ reminders: { ...DEFAULT_REMINDERS, ...s.reminders, ...patch } })),
     }),
     { name: UI_STORE_KEY }
   )

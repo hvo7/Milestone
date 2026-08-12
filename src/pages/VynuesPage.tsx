@@ -162,8 +162,11 @@ export default function VynuesPage() {
   const selected =
     visible.find(p => p.id === selectedId) ?? visible[0] ?? null;
 
+  /** No confirm any more — the delete is undoable (see lib/undo.ts), and the
+   *  toast names the tasks that went with the project. A modal asking "are you
+   *  sure?" before a reversible action is friction you learn to click through,
+   *  which is exactly when it stops protecting anything. */
   function handleDeleteProject(p: VynuesProject) {
-    if (!confirm(`Delete project "${p.name}" and all its tasks? This cannot be undone.`)) return;
     deleteProject(p.id);
     setSelectedId(null);
   }

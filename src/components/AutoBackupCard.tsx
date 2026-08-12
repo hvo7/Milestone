@@ -6,10 +6,14 @@
  * they contain — a snapshot showing "0 questlines" is exactly the one you don't
  * want, and that has to be visible *before* you restore it.
  *
- * Hides itself entirely in a browser tab, where there is no disk to write to.
+ * Renders in both builds. The desktop writes files beside the profile; a browser
+ * tab writes to IndexedDB, which is weaker — clearing site data takes the backups
+ * along with the data. The card says which it is, because "you have backups" and
+ * "you have backups that survive the thing most likely to happen" are different
+ * claims and only one of them is true here.
  */
 import { useEffect, useState } from 'react';
-import { listBackups, restoreBackup, snapshotNow } from '../lib/autoBackup';
+import { listBackups, restoreBackup, snapshotNow, backupStore } from '../lib/autoBackup';
 import { noteExternalWrite } from '../lib/cloudSync';
 
 const when = (iso: string) => {
@@ -28,7 +32,8 @@ export default function AutoBackupCard() {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const available = !!window.electronAPI?.backup;
+  const store = backupStore();
+  const available = store !== 'none';
 
   useEffect(() => {
     if (!available) return;
@@ -71,9 +76,19 @@ export default function AutoBackupCard() {
         {backups === null
           ? 'Checking…'
           : newest
-            ? <>Saved automatically to this computer. Most recent: <strong style={{ color: 'var(--page-text-dim)' }}>{when(newest.savedAt)}</strong> · {newest.questlines} questlines, {newest.routines} tasks.</>
+            ? <>Saved automatically {store === 'disk' ? 'to this computer' : 'in this browser'}. Most recent: <strong style={{ color: 'var(--page-text-dim)' }}>{when(newest.savedAt)}</strong> · {newest.questlines} questlines, {newest.routines} tasks.</>
             : 'No snapshots yet — one is taken each time the app starts.'}
       </p>
+
+      {/* The browser's copies live in the same origin as the data they protect,
+          so the one action that wipes your tasks wipes these too. Saying it here
+          is the difference between a safety net and the belief in one. */}
+      {store === 'browser' && (
+        <p style={{ margin: '-6px 0 12px', fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.5 }}>
+          These live in this browser, so clearing site data removes them too. For anything you
+          can’t lose, use <strong style={{ color: 'var(--page-text-dim)' }}>Download backup</strong> below.
+        </p>
+      )}
 
       <div style={{ display: 'flex', gap: 8 }}>
         <button

@@ -15,10 +15,11 @@ import type { SubNode } from '../components/SubtaskTree';
  *
  * Purely cosmetic, and deliberately in one place: the stored identity is the
  * `anchor` flag on the routine itself, so this can be re-worded freely without
- * touching a single saved task.
+ * touching a single saved task. (It was briefly neutralised to "Anchor Habits"
+ * when the repo went public; the habits themselves never moved.)
  */
-export const ANCHOR_LABEL = 'Anchor Habits';
-export const ANCHOR_TAG   = 'Anchor';
+export const ANCHOR_LABEL = 'Fixing my Chud life';
+export const ANCHOR_TAG   = 'Chud life';
 export const ANCHOR_ICON  = '🛠️';
 
 /** Sentinel category key for the anchor-habit group in the create/edit drawers.
@@ -40,6 +41,23 @@ export const categoryColor = (c?: string): string => {
   if (CATEGORY_HEX[c]) return CATEGORY_HEX[c];
   if (/^#[0-9a-f]{3,8}$/i.test(c)) return c;
   return 'var(--accent)';
+};
+
+/**
+ * Is a counter worth drawing as a tappable ladder under its row?
+ *
+ * Two segments is a toggle and thirteen is a progress bar, which is what the
+ * counter already is. In between — "64 oz in steps of 16" — it's four rungs you
+ * can hit directly instead of nudging ＋ four times.
+ *
+ * Lives here rather than beside the component so both the row and the page can
+ * ask without either importing the other's module.
+ */
+export const CHECKPOINT_MAX_SEGMENTS = 12;
+
+export const hasCheckpoints = (target: number, step: number): boolean => {
+  const segments = Math.ceil(target / Math.max(1, step));
+  return segments >= 2 && segments <= CHECKPOINT_MAX_SEGMENTS;
 };
 
 /** Strip the leading roman numeral from a quest title ("III — Ship it" → "Ship it"). */

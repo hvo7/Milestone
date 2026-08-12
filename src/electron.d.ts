@@ -30,6 +30,11 @@ declare global {
         read:   (name: string) => Promise<{ ok: boolean; bundle?: MilestoneBundle; error?: string }>;
         reveal: () => Promise<string>;
       };
+      /** Desktop notification — see electron/tray.cjs and src/lib/reminders.ts. */
+      notify: (title: string, body: string) => Promise<{ ok: boolean; error?: string }>;
+      tray: {
+        update: (state: { count: number; keepInTray: boolean }) => Promise<{ ok: boolean; error?: string }>;
+      };
     };
   }
 

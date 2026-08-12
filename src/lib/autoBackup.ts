@@ -10,19 +10,31 @@
  *   after edits — a day's work shouldn't be lost because the app never restarted.
  *                 Debounced hard: this is a backup, not a journal.
  *
- * A browser tab has no bridge and so no automatic backups — there is nowhere to
- * put them. The Data panel's manual Export is the answer there, and the card
- * says so rather than silently doing nothing.
+ * Where they go depends on the build: the desktop app writes files beside its
+ * profile (electron/backups.cjs); a browser tab writes to IndexedDB
+ * (lib/webBackup.ts). Same format, same window, same restore UI — the web copies
+ * are simply weaker, since clearing site data takes them along with the stores.
  */
 import { QUEST_STORE_KEY, useQuestStore } from '../store';
 import { VYNUES_STORE_KEY, useVynuesStore } from '../vynuesStore';
 import { APP_VERSION } from '../buildInfo';
+import * as webBackup from './webBackup';
 
 /** Long enough that a session of editing produces one snapshot rather than
  *  dozens; short enough that closing the laptop an hour in is still covered. */
 const SETTLE_MS = 5 * 60_000;
 
-const bridge = () => window.electronAPI?.backup;
+/** Where snapshots are kept, and how durable that is. The card in the Data panel
+ *  words itself from this rather than re-deriving which build it is running in. */
+export type BackupStore = 'disk' | 'browser' | 'none';
+
+export function backupStore(): BackupStore {
+  if (window.electronAPI?.backup) return 'disk';
+  return webBackup.webBackupAvailable() ? 'browser' : 'none';
+}
+
+/** The save/list/read trio for whichever store this build has. */
+const bridge = () => window.electronAPI?.backup ?? (webBackup.webBackupAvailable() ? webBackup : null);
 
 /** The same shape DataModal exports and the sync layer parks rescue copies in,
  *  so every restore path reads one format. */
@@ -90,7 +102,7 @@ export async function listBackups(): Promise<AutoBackup[]> {
  */
 export async function restoreBackup(name: string): Promise<{ ok: boolean; error?: string }> {
   const api = bridge();
-  if (!api) return { ok: false, error: 'Backups are only available in the desktop app.' };
+  if (!api) return { ok: false, error: 'This build has nowhere to keep automatic backups.' };
   try {
     await api.save(currentBundle());
 
