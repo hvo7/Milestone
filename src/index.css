@@ -524,10 +524,29 @@ select.rune-input option:disabled { color: var(--text-dim); }
   backdrop-filter: blur(7px);
   z-index: 50;
   display: flex;
-  align-items: center;
   justify-content: center;
   padding: 20px;
+  /* The home bar sits over the last ~34px on a phone; without this the final
+     button in a tall modal is under it and untappable. */
+  padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
   animation: overlay-in 0.2s ease-out;
+
+  /* A modal taller than the window has to scroll *somewhere*. It used to be
+     centred with no scroll container, so a long panel — the Data modal on a
+     phone is 1157px in a 599px window — overflowed off both ends and Import
+     simply could not be reached. */
+  overflow-y: auto;
+  /* Stops the scroll handing off to the page behind once the modal bottoms out. */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* `margin: auto` rather than `align-items: center`: it centres the panel when
+   there's room and falls back to top-aligned-and-scrollable when there isn't.
+   Centring a taller-than-window flex child clips its top irrecoverably — no
+   amount of scrolling reaches above a flex container's start edge. */
+.modal-overlay > * {
+  margin: auto;
 }
 @keyframes overlay-in {
   from { opacity: 0; }

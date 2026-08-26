@@ -60,6 +60,21 @@ a new field on every task.
 - Phone-width layout: the nav wraps and its tabs scroll on their own line, the
   page no longer drifts sideways, and the tomorrow flipper moves to the bottom
   corner instead of sitting on the New task button.
+- **Modals scroll when they outgrow the window.** The overlay centred its panel
+  with no scroll container, so a tall one — the Data modal on a phone is 1157px
+  in a 599px window — overflowed off *both* ends with nothing to scroll, putting
+  Import permanently out of reach. Centring is now `margin: auto`, which gives
+  way to top-aligned-and-scrollable when there isn't room; a flex child taller
+  than its container can never be scrolled back above the start edge. Fixed for
+  every modal at once, and the last button clears the home bar.
+- **The home-screen icon is full bleed.** `logo.svg` insets its tile by 16px and
+  rounds the corners, which is right in the UI and wrong on a home screen: iOS
+  masks the icon itself and paints any transparency **white**, so it installed
+  ringed in white at the edges and corners. The installed icons now render from a
+  full-bleed variant of the same artwork with the alpha channel flattened away,
+  plus a dedicated 180×180 `apple-touch-icon` at the size iOS actually wants. The
+  Android maskable icon keeps its safe-zone inset — that one is meant to be
+  cropped.
 
 #### Away from the desktop
 

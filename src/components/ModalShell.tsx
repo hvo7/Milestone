@@ -16,8 +16,8 @@ interface Props {
   maxWidth?: number;
   /** Extra panel styling — padding, border radius, scroll behaviour. */
   style?: CSSProperties;
-  /** Extra overlay styling. A tall panel sets this to top-align and scroll,
-   *  rather than centring a card taller than the viewport. */
+  /** Extra overlay styling. Rarely needed: the overlay already scrolls and
+   *  top-aligns by itself once a panel outgrows the window (see index.css). */
   overlayStyle?: CSSProperties;
   /** Entrance spring. Defaults to the standard modal pop. */
   spring?: { stiffness: number; damping: number };

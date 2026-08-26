@@ -105,7 +105,6 @@ export default function NotionSyncModal({ onClose }: Props) {
     <ModalShell
       onClose={onClose}
       maxWidth={580}
-      overlayStyle={{ alignItems: 'flex-start', paddingTop: 48, overflowY: 'auto' }}
       spring={{ stiffness: 320, damping: 30 }}
       from={{ scale: 0.92, y: 20 }}
       style={{ borderRadius: 10, padding: '32px 28px', border: '1px solid var(--card-border)', marginBottom: 48 }}
