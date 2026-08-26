@@ -539,6 +539,14 @@ select.rune-input option:disabled { color: var(--text-dim); }
   /* Stops the scroll handing off to the page behind once the modal bottoms out. */
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
+
+  /* iOS lays a fixed element out against the *large* viewport — the one with the
+     toolbar hidden — so `inset: 0` alone makes the overlay taller than the screen
+     and puts its last ~80px behind Safari's toolbar, scroll container or not.
+     `dvh` tracks the toolbar, so the overlay is exactly what you can see and its
+     scroll really does reach the end. Ignored where unsupported, which leaves
+     `inset: 0` doing what it did before. */
+  height: 100dvh;
 }
 
 /* `margin: auto` rather than `align-items: center`: it centres the panel when
@@ -547,6 +555,17 @@ select.rune-input option:disabled { color: var(--text-dim); }
    amount of scrolling reaches above a flex container's start edge. */
 .modal-overlay > * {
   margin: auto;
+}
+
+/* The right-hand slide-in panels — create/edit task, quest, system, project.
+   Same trap as the overlay above: pinned top and bottom, they were sized to the
+   large viewport, and the footer holding Cancel / Create sat under the toolbar
+   with no way to scroll to it. Height wins over `bottom` when both are set, so
+   this needs nothing from the components but the class. */
+.side-drawer {
+  height: 100dvh;
+  /* Keeps that footer clear of the home-bar strip on a phone. */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 @keyframes overlay-in {
   from { opacity: 0; }

@@ -326,8 +326,19 @@ export default function TaskRow({
 
   // Grabbing the row anywhere drags it — the way reorderable lists behave
   // elsewhere — while clicks on the controls inside it still do their own thing.
+  //
+  // Every pointer but a finger. A finger has one gesture for both scrolling the
+  // list and dragging a row, and this starts the drag on the very first
+  // pointerdown with no hold and no slop — so on a phone every attempt to scroll
+  // the day's list picked a row up instead, and the page went nowhere. Touch
+  // reorders from the ⠿ grip, which is what the grip is for (it suppresses
+  // `touch-action` on itself alone, leaving the rest of the row to the scroller).
+  //
+  // Excluding touch rather than requiring 'mouse': pointerType is '' for some
+  // synthesised input, and a test for 'mouse' would take grab-anywhere away from
+  // pointers that were never the problem.
   function startRowDrag(e: React.PointerEvent) {
-    if (!drag || e.button !== 0) return;
+    if (!drag || e.pointerType === 'touch' || e.button !== 0) return;
     if ((e.target as HTMLElement).closest(INTERACTIVE_SEL)) return;
     dragControls.start(e);
   }

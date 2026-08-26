@@ -3,7 +3,7 @@
   "name": "milestone",
   "private": true,
   "_versioning": "`version` below is the single source of truth. vite.config.ts reads it at build time into __APP_VERSION__ (with a build timestamp), which surfaces as the chip beside the nav-bar brand and in the Data modal — that's how you tell a fresh exe from a stale one. @electron/packager picks the same value up from here by default and stamps it into the exe's file properties. Bump it with `npm run release:patch|minor|major`, which bumps, rebuilds and repackages in one go; never hand-edit it.",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {

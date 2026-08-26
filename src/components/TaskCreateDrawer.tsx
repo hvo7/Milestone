@@ -126,6 +126,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'tween', duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+            className="side-drawer"
             style={{
               position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(440px, 94vw)', zIndex: 51,
               background: 'var(--card-bg)', borderLeft: '1px solid var(--card-border)',
