@@ -5,11 +5,17 @@
  *
  * Electron never registers this — see the guard in src/main.tsx.
  *
- * Cache busting rides on the registration URL (`sw.js?v=1.5.4`). The browser
- * treats a changed script URL as a new worker, and the version keys the cache, so
- * a release both installs a fresh worker and drops the previous release's entries.
+ * Cache busting rides on the registration URL (`sw.js?v=3.0.1&b=<built-at>`). The
+ * browser treats a changed script URL as a new worker, and that string keys the
+ * cache, so a release both installs a fresh worker and drops the previous one's
+ * entries.
+ *
+ * The build stamp is in there because the version alone is not a build identity:
+ * two different builds of 3.0.1 share a URL, so the browser saw no new worker and
+ * the phone went on serving the older one from cache.
  */
-const VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
+const params = new URL(self.location.href).searchParams;
+const VERSION = (params.get('v') || 'dev') + (params.get('b') ? '-' + params.get('b') : '');
 const CACHE = `milestone-${VERSION}`;
 
 /** Everything needed to boot with no network. Hashed assets aren't listed — they
