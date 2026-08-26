@@ -68,7 +68,8 @@ export default function NavBar() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: '12px 24px',
+        // Padding lives in `.app-nav` (index.css) — it carries the phone's top
+        // safe-area inset, and an inline padding here would silently outrank it.
         borderBottom: '1px solid var(--nav-border)',
         background: 'var(--nav-bg)',
         backdropFilter: 'blur(14px)',
