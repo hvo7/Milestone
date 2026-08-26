@@ -5,6 +5,7 @@ const { loadConfig, saveConfig, testConnection, syncToNotion, pullFromNotion } =
 const cloudSync = require('./cloudSync.cjs');
 const backups = require('./backups.cjs');
 const tray = require('./tray.cjs');
+const phone = require('./phone.cjs');
 
 // ── Identity ─────────────────────────────────────────────────────────────────
 // Electron derives userData from the app name, and npm names must be lowercase —
@@ -189,9 +190,55 @@ ipcMain.handle('notion:sync', async (_event, { questlines, routines }) => {
 ipcMain.handle('sync:get-config', () => cloudSync.loadConfig());
 ipcMain.handle('sync:set-config', (_event, patch) => cloudSync.setConfig(patch));
 ipcMain.handle('sync:pick-folder', () => cloudSync.pickFolder(mainWindow));
-ipcMain.handle('sync:read-peers', () => cloudSync.readPeers());
-ipcMain.handle('sync:write', (_event, doc) => cloudSync.writeDoc(doc));
-ipcMain.handle('sync:write-backup', (_event, { name, bundle }) => cloudSync.writeBackup(name, bundle));
+// Two meeting points, one protocol: the cloud folder carries documents to
+// another computer, the phone server carries them to a phone on this Wi-Fi. A
+// device publishes to both and reads from both, so which route a peer arrived by
+// is not something the reconciler has to know about.
+ipcMain.handle('sync:read-peers', () => {
+  const folder = cloudSync.readPeers();
+  const config = cloudSync.loadConfig();
+  const peers = [...(folder.ok ? folder.peers ?? [] : []), ...phone.readDocs(config.deviceId)];
+  // Two routes can carry the same peer's document; the fresher copy wins so a
+  // stale one can't drag the clock backwards.
+  const best = new Map();
+  for (const doc of peers) {
+    const seen = best.get(doc.deviceId);
+    if (!seen || (doc.updatedAt ?? '') > (seen.updatedAt ?? '')) best.set(doc.deviceId, doc);
+  }
+  return { ok: true, peers: [...best.values()], error: folder.ok ? null : folder.error };
+});
+ipcMain.handle('sync:write', (_event, doc) => {
+  const viaPhone = phone.writeDoc(doc);
+  const viaFolder = cloudSync.writeDoc(doc);
+  // Either route getting the document out is a successful publish — folder sync
+  // being switched off must not read as a sync failure on the phone channel.
+  return viaFolder.ok ? viaFolder : viaPhone.ok ? viaPhone : viaFolder;
+});
+ipcMain.handle('sync:write-backup', (_event, { name, bundle }) => {
+  const viaFolder = cloudSync.writeBackup(name, bundle);
+  return viaFolder.ok ? viaFolder : phone.writeBackup(name, bundle);
+});
+
+// ── The phone ─────────────────────────────────────────────────────────────────
+// See electron/phone.cjs: this computer serves the app to your phone over the
+// local network and swaps sync documents with it.
+
+ipcMain.handle('phone:status', () => phone.status());
+ipcMain.handle('phone:start', async () => {
+  phone.setConfig({ enabled: true });
+  const res = await phone.start();
+  return { ...res, status: phone.status() };
+});
+ipcMain.handle('phone:stop', () => {
+  phone.setConfig({ enabled: false });
+  phone.stop();
+  return { ok: true, status: phone.status() };
+});
+ipcMain.handle('phone:set-port', (_event, port) => {
+  phone.stop();
+  phone.setConfig({ port: Number(port) || 4785 });
+  return { ok: true, status: phone.status() };
+});
 
 // ── Automatic local backups ───────────────────────────────────────────────────
 // The safety net under the single Local Storage database — see electron/backups.cjs.
@@ -213,6 +260,12 @@ ipcMain.handle('tray:update', (_event, state) => tray.update(state));
 app.whenReady().then(() => {
   tray.init(showMainWindow);
   createWindow();
+  // A document arriving from the phone wakes the renderer exactly like one
+  // landing in the sync folder — same channel, same reconciliation.
+  phone.onChange(() => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed');
+  });
+  if (phone.loadConfig().enabled) void phone.start();
   cloudSync.initWatcher(() => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed');
   });

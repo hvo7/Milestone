@@ -472,6 +472,24 @@ body::before {
 }
 .rune-input::placeholder { color: var(--text-dim); opacity: 0.7; }
 
+/* ── Native selects ───────────────────────────────────────────────────────────
+   A dropdown's option list is painted by the OS, on its own surface — not on
+   the page. `--input-bg` is 4.5% white, which composites correctly over a dark
+   card but over the popup's white ground it lands at near-white, under
+   near-white text. Hence an unreadable list in dark mode.
+
+   So the popup needs opaque colours of its own rather than inherited
+   translucent ones. The closed control is given the same opaque background, so
+   open and shut look like the same object. */
+select.rune-input,
+select.rune-input option {
+  background-color: var(--card-bg-raised);
+  color: var(--page-text);
+}
+/* Keeps the OS from re-deriving its own washed-out palette for the popup. */
+select.rune-input { color-scheme: inherit; }
+select.rune-input option:disabled { color: var(--text-dim); }
+
 /* ══════════════════════════════════════════════
    DROPDOWN MENU ITEM (sort/filter menus)
    ══════════════════════════════════════════════ */
@@ -553,6 +571,90 @@ body::before {
 /* ══════════════════════════════════════════════
    TODAY — chips, rows, pills, day flipper
    ══════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════
+   PHONE
+   ══════════════════════════════════════════════
+
+   The desktop app hands itself to a phone over the network (electron/phone.cjs),
+   so the same build has to hold together at 390px. These are the places where a
+   layout built for a 1280px window doesn't: a nav row of eleven controls, and
+   page padding sized for a window with room to spare. */
+
+@media (max-width: 700px) {
+  .app-nav {
+    padding: 10px 12px !important;
+    gap: 8px;
+    /* Wraps rather than pushing the page wider. A horizontally scrolling page is
+       the one thing that makes an app feel broken on a phone: every vertical
+       swipe drifts sideways. */
+    flex-wrap: wrap;
+  }
+  /* The tab strip is the part that cannot shrink, so it takes its own line and
+     scrolls within itself. */
+  .app-tabs {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    justify-content: flex-start;
+  }
+  .app-tabs::-webkit-scrollbar { display: none; }
+
+  .today-shell { padding: 18px 12px 72px; }
+
+  /* Comfortably past the 44px Apple and Google both ask for. */
+  .rune-check { width: 22px; height: 22px; }
+
+  /* The tomorrow flipper hangs in the middle of the right edge, which on a phone
+     is on top of the New task button. Dropped to the bottom corner, where a
+     thumb reaches it and nothing else lives. */
+  .day-flipper {
+    top: auto !important;
+    bottom: calc(18px + env(safe-area-inset-bottom)) !important;
+    transform: scale(0.9);
+  }
+}
+
+/* ══════════════════════════════════════════════
+   TODAY LAYOUT
+   ══════════════════════════════════════════════ */
+
+/* The day's list, with the anchor group beside it. The rail lives in the margin
+   the centred column already left empty, so nothing moves to make room for it —
+   and it sticks, because the point of that group is that it stays in view while
+   you work down the list. */
+.today-shell {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 28px 20px 60px;
+  overflow-x: hidden;
+}
+.today-main { min-width: 0; }
+
+@media (min-width: 1180px) {
+  .today-shell {
+    display: grid;
+    /* Wide enough for a real task row — counter, streak, cadence and the
+       hover controls — rather than a name and a checkbox. */
+    grid-template-columns: 300px minmax(0, 780px);
+    gap: 26px;
+    justify-content: center;
+    max-width: none;
+  }
+  .today-rail {
+    position: sticky;
+    top: 24px;
+    /* Aligned with the To Do heading rather than the page top, so it reads as a
+       column of the list instead of a floating card. */
+    margin-top: 116px;
+  }
+}
+
+/* Below that it is simply the first thing on the page, above the list. */
+@media (max-width: 1179px) {
+  .today-rail { margin-bottom: 20px; }
+}
 
 .chip-row {
   display: flex;

@@ -1,10 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Questline, Quest, Action, GuildColor, RecurringType, Routine, Subtask, Schedule, MonthlyRule } from './types';
+import type { Questline, Quest, Action, GuildColor, RecurringType, Routine, Subtask, Schedule, MonthlyRule, System } from './types';
 import { sampleData } from './data/sampleData';
 import { migrateLegacyStorage } from './lib/storageMigration';
 import { flattenTree, mapTree, mapNode, insertNode, removeNode } from './lib/subtree';
+import { ANCHOR_LABEL } from './lib/ui';
 import { pushUndo, insertAt, reinsert, captureRemoved, deleteLabel } from './lib/undo';
+import { sameTitle } from './lib/duplicates';
 import {
   occursOn, lastOccurrenceOnOrBefore, nextOccurrenceAfter,
   monthlyRuleLabel, monthlyRuleShort,
@@ -315,6 +317,29 @@ export function isMultiDayCycle(r: Schedule): boolean {
   if (r.intervalDays === 1) return false;
   return r.recurring === 'weekly' || r.recurring === 'monthly';
 }
+
+/**
+ * Why a repeating task would sit on Today even with nothing pinned — or null
+ * when the pin alone decides it.
+ *
+ * Lives here, beside the other schedule predicates, because both `showsOnDay`
+ * and every pin control need it and none of them may re-derive it: a pin that
+ * offers to change something the day's list ignores is a control that lies.
+ */
+export type FixedReason = 'daily' | 'anchor' | 'goal';
+
+export function alwaysOnToday(r: Routine): FixedReason | null {
+  if (!repeats(r)) return null;
+  if (r.recurring === 'daily' && !r.intervalDays && !r.monthlyRule) return 'daily';
+  if (r.anchor) return 'anchor';
+  if (isGoalRoutine(r)) return 'goal';
+  return null;
+}
+
+/** Is this task on Today right now — the state every pin renders and toggles.
+ *  An explicit `offToday` beats every default. */
+export const onToday = (r: Routine): boolean =>
+  !r.offToday && (alwaysOnToday(r) !== null || !!r.trackedToday);
 
 /** A multi-day task you chip away at day by day — it has a counter target or a
  *  checklist. These surface on Today every day while open (that's the point),
@@ -753,11 +778,104 @@ function purgeExpiredArchive(routines: Routine[]): Routine[] {
     !(isArchivedRoutine(r) && logicalDayStart(new Date(r.completedAt!)).getTime() <= cutoff));
 }
 
+// ── Systems ──────────────────────────────────────────────────────────────────
+
+/**
+ * One-time migration: the anchor group stops being a system.
+ *
+ * It was seeded as one when systems landed, on the reasoning that it already
+ * *was* a system in everything but name. It isn't. A system is a process aimed
+ * at a goal; this group is the handful of things you want in front of you every
+ * day whatever else is going on, which is a place on the Today tab rather than a
+ * process with a consistency score.
+ *
+ * So the system is deleted and its members marked `anchor`, which is what puts
+ * them in that section. Nothing is lost: the habits, their streaks and their
+ * history are untouched, and any *other* system they belong to is left alone.
+ * Gated on a flag so it can't undo a system you deliberately rebuilt by hand.
+ */
+function retireAnchorSystem(
+  routines: Routine[],
+  systems: System[],
+  retired: boolean | undefined,
+): { routines: Routine[]; systems: System[] } {
+  if (retired) return { routines, systems };
+  const anchorSystem = systems.find(sys => sys.title === ANCHOR_LABEL);
+  if (!anchorSystem) return { routines, systems };
+
+  // The grouping survives as the Today section; only the system goes. Every
+  // member is marked so it lands in that section rather than being scattered
+  // into the day's main list.
+  const members = new Set(routines.filter(r => routineSystemIds(r).includes(anchorSystem.id)).map(r => r.id));
+  return {
+    systems: systems.filter(sys => sys.id !== anchorSystem.id),
+    routines: routines.map(r => {
+      if (!members.has(r.id)) return r;
+      const rest = routineSystemIds(r).filter(id => id !== anchorSystem.id);
+      return { ...withSystems(r, rest), anchor: true };
+    }),
+  };
+}
+
+/** The goals a system serves, reading the legacy single field when the array
+ *  isn't there yet. The one place either field should be read. */
+export const systemGoalIds = (sys: System): string[] =>
+  sys.questlineIds ?? (sys.questlineId ? [sys.questlineId] : []);
+
+/** The quests a system contributes to. Separate from `systemGoalIds`: that is
+ *  the questline it serves broadly, this is the goal inside it. */
+export const systemQuestIds = (sys: System): string[] => sys.questIds ?? [];
+
+/** The systems a habit is part of, reading the legacy single field when the
+ *  array isn't there yet. The one place either field should be read. */
+export const routineSystemIds = (r: Routine): string[] =>
+  r.systemIds ?? (r.systemId ? [r.systemId] : []);
+
+/**
+ * A General task — the Quests page's "things to accomplish" bucket. No
+ * questline, no system, not an anchor habit.
+ *
+ * One definition, because two places have to agree on it: the panel that lists
+ * them, and `showsOnDay`, which keeps the one-off ones off Today until they are
+ * pinned there.
+ */
+export const isGeneralTask = (r: Routine): boolean =>
+  !r.questlineId && !r.anchor && routineSystemIds(r).length === 0;
+
+/** Write a habit's system membership, retiring the legacy single field with it.
+ *  Both are set together so the two can never disagree. */
+const withSystems = (r: Routine, ids: string[]): Routine =>
+  ({ ...r, systemIds: ids, systemId: undefined });
+
+/** The editable face of a System, shared by create and update.
+ *  A system is its name, its actions, and the goal it serves — the actions live
+ *  on the routines themselves, so this is the rest. */
+export interface SystemFields {
+  description?: string;
+  icon?: string;
+  /** The goals this system serves. An empty array detaches them all — a system
+   *  is allowed to serve none. */
+  questlineIds?: string[];
+  /** The individual quests it contributes to. Same rules. */
+  questIds?: string[];
+}
+
 // ── Store ─────────────────────────────────────────────────────────────────────
 
 interface QuestData {
   questlines: Questline[];
   routines: Routine[];
+  /** The processes you're running, as opposed to the outcomes you're chasing.
+   *  See the System type — the separation from Questline is the point. */
+  systems: System[];
+  /** @deprecated Marked the old anchor-habits→first-system seed. That seed is
+   *  gone; the flag is left declared so an existing save that carries it still
+   *  type-checks. */
+  systemsSeeded?: boolean;
+  /** True once the anchor system has been turned back into a Today section. A
+   *  flag rather than a title check, so rebuilding a system by that name later
+   *  doesn't get it deleted again. */
+  anchorSystemRetired?: boolean;
   /** Tasks completed per local day, keyed 'YYYY-MM-DD'. Drives the heatmap. */
   completionLog: Record<string, number>;
   /** Which days each individual task was completed on — the per-task detail the
@@ -801,11 +919,12 @@ interface QuestData {
   reorderQuests:      (qlId: string, orderedIds: string[]) => void;
 
   // Routines
-  addRoutine:           (title: string, desc: string, recurring: RecurringType | null, questlineId?: string, intervalDays?: number, questId?: string, dueDate?: string | null, counter?: CounterConfig, monthlyRule?: MonthlyRule | null) => void;
+  /** Returns the new task's id, so the caller can file it into a system too. */
+  addRoutine:           (title: string, desc: string, recurring: RecurringType | null, questlineId?: string, intervalDays?: number, questId?: string, dueDate?: string | null, counter?: CounterConfig, monthlyRule?: MonthlyRule | null) => string;
   /** Set/clear a one-time task's due date ('YYYY-MM-DD' or null). */
   setRoutineDueDate:    (rId: string, dueDate: string | null) => void;
   /** Add a habit to the highlighted anchor-habit category (Today tab). */
-  addAnchorRoutine:     (title: string, recurring: 'daily' | 'weekly', counter?: CounterConfig) => void;
+  addAnchorRoutine:     (title: string, recurring: 'daily' | 'weekly', counter?: CounterConfig) => string;
   /** Nudge a counter task's progress by `delta` (clamped to 0…target); auto-completes at target.
    *  On a session-mode goal this means "I did it today" / "I didn't" — see sessionPatch. */
   incrementRoutine:     (rId: string, delta: number) => void;
@@ -822,6 +941,10 @@ interface QuestData {
   /** Change a routine's cadence (null = one-time) and optional custom interval in days. */
   setRoutineRecurring:  (rId: string, recurring: RecurringType | null, intervalDays?: number, monthlyRule?: MonthlyRule | null) => void;
   deleteRoutine:        (rId: string) => void;
+  /** Fold one task into another: the survivor takes the union of their systems,
+   *  their history and their steps, and the better streak. For the same habit
+   *  entered twice — see lib/duplicates.ts. */
+  mergeRoutines:        (keepId: string, dropId: string) => void;
   /** Manual display order for the unified Today "To Do" list, keyed by task id. */
   reorderTodo:          (orderedIds: string[]) => void;
   setRoutineQuest:      (rId: string, questId: string | null) => void;
@@ -842,6 +965,11 @@ interface QuestData {
     /** Count days rather than taps. `null` hands the choice back to the default
      *  derived from the task's shape — see sessionMode. */
     oncePerDay?: boolean | null;
+    /** Set the streak by hand. The counter is a record of your practice, not a
+     *  score to be defended: the app misses days you didn't (a laptop left shut,
+     *  a task added late), and only you know which. Clamped to a whole number
+     *  ≥ 0; everything downstream keeps working from there. */
+    streak?: number;
   }) => void;
   /** Fill an empty app with the demo questlines. Opt-in from the first-run card
    *  — a fresh install starts genuinely empty rather than pretending three
@@ -854,6 +982,24 @@ interface QuestData {
   updateActionTitle:       (qlId: string, qId: string, aId: string, title: string) => void;
   setRoutineCompleted:     (rId: string, completed: boolean) => void;
   setAllActionsComplete:   (qlId: string, qId: string, complete: boolean) => void;
+
+  // ── Systems ────────────────────────────────────────────────────────────────
+  /** Create a system. Returns its id so a caller can drop straight into it. */
+  addSystem:    (title: string, opts?: SystemFields) => string;
+  updateSystem: (sId: string, updates: SystemFields & { title?: string; hidden?: boolean }) => void;
+  /** Delete a system. Its habits survive, unassigned: the practice is the part
+   *  worth keeping, and deleting a grouping should never delete the work. */
+  deleteSystem: (sId: string) => void;
+  /** Replace a habit's system membership outright. An empty array takes it out
+   *  of every system. */
+  setRoutineSystems: (rId: string, ids: string[]) => void;
+  /** Add or remove one membership, leaving the habit's others alone — a habit can
+   *  be part of several processes at once. */
+  toggleRoutineSystem: (rId: string, sysId: string) => void;
+  /** Create a repeating action directly inside a system. The system panel builds
+   *  its actions here rather than through addRoutine, which has no idea systems
+   *  exist and would leave the new task orphaned. */
+  addSystemAction: (systemId: string, title: string, recurring: RecurringType | null, intervalDays?: number) => void;
 }
 
 export const useQuestStore = create<QuestData>()(
@@ -865,6 +1011,7 @@ export const useQuestStore = create<QuestData>()(
       // Quests pages offer to load them instead — see loadSampleData.
       questlines: [],
       routines: [],
+      systems: [],
       completionLog: {},
       taskHistory: {},
       todoOrder: {},
@@ -875,13 +1022,16 @@ export const useQuestStore = create<QuestData>()(
       checkAndResetRecurring: () =>
         set(s => {
           const questlines = processQuestlines(s.questlines);
-          const routines = processRoutines(purgeExpiredArchive(s.routines));
+          const processed = processRoutines(purgeExpiredArchive(s.routines));
+          const moved = retireAnchorSystem(processed, s.systems ?? [], s.anchorSystemRetired);
           return {
             questlines,
-            routines,
+            routines: moved.routines,
+            systems: moved.systems,
+            anchorSystemRetired: true,
             // Pruned against the *post*-purge lists, so a task the archive just
             // retired stops holding its history open.
-            taskHistory: pruneHistory(s.taskHistory ?? {}, liveTaskIds(questlines, routines)),
+            taskHistory: pruneHistory(s.taskHistory ?? {}, liveTaskIds(questlines, moved.routines)),
           };
         }),
 
@@ -1077,16 +1227,31 @@ export const useQuestStore = create<QuestData>()(
           if (index < 0) return {};
           const questline = s.questlines[index];
           const linked = captureRemoved(s.routines, r => r.questlineId === qlId);
+          // Systems that served this goal are detached, never deleted: the
+          // process is the part worth keeping when the outcome goes away.
+          const served = s.systems.filter(sys => systemGoalIds(sys).includes(qlId)).map(sys => sys.id);
           pushUndo(
             deleteLabel(questline.title, [[questline.quests.length, 'quest'], [linked.length, 'task']]),
             () => set(cur => ({
               questlines: cur.questlines.some(ql => ql.id === qlId) ? cur.questlines : insertAt(cur.questlines, index, questline),
               routines: reinsert(cur.routines, linked),
+              systems: cur.systems.map(sys => (served.includes(sys.id)
+                ? { ...sys, questlineIds: [...systemGoalIds(sys), qlId], questlineId: undefined }
+                : sys)),
             })),
           );
           return {
             questlines: s.questlines.filter(ql => ql.id !== qlId),
             routines: s.routines.filter(r => r.questlineId !== qlId),
+            systems: s.systems.map(sys => {
+              // Both attachments go: the questline itself, and every quest that
+              // lived inside it.
+              const goneQuests = new Set((s.questlines.find(ql => ql.id === qlId)?.quests ?? []).map(q => q.id));
+              const goals = systemGoalIds(sys).filter(id => id !== qlId);
+              const quests = systemQuestIds(sys).filter(id => !goneQuests.has(id));
+              if (goals.length === systemGoalIds(sys).length && quests.length === systemQuestIds(sys).length) return sys;
+              return { ...sys, questlineIds: goals, questlineId: undefined, questIds: quests };
+            }),
           };
         }),
 
@@ -1115,6 +1280,10 @@ export const useQuestStore = create<QuestData>()(
             questlines: mapById(s.questlines, qlId, ql => ({ ...ql, quests: ql.quests.filter(q => q.id !== qId).map((q, i) => ({ ...q, order: i + 1 })) })),
             // Detach (but keep) any linked tasks that pointed at the deleted quest.
             routines: s.routines.map(r => r.questId === qId ? { ...r, questId: undefined } : r),
+            // Same for the systems that fed it: the goal goes, the process stays.
+            systems: s.systems.map(sys => (systemQuestIds(sys).includes(qId)
+              ? { ...sys, questIds: systemQuestIds(sys).filter(id => id !== qId) }
+              : sys)),
           };
         }),
 
@@ -1140,14 +1309,66 @@ export const useQuestStore = create<QuestData>()(
 
       // ── Routines ──────────────────────────────────────────────────────────
 
-      addRoutine: (title, desc, recurring, questlineId, intervalDays, questId, dueDate, counter, monthlyRule) =>
-        set(s => ({ routines: [...s.routines, { id: `r-${uid()}`, title, description: desc, recurring, completed: false, trackedToday: autoPins({ recurring, intervalDays, monthlyRule }), lastResetAt: new Date().toISOString(), streak: 0, order: s.routines.length, ...(questlineId ? { questlineId } : {}), ...(questId ? { questId } : {}), ...(intervalDays ? { intervalDays } : {}), ...(monthlyRule ? { monthlyRule } : {}), ...(!recurring && !monthlyRule && dueDate ? { dueDate } : {}), ...counterFields(counter) }] })),
+      addRoutine: (title, desc, recurring, questlineId, intervalDays, questId, dueDate, counter, monthlyRule) => {
+        const id = `r-${uid()}`;
+        set(s => ({ routines: [...s.routines, { id, title, description: desc, recurring, completed: false, trackedToday: autoPins({ recurring, intervalDays, monthlyRule }), lastResetAt: new Date().toISOString(), createdAt: new Date().toISOString(), streak: 0, order: s.routines.length, ...(questlineId ? { questlineId } : {}), ...(questId ? { questId } : {}), ...(intervalDays ? { intervalDays } : {}), ...(monthlyRule ? { monthlyRule } : {}), ...(!recurring && !monthlyRule && dueDate ? { dueDate } : {}), ...counterFields(counter) }] }));
+        return id;
+      },
+
+      mergeRoutines: (keepId, dropId) =>
+        set(s => {
+          const keep = s.routines.find(r => r.id === keepId);
+          const drop = s.routines.find(r => r.id === dropId);
+          if (!keep || !drop || keepId === dropId) return {};
+
+          // Nothing either copy earned is thrown away. The union of the days,
+          // the better streak, the earlier creation date — a merge that loses
+          // history is worse than the duplicate it cleans up.
+          const days = [...new Set([...historyOf(s.taskHistory, keepId), ...historyOf(s.taskHistory, dropId)])].sort();
+          const taskHistory = { ...s.taskHistory, [keepId]: days };
+          delete taskHistory[dropId];
+
+          const merged: Routine = {
+            ...keep,
+            systemIds: [...new Set([...routineSystemIds(keep), ...routineSystemIds(drop)])],
+            systemId: undefined,
+            questlineId: keep.questlineId ?? drop.questlineId,
+            questId: keep.questlineId ? keep.questId : (keep.questId ?? drop.questId),
+            anchor: keep.anchor || drop.anchor || undefined,
+            streak: Math.max(keep.streak ?? 0, drop.streak ?? 0),
+            createdAt: [keep.createdAt, drop.createdAt].filter(Boolean).sort()[0],
+            // Done on either copy is done: ticking one of two rows and then
+            // merging must not resurrect the task for the rest of the day.
+            completed: keep.completed || drop.completed,
+            completedAt: keep.completedAt ?? drop.completedAt,
+            trackedToday: keep.trackedToday || drop.trackedToday,
+            offToday: keep.offToday && drop.offToday ? true : undefined,
+            subtasks: [...(keep.subtasks ?? []), ...(drop.subtasks ?? [])],
+          };
+
+          const todoOrder = { ...s.todoOrder };
+          delete todoOrder[dropId];
+
+          // The inverse is the three slices as they were. A merge touches all of
+          // them together, and putting one back without the others would leave a
+          // task with someone else's history.
+          const before = { routines: s.routines, taskHistory: s.taskHistory, todoOrder: s.todoOrder };
+          pushUndo(`Merged “${drop.title}” into “${keep.title}”`, () => set(() => before));
+          return {
+            routines: s.routines.filter(r => r.id !== dropId).map(r => (r.id === keepId ? merged : r)),
+            taskHistory,
+            todoOrder,
+          };
+        }),
 
       setRoutineDueDate: (rId, dueDate) =>
         set(s => ({ routines: mapById(s.routines, rId, r => ({ ...r, dueDate: dueDate ?? null })) })),
 
-      addAnchorRoutine: (title, recurring, counter) =>
-        set(s => ({ routines: [...s.routines, { id: `r-${uid()}`, title, description: '', recurring, anchor: true, completed: false, trackedToday: recurring === 'daily', lastResetAt: new Date().toISOString(), streak: 0, order: s.routines.length, ...counterFields(counter) }] })),
+      addAnchorRoutine: (title, recurring, counter) => {
+        const id = `r-${uid()}`;
+        set(s => ({ routines: [...s.routines, { id, title, description: '', recurring, anchor: true, completed: false, trackedToday: recurring === 'daily', lastResetAt: new Date().toISOString(), createdAt: new Date().toISOString(), streak: 0, order: s.routines.length, ...counterFields(counter) }] }));
+        return id;
+      },
 
       setRoutineRecurring: (rId, recurring, intervalDays, monthlyRule) =>
         set(s => ({ routines: mapById(s.routines, rId, r => {
@@ -1251,7 +1472,10 @@ export const useQuestStore = create<QuestData>()(
             if (u.questlineId !== undefined) {
               next.questlineId = u.questlineId ?? undefined;
               if (!u.questlineId) next.questId = undefined;
-              if (u.questlineId) next.anchor = undefined;
+              // Anchor and questline used to be exclusive — filing a habit under
+              // a goal silently dropped it out of the anchor group. They are
+              // different questions ("is this one of my core habits" vs "what is
+              // it for"), so a task may now answer both.
             }
             if (u.questId !== undefined)                 next.questId = u.questId ?? undefined;
             if (u.dueDate !== undefined)                 next.dueDate = u.dueDate;
@@ -1294,6 +1518,10 @@ export const useQuestStore = create<QuestData>()(
                 if (sched.recurring || sched.monthlyRule) next.dueDate = null;
               }
             }
+            // Applied last, so it wins over the cadence branch above: if you both
+            // change the schedule and set a streak in one save, the number you
+            // typed is the one you meant.
+            if (u.streak !== undefined) next.streak = Math.max(0, Math.floor(u.streak) || 0);
             return next;
           }),
         })),
@@ -1402,8 +1630,17 @@ export const useQuestStore = create<QuestData>()(
           });
         }),
 
+      // Toggles what the pin actually shows: on Today, or not. Writing only
+      // `trackedToday` was not enough — for a daily habit, an anchor, or a goal
+      // that field is ignored by `showsOnDay`, so the pin appeared to do nothing.
+      // `offToday` is the explicit override those cases need; pinning back on
+      // clears it, so the two can never disagree about the same task.
       toggleRoutineTracked: (rId) =>
-        set(s => ({ routines: mapById(s.routines, rId, r => ({ ...r, trackedToday: !r.trackedToday })) })),
+        set(s => ({
+          routines: mapById(s.routines, rId, r => (onToday(r)
+            ? { ...r, trackedToday: false, offToday: true }
+            : { ...r, trackedToday: true,  offToday: undefined })),
+        })),
 
       toggleRoutineHidden: (rId) =>
         set(s => ({ routines: mapById(s.routines, rId, r => ({ ...r, hidden: !r.hidden })) })),
@@ -1434,6 +1671,103 @@ export const useQuestStore = create<QuestData>()(
               completedAt: complete ? (a.completedAt ?? now) : undefined,
             })),
           })) };
+        }),
+
+      // ── Systems ──────────────────────────────────────────────────────────────
+
+      addSystem: (title, opts) => {
+        const id = `sys-${uid()}`;
+        const text = (v?: string) => v?.trim() || undefined;
+        set(s => ({
+          systems: [...s.systems, {
+            id,
+            title: title.trim() || 'New system',
+            description: text(opts?.description),
+            icon: opts?.icon || undefined,
+            questlineIds: opts?.questlineIds ?? [],
+            questIds: opts?.questIds ?? [],
+            order: s.systems.length,
+            createdAt: new Date().toISOString(),
+          }],
+        }));
+        return id;
+      },
+
+      updateSystem: (sId, u) =>
+        set(s => ({
+          systems: s.systems.map(sys => {
+            if (sys.id !== sId) return sys;
+            const next: System = { ...sys };
+            // Each field is only touched when the caller sent it, so a drawer
+            // that edits one thing can't blank the rest.
+            if (u.title !== undefined && u.title.trim()) next.title = u.title.trim();
+            if (u.description !== undefined) next.description = u.description.trim() || undefined;
+            if (u.icon !== undefined)        next.icon = u.icon || undefined;
+            // An empty array detaches every goal; undefined leaves them alone.
+            if (u.questlineIds !== undefined) {
+              next.questlineIds = u.questlineIds;
+              next.questlineId = undefined;   // the legacy field is retired on write
+            }
+            if (u.questIds !== undefined)    next.questIds = u.questIds;
+            if (u.hidden !== undefined)      next.hidden = u.hidden || undefined;
+            return next;
+          }),
+        })),
+
+      deleteSystem: (sId) =>
+        set(s => ({
+          systems: s.systems.filter(sys => sys.id !== sId),
+          // The habits outlive the grouping — see the action's declaration. Only
+          // this membership goes; the others the habit has are none of its business.
+          routines: s.routines.map(r => {
+            const ids = routineSystemIds(r);
+            return ids.includes(sId) ? withSystems(r, ids.filter(x => x !== sId)) : r;
+          }),
+        })),
+
+      setRoutineSystems: (rId, ids) =>
+        set(s => ({ routines: mapById(s.routines, rId, r => withSystems(r, ids)) })),
+
+      toggleRoutineSystem: (rId, sysId) =>
+        set(s => ({
+          routines: mapById(s.routines, rId, r => {
+            const ids = routineSystemIds(r);
+            return withSystems(r, ids.includes(sysId) ? ids.filter(x => x !== sysId) : [...ids, sysId]);
+          }),
+        })),
+
+      addSystemAction: (systemId, title, recurring, intervalDays) =>
+        set(s => {
+          // The commonest way a habit ends up in the list twice: it already
+          // exists, and naming it inside a system types it out again. That is a
+          // request for this habit to be part of this system — which is now a
+          // thing one task can be — so it joins rather than being re-created.
+          const existing = s.routines.find(r => !r.hidden && sameTitle(r.title, title));
+          if (existing) {
+            return {
+              routines: mapById(s.routines, existing.id, r =>
+                ({ ...r, systemIds: [...new Set([...routineSystemIds(r), systemId])], systemId: undefined })),
+            };
+          }
+          return {
+          routines: [...s.routines, {
+            id: `r-${uid()}`,
+            title: title.trim(),
+            description: '',
+            systemIds: [systemId],
+            recurring,
+            ...(intervalDays && intervalDays > 1 ? { intervalDays } : {}),
+            completed: false,
+            // Pinned on arrival: naming an action inside a system is saying you
+            // intend to do it, so it starts on Today rather than waiting to be
+            // found. The pin on the Systems page takes it back off.
+            trackedToday: true,
+            lastResetAt: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            streak: 0,
+            order: s.routines.length,
+          }],
+          };
         }),
     }),
     { name: QUEST_STORE_KEY }

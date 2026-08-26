@@ -50,6 +50,7 @@ export default function CommandPalette() {
 
   const questlines = useQuestStore(s => s.questlines);
   const routines = useQuestStore(s => s.routines);
+  const systems = useQuestStore(s => s.systems);
   const projects = useVynuesStore(s => s.projects);
 
   // Opening and closing reset the query here rather than in an effect watching
@@ -63,8 +64,8 @@ export default function CommandPalette() {
   // Flattening every task in the app on each keystroke is wasted work on a large
   // store; the sources only change when something is edited.
   const results = useMemo(
-    () => (open ? search({ questlines, routines, projects }, query) : []),
-    [open, query, questlines, routines, projects],
+    () => (open ? search({ questlines, routines, systems, projects }, query) : []),
+    [open, query, questlines, routines, systems, projects],
   );
 
   // Clamped at read time rather than reset from an effect: a shrinking list must

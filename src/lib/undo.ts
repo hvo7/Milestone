@@ -1,5 +1,10 @@
 /**
- * One-level undo for destructive actions.
+ * The undo *offer* — the toast that appears after a destructive action.
+ *
+ * Ctrl+Z across the whole app lives in history.ts and is a different mechanism;
+ * this one stays because it answers a different question. Stepping the app back
+ * in time also unwinds whatever you did in the seconds since; this puts one
+ * deleted thing back at the index it came from and leaves the rest alone.
  *
  * Deleting a questline used to be a single unconfirmed ✕ that also took every
  * quest, action and linked task with it — months of streak history gone with no
@@ -11,10 +16,8 @@
  * matters it isn't read. An undo costs nothing when you meant it and is a real
  * remedy when you didn't.
  *
- * Deliberately single-slot. An undo stack invites "undo something from five
- * minutes ago", by which point the state it was captured against has moved on and
- * putting the item back is a guess. One entry, one clear meaning: put back the
- * thing that just vanished.
+ * Deliberately single-slot: one entry, one clear meaning — put back the thing
+ * that just vanished. Stepping further back than that is what Ctrl+Z is for.
  *
  * This store is *not* persisted — an undo closure captures a store snapshot in
  * memory, which cannot survive a reload and must not look as though it could.
@@ -30,6 +33,10 @@ export interface UndoEntry {
   /** Epoch ms; the toast uses it to expire itself. */
   at: number;
   undo: () => void;
+  /** The button's word. "Undo" for a delete; the app-wide history in history.ts
+   *  reuses this toast to report a step it already took, where the button offers
+   *  "Redo" instead. */
+  action?: string;
 }
 
 /** How long the offer stays up. Long enough to notice a mis-click and react,
@@ -39,7 +46,7 @@ export const UNDO_WINDOW_MS = 12_000;
 interface UndoState {
   entry: UndoEntry | null;
   /** Register an undoable action, replacing any pending one. */
-  push: (label: string, undo: () => void) => void;
+  push: (label: string, undo: () => void, action?: string) => void;
   /** Run the pending undo (no-op when there isn't one). */
   run: () => void;
   dismiss: () => void;
@@ -50,7 +57,7 @@ let seq = 0;
 export const useUndoStore = create<UndoState>()((set, get) => ({
   entry: null,
 
-  push: (label, undo) => set({ entry: { id: `u${++seq}`, label, at: Date.now(), undo } }),
+  push: (label, undo, action) => set({ entry: { id: `u${++seq}`, label, at: Date.now(), undo, action } }),
 
   run: () => {
     const entry = get().entry;

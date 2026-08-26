@@ -12,6 +12,10 @@
  * done", and a strip wide enough to be tappable would crowd the title out. Both
  * appear only where they mean something — see `sessionMode` and the segment cap
  * below — so an ordinary checkbox task grows nothing at all.
+ *
+ * `compact` is the anchor rail's variant: the rail is a 300px column, so the pips
+ * shrink and the caption goes away — the rail row prints the same numbers on its
+ * own meta line, and printing them twice in 240px is what made it unreadable.
  */
 import { dayInitial, logicalDateKey } from '../../store';
 
@@ -29,13 +33,15 @@ const pipBase: React.CSSProperties = {
 };
 
 /** Shared framing so both strips indent and caption identically. */
-function StripFrame({ indent, children, caption }: { indent: number; children: React.ReactNode; caption: React.ReactNode }) {
+function StripFrame({ indent, children, caption }: { indent: number; children: React.ReactNode; caption?: React.ReactNode }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 9, paddingLeft: indent, flexWrap: 'wrap' }}>
-      <span style={{ display: 'flex', gap: PIP_GAP }}>{children}</span>
-      <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--page-text-dim)', fontVariantNumeric: 'tabular-nums' }}>
-        {caption}
-      </span>
+      <span style={{ display: 'flex', gap: PIP_GAP, flexWrap: 'wrap' }}>{children}</span>
+      {caption && (
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--page-text-dim)', fontVariantNumeric: 'tabular-nums' }}>
+          {caption}
+        </span>
+      )}
     </div>
   );
 }
@@ -50,21 +56,24 @@ export interface SessionStripProps {
   indent: number;
   onToggle: (dayKey: string) => void;
   readOnly?: boolean;
+  /** Rail variant: smaller pips, no caption. */
+  compact?: boolean;
 }
 
-export function SessionStrip({ days, logged, target, indent, onToggle, readOnly }: SessionStripProps) {
+export function SessionStrip({ days, logged, target, indent, onToggle, readOnly, compact }: SessionStripProps) {
   const today = logicalDateKey();
   const done = logged.length;
+  const size = compact ? 19 : PIP;
 
   return (
     <StripFrame
       indent={indent}
-      caption={
+      caption={compact ? undefined : (
         <>
           {done}/{target} this cycle
           {done > target && <span style={{ color: 'var(--success)' }}> · {done - target} extra</span>}
         </>
-      }
+      )}
     >
       {days.map(day => {
         const on = logged.includes(day);
@@ -88,6 +97,7 @@ export function SessionStrip({ days, logged, target, indent, onToggle, readOnly 
             aria-label={`${day}${isToday ? ' (today)' : ''}: ${on ? 'session logged' : 'no session'}`}
             style={{
               ...pipBase,
+              width: size, height: size,
               background: on ? 'var(--success)' : 'var(--page-surface)',
               borderColor: on ? 'var(--success)' : isToday ? 'var(--accent)' : 'var(--page-border)',
               color: on ? '#0b1210' : isToday ? 'var(--accent)' : 'var(--page-text-dim)',
@@ -111,14 +121,18 @@ export interface CheckpointPipsProps {
   indent: number;
   onSet: (value: number) => void;
   readOnly?: boolean;
+  compact?: boolean;
 }
 
-export function CheckpointPips({ progress, target, step, unit, indent, onSet, readOnly }: CheckpointPipsProps) {
+export function CheckpointPips({ progress, target, step, unit, indent, onSet, readOnly, compact }: CheckpointPipsProps) {
   const segments = Math.ceil(target / Math.max(1, step));
   const filled = Math.floor(progress / Math.max(1, step));
+  const withUnit = (v: number) => `${v}${unit ? ` ${unit}` : ''}`;
 
+  // No caption: the counter beside (or above) the pips already prints the same
+  // "12/64 oz", and the row only has room to say it once.
   return (
-    <StripFrame indent={indent} caption={<>{progress}/{target}{unit ? ` ${unit}` : ''}</>}>
+    <StripFrame indent={indent}>
       {Array.from({ length: segments }, (_, i) => {
         const level = Math.min(target, (i + 1) * step);
         const on = i < filled;
@@ -131,12 +145,14 @@ export function CheckpointPips({ progress, target, step, unit, indent, onSet, re
             type="button"
             onClick={e => { e.stopPropagation(); if (!readOnly) onSet(next); }}
             disabled={readOnly}
-            title={on && i === filled - 1 ? `Back to ${i * step}${unit ? ` ${unit}` : ''}` : `Set to ${level}${unit ? ` ${unit}` : ''}`}
+            title={on && i === filled - 1 ? `Back to ${withUnit(i * step)}` : `Set to ${withUnit(level)}`}
             aria-pressed={on}
-            aria-label={`${level}${unit ? ` ${unit}` : ''}`}
+            aria-label={withUnit(level)}
             style={{
               ...pipBase,
-              width: PIP + 8,
+              width: compact ? 26 : PIP + 8,
+              height: compact ? 19 : PIP,
+              fontSize: compact ? 9.5 : 10,
               background: on ? 'var(--accent)' : 'var(--page-surface)',
               borderColor: on ? 'var(--accent)' : 'var(--page-border)',
               color: on ? '#fff' : 'var(--page-text-dim)',

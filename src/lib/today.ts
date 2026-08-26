@@ -12,32 +12,52 @@
  */
 import type { Action, Questline, Routine } from '../types';
 import {
-  dateKey, dueOnDay, engagedOnDay, isGoalRoutine, isMultiDayCycle, isQuestComplete,
-  logicalDateKey, logicalDayStart, repeats, skipActive,
+  alwaysOnToday, dateKey, dueOnDay, engagedOnDay, isGeneralTask, isMultiDayCycle, isQuestComplete,
+  logicalDateKey, logicalDayStart, onToday, repeats, skipActive,
 } from '../store';
+
+// The rule lives in the store, beside the other schedule predicates; re-exported
+// here so callers that think in terms of "the Today page" can reach it too.
+export { alwaysOnToday, onToday } from '../store';
+export type { FixedReason } from '../store';
 import type { VynuesProject, VynuesTask } from '../vynuesStore';
 
 /**
  * Does a routine belong on the given logical day's list?
  * - Daily tasks always surface.
- * - Multi-day *goals* (weekly "gym 3×" counters, or weekly tasks with steps)
- *   surface every day while open — they're built to be chipped away at — and,
- *   once fully complete, linger only through the day they were finished.
+ * - Anchor habits and multi-day *goals* (weekly "gym 3×" counters, or weekly
+ *   tasks with steps) surface every day while open — an anchor is the practice
+ *   you singled out, a goal is built to be chipped away at — and, once fully
+ *   complete, linger only through the day they were finished.
  * - Other weekly / monthly / interval tasks surface on the day their period ends
  *   (or when pinned) — that list is for work due *that day*.
- * - A one-off surfaces from its due date on; a completed one lingers only through
- *   its completion day.
+ * - A one-off attached to a questline or a system surfaces from its due date on;
+ *   a completed one lingers only through its completion day.
+ * - A one-off General task doesn't surface at all until it's pinned. That bucket
+ *   is a list you work *from*, not a schedule: the create drawer defaults its due
+ *   date to today, so "due today" said nothing about whether you meant to do it
+ *   today. The pin already reported them as off Today (`onToday`) while the day's
+ *   list showed them anyway — now the two agree, and the pin is what decides.
  */
 export function showsOnDay(r: Routine, dayKey: string, dayStart: Date): boolean {
   if (repeats(r)) {
-    if (r.recurring === 'daily' && !r.intervalDays && !r.monthlyRule) return true;
-    if (isGoalRoutine(r)) {
+    // An explicit unpin beats every default below. Without this the pin on a
+    // daily habit, an anchor or a goal had nothing it could change.
+    if (r.offToday) return false;
+    const fixed = alwaysOnToday(r);
+    if (fixed === 'daily') return true;
+    // Anchors and goals linger through their completion day, then drop.
+    if (fixed) {
       if (r.completed) return !!r.completedAt && logicalDateKey(new Date(r.completedAt)) === dayKey;
       return true;
     }
     return !!r.trackedToday || dueOnDay(r, dayStart);
   }
-  if (r.dueDate && r.dueDate > dayKey) return false;
+  const general = isGeneralTask(r);
+  if (general && !onToday(r)) return false;
+  // Pinned General tasks ignore the due date — the pin *is* the decision, and a
+  // date that defaults to today can't also be one.
+  if (!general && r.dueDate && r.dueDate > dayKey) return false;
   if (r.completed) return !!r.completedAt && logicalDateKey(new Date(r.completedAt)) === dayKey;
   return true;
 }

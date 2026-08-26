@@ -6,6 +6,7 @@ import Today from './pages/Today';
 import UndoToast from './components/UndoToast';
 import CommandPalette from './components/CommandPalette';
 import { startReminders } from './lib/reminders';
+import { startHistory, installUndoHotkeys, withoutHistory } from './lib/history';
 
 // Today is the landing route, so it ships in the main bundle — splitting it would
 // only add a flash on launch. The other tabs are pulled in the first time they're
@@ -15,6 +16,7 @@ import { startReminders } from './lib/reminders';
 // Electron serves the built app over file://, where an absolute /assets path
 // would resolve to the filesystem root and 404.
 const AllPage       = lazy(() => import('./pages/AllPage'));
+const SystemsPage   = lazy(() => import('./pages/SystemsPage'));
 const QuestsPage    = lazy(() => import('./pages/QuestsPage'));
 const QuestlinePage = lazy(() => import('./pages/QuestlinePage'));
 const VynuesPage    = lazy(() => import('./pages/VynuesPage'));
@@ -42,7 +44,15 @@ function AppRoutes() {
   }, [theme]);
 
   useEffect(() => {
-    const run = () => { checkAndResetRecurring(); checkAndResetVynues(); };
+    // Recorded from here on, so the hydrated state is the floor Ctrl+Z stops at.
+    startHistory();
+    return installUndoHotkeys();
+  }, []);
+
+  useEffect(() => {
+    // Outside the history: a day turning over is not something you did, and
+    // Ctrl+Z stepping back through a rollover would take the day with it.
+    const run = () => withoutHistory(() => { checkAndResetRecurring(); checkAndResetVynues(); });
     run();
     const interval = setInterval(run, 60_000);
     return () => clearInterval(interval);
@@ -57,6 +67,7 @@ function AppRoutes() {
       <Routes>
         <Route path="/"              element={<Today />} />
         <Route path="/all"           element={<AllPage />} />
+        <Route path="/systems"       element={<SystemsPage />} />
         <Route path="/quests"        element={<QuestsPage />} />
         <Route path="/questline/:id" element={<QuestlinePage />} />
         <Route path="/vynues"        element={<VynuesPage />} />

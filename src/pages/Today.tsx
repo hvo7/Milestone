@@ -10,11 +10,11 @@
  */
 import { useState, lazy, Suspense } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import type { Routine, Schedule, Action, Questline } from '../types';
+import type { Routine, Schedule, Action, Questline, System } from '../types';
 import {
   useQuestStore, logicalDateKey, logicalDayStart, dateKey, dueOnDay, periodExpired, skipActive,
   isMultiDayCycle, isGoalRoutine, engagedOnDay, subtaskStats, repeats, isQuestComplete, questProgress, DAY_RESET_HOUR,
-  sessionMode, cycleDayKeys,
+  sessionMode, cycleDayKeys, routineSystemIds,
 } from '../store';
 import { showsOnDay, vynuesShowsOnDay } from '../lib/today';
 import { useVynuesStore, vynuesCategoryKey } from '../vynuesStore';
@@ -30,11 +30,11 @@ const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
 // silently undoes the lazy() above.
 import type { EditTarget } from '../components/TaskEditDrawer';
 import type { SubNode, SubtaskTreeHandlers } from '../components/SubtaskTree';
-import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, hasCheckpoints, ANCHOR_LABEL, ANCHOR_TAG, ANCHOR_ICON, ANCHOR_CATEGORY } from '../lib/ui';
+import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, hasCheckpoints, ANCHOR_LABEL, ANCHOR_TAG, ANCHOR_ICON } from '../lib/ui';
+import { MenuSelect } from '../vynuesUi';
 import Heatmap from '../components/Heatmap';
-import Consistency from '../components/Consistency';
 import FirstRunCard from '../components/FirstRunCard';
-import TaskRow, { type RowStrip } from '../components/today/TaskRow';
+import TaskRow, { type RowStrip, type SystemMenu } from '../components/today/TaskRow';
 import { useReorder } from '../components/today/useReorder';
 import { Caption, DueLabel, VynuesDueLabel } from '../components/today/labels';
 import { ProgressSummary, Chip, DayFlipper } from '../components/today/chrome';
@@ -54,16 +54,30 @@ interface Category {
   icon?: string;
   tagLabel?: string;
   rank: number;
+  /** Which half of the app the row came from. A system is a process you run; a
+   *  quest is a goal or a one-off thing to finish. Everything else — loose
+   *  tasks, anchor habits in no system, Vynues — is neither and shows only under
+   *  "All". Drives the Systems / Quests filter. */
+  kind: RowKind;
 }
 
-const ANCHOR_GROUP: Category    = { key: 'anchor',  label: ANCHOR_LABEL, tagLabel: ANCHOR_TAG, color: 'var(--accent)', icon: ANCHOR_ICON, rank: 0 };
-const GENERAL_CATEGORY: Category = { key: 'general', label: 'General', color: 'var(--text-dim)', rank: 1 };
+type RowKind = 'system' | 'quest' | 'other';
+
+// Ranks order the chips. Systems sit straight after the anchor group and ahead
+// of the goal-derived rows: the process you're running is the thing you act on.
+// (Renumbered rather than squeezed in, so every existing pair keeps its order.)
+const GENERAL_CATEGORY: Category = { key: 'general', label: 'General', color: 'var(--text-dim)', rank: 2, kind: 'other' };
 const VYNUES_KEY = 'vynues';
+
+/** A routine that belongs to a system files under it, so the day's list shows
+ *  which process each action is part of rather than a flat pile of habits. */
+const systemCategory = (sys: System): Category =>
+  ({ key: sys.id, label: sys.title, color: 'var(--accent)', icon: sys.icon || '⚙️', rank: 1, kind: 'system' });
 
 /** Every quest-derived row (a routine filed under a questline, a loose action, a
  *  pinned quest) files under its questline — same key, so they group together. */
 const questlineCategory = (ql: Questline): Category =>
-  ({ key: ql.id, label: ql.title, color: categoryColor(ql.color), rank: 2 });
+  ({ key: ql.id, label: ql.title, color: categoryColor(ql.color), rank: 3, kind: 'quest' });
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
@@ -98,11 +112,17 @@ interface TodoItem {
   onDelete: () => void;
   /** Opens the full edit drawer for this task. */
   editTarget?: EditTarget;
+  /** Tag-click menu for reassigning this row's system. Routines only — quest
+   *  actions and Vynues tasks have no system to belong to. */
+  systemMenu?: SystemMenu;
 }
 
 export default function Today() {
   const questlines     = useQuestStore(s => s.questlines);
   const routines       = useQuestStore(s => s.routines);
+  const systems        = useQuestStore(s => s.systems);
+  const setRoutineSystems = useQuestStore(s => s.setRoutineSystems);
+  const toggleRoutineSystem = useQuestStore(s => s.toggleRoutineSystem);
   const deleteRoutine  = useQuestStore(s => s.deleteRoutine);
   const reorderTodo    = useQuestStore(s => s.reorderTodo);
   const todoOrder      = useQuestStore(s => s.todoOrder);
@@ -136,8 +156,10 @@ export default function Today() {
   const deleteVynuesSubtask = useVynuesStore(s => s.deleteSubtask);
 
   const [filter, setFilter] = useState('all');
+  const [kind, setKind] = useState<RowKind | 'all'>('all');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerCategory, setDrawerCategory] = useState('');
+  const [drawerSystem, setDrawerSystem] = useState('');
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
 
   const dragTodo = useReorder(reorderTodo);
@@ -211,14 +233,17 @@ export default function Today() {
     : { skipped: skipActive(r, todayKey), onSkip: () => skipRoutine(r.id) };
 
   // The recurrence badge / due pill / goal hint under a routine's title.
+  //
+  // The cycle count is only added for a goal made of *steps*. A goal with a
+  // target already prints its figure on the counter itself, and again on the day
+  // strip underneath — so adding it here made "0/3 this cycle" the second and
+  // third copy of one number on a row 300px wide.
   const routineMeta = (r: Routine) => {
     const bits: React.ReactNode[] = [];
     if (repeats(r)) bits.push(<RecurrenceBadge key="rec" recurring={r.recurring} intervalDays={r.intervalDays} monthlyRule={r.monthlyRule} />);
     else if (r.dueDate) bits.push(<DueLabel key="due" dueDate={r.dueDate} todayKey={viewKey} />);
-    if (!preview && isGoalRoutine(r) && !r.completed) {
-      const stats = r.target != null
-        ? { done: r.progress ?? 0, total: r.target }
-        : subtaskStats(r.subtasks);
+    if (!preview && isGoalRoutine(r) && !r.completed && r.target == null) {
+      const stats = subtaskStats(r.subtasks);
       bits.push(
         <Caption key="goal">{stats.done}/{stats.total} this cycle</Caption>
       );
@@ -228,10 +253,25 @@ export default function Today() {
   };
 
   // ── Sources ────────────────────────────────────────────────────────────────
-  const liveRoutines = byOrder(routines.filter(r => !r.hidden && showsOnDay(r, viewKey, viewStart)));
+  const onToday = byOrder(routines.filter(r => !r.hidden && showsOnDay(r, viewKey, viewStart)));
+  // The anchor group is a place on this page, not a category in the list: a task
+  // marked for it shows there and *only* there. Exclusive on purpose — the point
+  // of the section is that those few things sit apart from the day's churn, which
+  // a duplicate row in the list below would undo.
+  const anchorRoutines = onToday.filter(r => r.anchor);
+  const liveRoutines = onToday.filter(r => !r.anchor);
 
   const categoryOfRoutine = (r: Routine): Category => {
-    if (r.anchor) return ANCHOR_GROUP;
+    // System first: it's the grouping you chose deliberately, and it's more
+    // specific than "this is an anchor habit" or "this serves that goal".
+    // A habit can be in several systems. The day's list is a list of things to
+    // do, so it shows the habit once and names one system — how it's filed is a
+    // question for the Systems page, and a "+2" on the row is an answer to a
+    // question nobody asks while working through the day.
+    const sys = routineSystemIds(r)
+      .map(sid => systems.find(s => s.id === sid))
+      .find((s): s is System => !!s);
+    if (sys) return systemCategory(sys);
     const ql = r.questlineId ? questlines.find(q => q.id === r.questlineId) : undefined;
     return ql ? questlineCategory(ql) : GENERAL_CATEGORY;
   };
@@ -268,8 +308,11 @@ export default function Today() {
   );
 
   // ── The one list ───────────────────────────────────────────────────────────
-  const todoItems: TodoItem[] = [
-    ...liveRoutines.map(r => {
+
+  /** A routine as a row. Shared with the anchor section, which is a different
+   *  place on the page but the same task: same streak, same skip, same counter,
+   *  same edit drawer. */
+  const routineItem = (r: Routine): TodoItem => {
       const reset = willReset(r);
       const fullyDone = reset ? false : r.completed;
       // A weekly "gym 3×" goal with a session logged today is done *for today* —
@@ -294,8 +337,23 @@ export default function Today() {
         onRename: (t: string) => updateRoutineTitle(r.id, t),
         onDelete: () => deleteRoutine(r.id),
         editTarget: { kind: 'routine', id: r.id } as EditTarget,
+        // Attaching a habit to a system is a thought you have while looking at
+        // the day's list, so the row's own tag does it. Only offered when a
+        // system exists to put it in, and never in the tomorrow preview.
+        systemMenu: (!preview && systems.length > 0)
+          ? {
+              options: systems.filter(sys => !sys.hidden)
+                .map(sys => ({ id: sys.id, label: `${sys.icon || '⚙️'} ${sys.title}` })),
+              values: routineSystemIds(r),
+              onToggle: (sysId: string) => toggleRoutineSystem(r.id, sysId),
+              onClear: () => setRoutineSystems(r.id, []),
+            } satisfies SystemMenu
+          : undefined,
       };
-    }),
+  };
+
+  const todoItems: TodoItem[] = [
+    ...liveRoutines.map(routineItem),
     ...questActions.map(({ action, quest, ql, pinned }) => {
       const done = willReset(action) ? false : action.completed;
       return {
@@ -354,7 +412,7 @@ export default function Today() {
         title: task.title,
         category: {
           key: VYNUES_KEY, label: 'Vynues', tagLabel: project.name,
-          color: categoryColor(project.color), icon: '🚩', rank: 3,
+          color: categoryColor(project.color), icon: '🚩', rank: 4, kind: 'other' as const,
         },
         completed: done,
         todayDone: false,
@@ -382,7 +440,17 @@ export default function Today() {
 
   // ── Chips ──────────────────────────────────────────────────────────────────
   const settledOf = (it: TodoItem) => it.completed || it.todayDone;
-  const chips = [...todoItems
+
+  // The Systems / Quests split is applied before everything else: the chips, the
+  // counts and the list all describe the half you're looking at.
+  const kindItems = kind === 'all' ? todoItems : todoItems.filter(it => it.category.kind === kind);
+  const kindCounts = {
+    all: todoItems.length,
+    system: todoItems.filter(it => it.category.kind === 'system').length,
+    quest: todoItems.filter(it => it.category.kind === 'quest').length,
+  };
+
+  const chips = [...kindItems
     .reduce((acc, it) => {
       const c = acc.get(it.category.key) ?? { category: it.category, open: 0, total: 0 };
       c.total += 1;
@@ -395,8 +463,8 @@ export default function Today() {
 
   const activeExists = filter === 'all' || chips.some(c => c.category.key === filter);
   const visible = filter === 'all' || !activeExists
-    ? todoItems
-    : todoItems.filter(it => it.category.key === filter);
+    ? kindItems
+    : kindItems.filter(it => it.category.key === filter);
 
   // Order: manual todoOrder first (by value), then anything new by source rank.
   const order = todoOrder ?? {};
@@ -441,6 +509,7 @@ export default function Today() {
       key={it.id}
       title={it.title}
       tag={{ label: it.category.tagLabel ?? it.category.label, color: it.category.color }}
+      systemMenu={it.systemMenu}
       completed={false}
       streak={it.streak}
       accentHex={it.accentHex}
@@ -471,20 +540,29 @@ export default function Today() {
     />
   ));
 
-  const done  = todoDone.length;
-  const total = visible.filter(it => !it.skipped).length;
+  // The anchor section, built through the same row builder as the list — so its
+  // tasks keep their streaks, skips, counters, steps and edit drawer rather than
+  // becoming a checkbox with a name beside it.
+  const anchorItems = anchorRoutines.map(routineItem);
+  const anchorDone = anchorItems.filter(settledOf).length;
+  const done  = todoDone.length + anchorDone;
+  const total = visible.filter(it => !it.skipped).length + anchorItems.filter(it => !it.skipped).length;
   const activeChip = chips.find(c => c.category.key === filter);
   const progressLabel = activeChip ? activeChip.category.label : preview ? "Tomorrow's plan" : "Today's progress";
 
   function openDrawer() {
     const key = activeChip?.category.key;
     const firstProject = vynuesProjects.find(p => p.status === 'active');
+    // A system chip is not a questline: filing the new task under `key` would
+    // hand a system id to the questline field. It presets the system instead.
+    const system = key && systems.some(sys => sys.id === key) ? key : '';
     const preset =
-      key === ANCHOR_GROUP.key           ? ANCHOR_CATEGORY :
+      system                              ? '' :
       key === VYNUES_KEY                  ? (firstProject ? vynuesCategoryKey(firstProject.id) : '') :
       key && key !== GENERAL_CATEGORY.key ? key :
                                             '';
     setDrawerCategory(preset);
+    setDrawerSystem(system);
     setDrawerOpen(true);
   }
 
@@ -494,8 +572,57 @@ export default function Today() {
     <div style={{ minHeight: '100vh', paddingBottom: 80 }}>
       <NavBar />
 
-      <div style={{ maxWidth: 780, margin: '0 auto', padding: '28px 20px 60px', overflowX: 'hidden' }}>
+      <div className="today-shell">
 
+        {/* ── The anchor group, as a place rather than a category ──────────────
+            Off to the side and always in view: the few things you want in front
+            of you every day, whatever else the day turned out to hold. */}
+        {anchorRoutines.length > 0 && (
+          <aside className="today-rail">
+            <div className="parchment" style={{ borderRadius: 14, padding: '14px 16px' }}>
+              <h2 style={{ margin: '0 0 10px', fontSize: 12.5, fontWeight: 700, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span>{ANCHOR_ICON}</span>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{ANCHOR_LABEL}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: 'var(--page-text-dim)', fontVariantNumeric: 'tabular-nums' }}>
+                  {anchorDone}/{anchorRoutines.length}
+                </span>
+              </h2>
+              {/* The same row as the list below — no tag, because the box it sits
+                  in is the label. Everything else it can do, it still does. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {anchorItems.map(it => (
+                  <TaskRow
+                    key={it.id}
+                    compact
+                    title={it.title}
+                    completed={it.completed}
+                    todayDone={it.todayDone}
+                    streak={it.streak}
+                    accentHex={it.accentHex}
+                    sourceLine={it.meta}
+                    skipped={it.skipped}
+                    onSkip={it.onSkip}
+                    onToggle={it.onToggle}
+                    onDelete={it.onDelete}
+                    onRename={it.onRename}
+                    onEdit={it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
+                    target={it.target}
+                    progress={it.progress}
+                    step={it.step}
+                    unit={it.unit}
+                    onIncrement={it.onIncrement}
+                    strip={it.strip}
+                    readOnly={preview}
+                    subtasks={it.subtasks}
+                    subHandlers={it.subHandlers}
+                  />
+                ))}
+              </div>
+            </div>
+          </aside>
+        )}
+
+        <div className="today-main">
         <AnimatePresence mode="wait" initial={false} custom={preview ? 1 : -1}>
         <motion.div
           key={preview ? 'tomorrow' : 'today'}
@@ -525,9 +652,8 @@ export default function Today() {
             border: '1px dashed var(--accent-border)', background: 'var(--accent-soft)',
           }}>
             <span style={{ fontSize: 16 }}>🌅</span>
-            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--page-text)', lineHeight: 1.55 }}>
-              <strong>Tomorrow, previewed</strong> — dailies are shown already reset. Add, rename, reorder
-              or delete to shape the day; checking off unlocks when it arrives.
+            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--page-text)' }}>
+              <strong>Tomorrow, previewed</strong>
             </p>
           </div>
         )}
@@ -552,29 +678,47 @@ export default function Today() {
             </button>
           </div>
 
-          {chips.length > 1 && (
-            <div className="chip-row">
-              <Chip
-                label="All"
-                open={todoItems.filter(it => !settledOf(it)).length}
-                total={todoItems.length}
-                active={filter === 'all' || !activeExists}
-                onClick={() => setFilter('all')}
-              />
-              {chips.map(c => (
-                <Chip
-                  key={c.category.key}
-                  label={c.category.label}
-                  icon={c.category.icon}
-                  color={c.category.color}
-                  open={c.open}
-                  total={c.total}
-                  active={filter === c.category.key}
-                  onClick={() => setFilter(filter === c.category.key ? 'all' : c.category.key)}
+          {/* One row of filters: everything, or one of the two halves — a system
+              is a process you run, a quest is a goal or a one-off to finish —
+              and a dropdown for a single questline or system. The per-category
+              chips used to be spelled out here, which by seven questlines was
+              three lines of chrome above a list of five tasks. */}
+          <div className="chip-row" style={{ alignItems: 'center' }}>
+            <Chip
+              label="All"
+              open={todoItems.filter(it => !settledOf(it)).length}
+              total={todoItems.length}
+              active={kind === 'all' && (filter === 'all' || !activeExists)}
+              onClick={() => { setKind('all'); setFilter('all'); }}
+            />
+            {([['system', 'Systems'], ['quest', 'Quests']] as const).map(([k, label]) => (
+              kindCounts[k] > 0 && (
+                <button
+                  key={k}
+                  type="button"
+                  className="chip"
+                  data-active={kind === k}
+                  onClick={() => { setKind(kind === k ? 'all' : k); setFilter('all'); }}
+                >
+                  <span>{label}</span>
+                  <span className="chip-count">{kindCounts[k]}</span>
+                </button>
+              )
+            ))}
+            {chips.length > 1 && (
+              <span style={{ minWidth: 170, marginLeft: 'auto' }}>
+                <MenuSelect
+                  label="Filter"
+                  value={activeExists ? filter : 'all'}
+                  onChange={(v: string) => setFilter(v)}
+                  options={[
+                    { key: 'all', label: kind === 'all' ? 'Everything' : `All ${kind === 'system' ? 'systems' : 'quests'}` },
+                    ...chips.map(c => ({ key: c.category.key, label: `${c.category.label} · ${c.open}` })),
+                  ]}
                 />
-              ))}
-            </div>
-          )}
+              </span>
+            )}
+          </div>
 
           <div style={{ height: 1, background: 'var(--card-border)', marginBottom: 14 }} />
 
@@ -609,6 +753,7 @@ export default function Today() {
                     key={it.id}
                     title={it.title}
                     tag={{ label: it.category.tagLabel ?? it.category.label, color: it.category.color }}
+                    systemMenu={it.systemMenu}
                     completed={it.completed}
                     todayDone={it.todayDone}
                     streak={it.streak}
@@ -655,7 +800,7 @@ export default function Today() {
         </AnimatePresence>
 
         <Heatmap />
-        <Consistency />
+        </div>
       </div>
 
       {/* ── Day flipper ──────────────────────────────────────────────────────── */}
@@ -666,7 +811,7 @@ export default function Today() {
       {/* No fallback: a drawer slides in over the page, so an empty frame for the
           moment it takes to arrive is exactly the right thing to show. */}
       <Suspense fallback={null}>
-        {drawerOpen && <TaskCreateDrawer open={drawerOpen} initialCategory={drawerCategory} onClose={() => setDrawerOpen(false)} />}
+        {drawerOpen && <TaskCreateDrawer open={drawerOpen} initialCategory={drawerCategory} initialSystem={drawerSystem} onClose={() => setDrawerOpen(false)} />}
         {editTarget && <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />}
       </Suspense>
     </div>

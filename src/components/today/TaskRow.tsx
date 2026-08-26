@@ -12,6 +12,17 @@ import { SessionStrip, CheckpointPips } from './ProgressStrip';
 
 /** What, if anything, to draw under this row. Only ever one of the two: a goal
  *  counting days doesn't also have a quantity ladder. */
+/** Systems offered by a row's tag menu, plus the ones it currently sits in. */
+export interface SystemMenu {
+  options: { id: string; label: string }[];
+  /** Every system this row is part of — a habit can be in more than one. */
+  values: string[];
+  /** Adds or removes that one membership. */
+  onToggle: (id: string) => void;
+  /** Takes it out of every system at once. */
+  onClear: () => void;
+}
+
 export type RowStrip =
   | { kind: 'sessions'; days: string[]; logged: string[]; onToggle: (dayKey: string) => void }
   | { kind: 'checkpoints'; onSet: (value: number) => void };
@@ -30,10 +41,15 @@ export interface DragHandlers {
 
 /** Counter control that replaces the checkbox for counter tasks: −  2/3 oz  ＋,
  *  with a slim progress bar. The task completes once progress reaches target. */
-function CounterControl({ progress, target, step = 1, unit, complete, accentHex, onIncrement, readOnly = false }: {
+function CounterControl({ progress, target, step = 1, unit, complete, accentHex, onIncrement, readOnly = false, wide = false, indent = 0 }: {
   progress: number; target: number; step?: number; unit?: string;
   complete: boolean; accentHex: string; onIncrement: (delta: number) => void;
   readOnly?: boolean;
+  /** Rail variant: −, a full-width bar, ＋ on their own line under the title.
+   *  The reading is printed on the row's meta line instead, which is what keeps
+   *  a unit like "Minutes Reading" from eating the title's width. */
+  wide?: boolean;
+  indent?: number;
 }) {
   const pct = target > 0 ? Math.min(100, Math.round((progress / target) * 100)) : 0;
   const color = complete ? 'var(--success)' : accentHex;
@@ -60,6 +76,22 @@ function CounterControl({ progress, target, step = 1, unit, complete, accentHex,
     </button>
     );
   };
+  const bar = (height: number) => (
+    <div style={{ height, background: 'var(--track-bg)', borderRadius: 999, overflow: 'hidden' }}>
+      <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 999, transition: 'width 0.3s cubic-bezier(.22,1,.36,1)' }} />
+    </div>
+  );
+
+  if (wide) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginTop: 9, paddingLeft: indent }}>
+        {stepBtn('−', -step, progress <= 0)}
+        <div style={{ flex: 1, minWidth: 0 }}>{bar(5)}</div>
+        {stepBtn('＋', step, complete)}
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, minWidth: 104, alignSelf: 'center' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -69,9 +101,7 @@ function CounterControl({ progress, target, step = 1, unit, complete, accentHex,
         </span>
         {stepBtn('＋', step, complete)}
       </div>
-      <div style={{ height: 3.5, background: 'var(--track-bg)', borderRadius: 999, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 999, transition: 'width 0.3s cubic-bezier(.22,1,.36,1)' }} />
-      </div>
+      {bar(3.5)}
     </div>
   );
 }
@@ -105,6 +135,9 @@ export interface TaskRowProps {
   accentHex: string;
   sourceLine?: React.ReactNode;
   tag?: { label: string; color: string };
+  /** Makes the tag a button that reassigns the row's system in place. Rename is
+   *  on double-click, so a single click on the tag is free for this. */
+  systemMenu?: SystemMenu;
   onToggle: () => void;
   onDelete?: () => void;
   onRename?: (title: string) => void;
@@ -122,12 +155,114 @@ export interface TaskRowProps {
    *  of the shapes that needs it. */
   strip?: RowStrip;
   readOnly?: boolean;
+  /**
+   * The anchor rail's variant: one column, not four.
+   *
+   * The rail is 300px wide, so the full row's single line — grip, counter,
+   * title, cadence, streak, buttons — had ~80px left for the title and wrapped
+   * it a word at a time. Compact gives the title the whole width and puts
+   * everything else on its own line beneath: cadence and reading as one quiet
+   * caption, then the counter, then the strip. Nothing is taken away — skip,
+   * edit, rename, steps and the pips all still work, they just queue up
+   * vertically instead of fighting over the same 300px.
+   */
+  compact?: boolean;
+}
+
+/**
+ * The row's category label, as a control that reassigns its system in place.
+ *
+ * Attaching a habit to a system is the kind of thing you decide while looking at
+ * the day's list, not while sitting in a form — so it happens on the row, where
+ * the thought occurs. Left as plain text when there are no systems to pick from.
+ */
+function TagMenu({ label, color, menu }: { label: string; color: string; menu: SystemMenu }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-block' }}>
+      <button
+        type="button"
+        // The row uses double-click to rename; this must not start that.
+        onDoubleClick={e => e.stopPropagation()}
+        onClick={e => { e.stopPropagation(); setOpen(o => !o); }}
+        title="Change which systems this belongs to"
+        style={{
+          font: 'inherit', fontWeight: 700, color, background: 'none', cursor: 'pointer',
+          border: 'none', borderBottom: '1px dashed transparent', padding: 0,
+          borderBottomColor: open ? color : 'transparent',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.borderBottomColor = color; }}
+        onMouseLeave={e => { if (!open) e.currentTarget.style.borderBottomColor = 'transparent'; }}
+      >
+        {label}
+      </button>
+
+      {open && (
+        <>
+          {/* Catches the next click anywhere so the menu closes like a menu. */}
+          <span
+            onClick={e => { e.stopPropagation(); setOpen(false); }}
+            style={{ position: 'fixed', inset: 0, zIndex: 40 }}
+          />
+          <span
+            style={{
+              position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 41,
+              minWidth: 190, display: 'block', padding: 5, borderRadius: 10,
+              background: 'var(--card-bg-raised)', border: '1px solid var(--card-border)',
+              boxShadow: '0 10px 30px rgba(0,0,0,0.34)',
+            }}
+          >
+            {/* Ticks rather than a single choice, and the menu stays open: a habit
+                can be part of several systems, so picking one is rarely the end of
+                the thought. */}
+            {menu.options.map(o => {
+              const on = menu.values.includes(o.id);
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={on}
+                  onClick={e => { e.stopPropagation(); menu.onToggle(o.id); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 7, width: '100%', textAlign: 'left',
+                    fontFamily: 'inherit', fontSize: 12.5, fontWeight: on ? 700 : 500, cursor: 'pointer',
+                    padding: '6px 9px', borderRadius: 7, border: 'none',
+                    background: on ? 'var(--accent-soft)' : 'transparent',
+                    color: on ? 'var(--accent)' : 'var(--page-text)',
+                  }}
+                >
+                  <span aria-hidden="true" style={{ fontSize: 11, width: 10, flexShrink: 0 }}>{on ? '✓' : ''}</span>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {o.label}
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); menu.onClear(); setOpen(false); }}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', fontFamily: 'inherit',
+                fontSize: 12.5, cursor: 'pointer', padding: '6px 9px', borderRadius: 7,
+                border: 'none', background: 'transparent', color: 'var(--text-dim)',
+                borderTop: '1px solid var(--card-border)', marginTop: 3,
+              }}
+            >
+              {menu.values.length ? 'Remove from all systems' : 'Not part of a system'}
+            </button>
+          </span>
+        </>
+      )}
+    </span>
+  );
 }
 
 export default function TaskRow({
-  title, completed, todayDone = false, skipped, onSkip, streak, accentHex, sourceLine, tag, onToggle, onDelete, onRename, onEdit, drag,
+  title, completed, todayDone = false, skipped, onSkip, streak, accentHex, sourceLine, tag, systemMenu, onToggle, onDelete, onRename, onEdit, drag,
   subtasks, subHandlers,
-  target, progress, step, unit, onIncrement, strip, readOnly = false,
+  target, progress, step, unit, onIncrement, strip, readOnly = false, compact = false,
 }: TaskRowProps) {
   const [hovered, setHovered] = useState(false);
   const [addingSub, setAddingSub] = useState(false);
@@ -184,6 +319,9 @@ export default function TaskRow({
       : 'background 0.15s, border-color 0.12s, border-left-color 0.3s, box-shadow 0.2s, transform 0.2s',
     boxShadow: hovered && !completed && !skipped ? 'var(--row-shadow-hover)' : 'var(--row-shadow)',
     cursor: drag ? 'grab' : undefined,
+    // The rail spaces its rows with a container gap, so the row drops its own
+    // margin, and tightens up: it is a column of habits, not a page of cards.
+    ...(compact ? { padding: '10px 12px', borderRadius: 10, marginBottom: 0 } : {}),
   };
 
   // Grabbing the row anywhere drags it — the way reorderable lists behave
@@ -194,7 +332,197 @@ export default function TaskRow({
     dragControls.start(e);
   }
 
-  const rowContent = (
+  // ── The rail variant ────────────────────────────────────────────────────
+  // Title first and alone; everything else queues beneath it. RAIL_INDENT is the
+  // checkbox plus its gap, so the caption, counter, pips and steps all line up
+  // under the title rather than under the circle.
+  const RAIL_INDENT = 29;
+  // Where the ladder is drawn, it *is* the control — tapping 20 sets 20, and
+  // tapping the rung you are on steps back off it. A bar and a pair of ± buttons
+  // above it would be a second way to say the same thing, on a row 300px wide.
+  const railLadder = strip?.kind === 'checkpoints' && target != null && hasCheckpoints(target, step ?? 1);
+  const railValue = isCounter
+    ? (strip?.kind === 'sessions'
+        ? `${progress ?? 0}/${target} this cycle`
+        : `${progress ?? 0}/${target}${unit ? ` ${unit}` : ''}`)
+    : undefined;
+
+  const compactContent = (
+    <>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        {isCounter ? (
+          // A counter has no single "done" tick to offer here — its control is the
+          // line below. The gutter stays, so every title starts in the same column
+          // and the rail reads as one list.
+          <span aria-hidden="true" style={{ width: 19, flexShrink: 0 }} />
+        ) : (
+          <input
+            type="checkbox"
+            className="rune-check"
+            checked={completed}
+            onChange={onToggle}
+            disabled={readOnly}
+            aria-label={title}
+            title={readOnly ? 'Come back tomorrow to check this off' : subCount.total > 0 ? 'Completes every step too' : undefined}
+            style={{ flexShrink: 0, marginTop: 1, ...(readOnly ? { cursor: 'default', opacity: 0.6 } : {}) }}
+          />
+        )}
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {editing ? (
+            <input
+              ref={editRef}
+              autoFocus
+              className="rune-input"
+              value={titleDraft}
+              onFocus={e => e.currentTarget.select()}
+              onChange={e => setTitleDraft(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') editRef.current?.blur();
+                if (e.key === 'Escape') { cancelRef.current = true; editRef.current?.blur(); }
+              }}
+              onBlur={commitEdit}
+              style={{ width: '100%', fontSize: 13.5, fontWeight: 500, padding: '3px 7px' }}
+            />
+          ) : (
+            <span
+              onDoubleClick={startEdit}
+              title={onRename ? 'Double-click to rename' : undefined}
+              style={{
+                display: 'block',
+                fontSize: 13.5,
+                fontWeight: 500,
+                lineHeight: 1.35,
+                color: completed || skipped ? 'var(--page-text-dim)' : 'var(--page-text)',
+                textDecoration: completed ? 'line-through' : 'none',
+                cursor: onRename ? 'text' : undefined,
+                overflowWrap: 'anywhere',
+              }}
+            >
+              {title}
+            </span>
+          )}
+
+          {/* One quiet caption for everything the row used to say in four places:
+              how often it comes back, where the count is, the streak, the state.
+              Dot-spaced so it stays one line for as long as it can. */}
+          <span
+            style={{
+              display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '2px 7px',
+              marginTop: 3, fontSize: 10.5, fontWeight: 600, color: 'var(--page-text-dim)',
+              fontVariantNumeric: 'tabular-nums', lineHeight: 1.4,
+            }}
+          >
+            {sourceLine}
+            {railValue && <span>{railValue}</span>}
+            {(streak ?? 0) > 0 && <span style={{ color: '#f97316' }}>🔥{streak}</span>}
+            {todayDone && !completed && <span style={{ color: 'var(--success)' }}>✓ done today</span>}
+            {skipped && <span style={{ color: SKIP_COLOR }}>skipped</span>}
+            {subCount.total > 0 && (
+              <span style={{ color: subCount.done === subCount.total ? 'var(--success)' : 'var(--page-text-dim)' }}>
+                {subCount.done}/{subCount.total} steps
+              </span>
+            )}
+          </span>
+        </div>
+
+        {/* Half-lit rather than hover-only: the rail is the first thing on the
+            page on a phone, where there is no hover to reveal anything with. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginTop: -1 }}>
+          {onSkip && !completed && (
+            <IconButton
+              onClick={onSkip}
+              title={skipped
+                ? 'Skipped today — click to un-skip'
+                : "Skip just today — streak safe, back tomorrow. A weekly goal keeps its progress."}
+              rest={skipped ? SKIP_COLOR : undefined}
+              hover={SKIP_COLOR}
+              opacity={skipped || hovered ? 1 : 0.45}
+              style={{ display: 'flex', alignItems: 'center' }}
+            >
+              <SkipIcon size={12} />
+            </IconButton>
+          )}
+          {subtasksEnabled && !completed && !skipped && hovered && (
+            <IconButton onClick={() => setAddingSub(v => !v)} title="Add a step" size={14}>
+              ＋
+            </IconButton>
+          )}
+          {onEdit && (
+            <IconButton
+              onClick={onEdit}
+              title="Edit everything — name, schedule, target, steps…"
+              size={12}
+              opacity={hovered || editing ? 1 : 0.45}
+            >
+              ✎
+            </IconButton>
+          )}
+          {onDelete && hovered && !completed && (
+            <IconButton onClick={onDelete} title="Delete" hover="var(--danger)" size={12}>
+              ✕
+            </IconButton>
+          )}
+        </div>
+      </div>
+
+      {/* The counter, full width under the title. A session goal skips it — its
+          day pips below *are* the control, and −/＋ beside them only invited the
+          "three gym visits from one sofa" the day strip exists to prevent. */}
+      {isCounter && strip?.kind !== 'sessions' && !railLadder && (
+        <CounterControl
+          wide
+          indent={RAIL_INDENT}
+          progress={progress ?? 0}
+          target={target!}
+          step={step}
+          unit={unit}
+          complete={completed || (progress ?? 0) >= target!}
+          accentHex={todayDone ? 'var(--success)' : accentHex}
+          onIncrement={onIncrement!}
+          readOnly={readOnly}
+        />
+      )}
+
+      {strip?.kind === 'sessions' && target != null && (
+        <SessionStrip
+          compact
+          days={strip.days}
+          logged={strip.logged}
+          target={target}
+          indent={RAIL_INDENT}
+          onToggle={strip.onToggle}
+          readOnly={readOnly}
+        />
+      )}
+      {strip?.kind === 'checkpoints' && target != null && hasCheckpoints(target, step ?? 1) && (
+        <CheckpointPips
+          compact
+          progress={progress ?? 0}
+          target={target}
+          step={step ?? 1}
+          unit={unit}
+          indent={RAIL_INDENT}
+          onSet={strip.onSet}
+          readOnly={readOnly}
+        />
+      )}
+
+      {(subs.length > 0 || addingSub) && subHandlers && (
+        <div style={{ marginTop: 8, paddingLeft: RAIL_INDENT }}>
+          <SubtaskTree
+            nodes={subs}
+            handlers={subHandlers}
+            readOnly={readOnly}
+            showRootAdd={addingSub}
+            onDismissRootAdd={() => setAddingSub(false)}
+          />
+        </div>
+      )}
+    </>
+  );
+
+  const fullContent = (
     <>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         {drag && (
@@ -247,10 +575,24 @@ export default function TaskRow({
             // title sits in a sibling element the checkbox has no relation to.
             aria-label={title}
             title={readOnly ? 'Come back tomorrow to check this off' : subCount.total > 0 ? 'Completes every step too' : undefined}
-            style={{ flexShrink: 0, marginTop: sourceLine ? 2 : 0, ...(readOnly ? { cursor: 'default', opacity: 0.6 } : {}) }}
+            // Dropped past the questline line so it sits against the title, which
+            // is the thing it ticks off.
+            style={{ flexShrink: 0, marginTop: tag ? 18 : 0, ...(readOnly ? { cursor: 'default', opacity: 0.6 } : {}) }}
           />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Above the task rather than in front of it. Inline, the questline was
+              the first thing on every row and the same weight as the task, so a
+              list of eight tasks read as eight questlines. On its own line it
+              labels the row without competing with what the row is asking of you
+              — and it stays put while the title is being renamed. */}
+          {tag && (
+            <span style={{ display: 'block', fontSize: 12, lineHeight: 1.35, marginBottom: 1 }}>
+              {systemMenu
+                ? <TagMenu label={tag.label} color={tag.color} menu={systemMenu} />
+                : <span style={{ fontWeight: 700, color: tag.color }}>{tag.label}</span>}
+            </span>
+          )}
           {editing ? (
             <input
               ref={editRef}
@@ -272,20 +614,16 @@ export default function TaskRow({
               title={onRename ? 'Double-click to rename' : undefined}
               style={{
                 display: 'block',
-                fontSize: 14,
-                fontWeight: 500,
+                // Large but unweighted: the questline above carries the bold, and
+                // two bold lines on one row is two headings and no body.
+                fontSize: 14.5,
+                fontWeight: 400,
                 color: completed || skipped ? 'var(--page-text-dim)' : 'var(--page-text)',
                 textDecoration: completed ? 'line-through' : 'none',
                 lineHeight: 1.4,
                 cursor: onRename ? 'text' : undefined,
               }}
             >
-              {tag && (
-                <>
-                  <span style={{ fontWeight: 700, color: tag.color }}>{tag.label}</span>
-                  <span style={{ color: 'var(--page-text-dim)', opacity: 0.7 }}> — </span>
-                </>
-              )}
               {title}
               {todayDone && !completed && (
                 <span className="pill-today-done">✓ TODAY</span>
@@ -306,14 +644,19 @@ export default function TaskRow({
               )}
             </span>
           )}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, marginTop: 2 }}>
+          {/* The cadence lives on the right, not on a third line under the title.
+              It says how often the task comes back, which is standing information
+              about the task — it doesn't need a line of its own on every row. */}
           {sourceLine && (
-            <span style={{ display: 'block', marginTop: 4 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, marginRight: 2 }}>
               {sourceLine}
             </span>
           )}
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, marginTop: 2 }}>
-          {(streak ?? 0) > 1 && (
+          {/* Shown from 1, not 2: a streak you set by hand has to appear, or the
+              edit reads as having silently failed. */}
+          {(streak ?? 0) > 0 && (
             <span style={{ fontSize: 11, fontWeight: 600, color: '#f97316' }}>
               🔥{streak}
             </span>
@@ -389,6 +732,8 @@ export default function TaskRow({
       )}
     </>
   );
+
+  const rowContent = compact ? compactContent : fullContent;
 
   const opacityTarget = completed ? 0.68 : skipped ? 0.55 : 1;
   const sharedMotionProps = {

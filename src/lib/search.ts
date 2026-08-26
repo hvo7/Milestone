@@ -9,13 +9,13 @@
  * decides whether search feels useful or useless, and it's not something you want
  * to verify by squinting at a dropdown.
  */
-import type { Questline, Routine } from '../types';
+import type { Questline, Routine, System } from '../types';
 import type { VynuesProject } from '../vynuesStore';
-import { flattenSubtasks, repeats, recurrenceLabel } from '../store';
+import { flattenSubtasks, repeats, recurrenceLabel, routineSystemIds, systemGoalIds, systemQuestIds } from '../store';
 import { flattenVynuesSubtasks } from '../vynuesStore';
 import { cleanQuest, ANCHOR_LABEL } from './ui';
 
-export type ResultKind = 'questline' | 'quest' | 'action' | 'routine' | 'project' | 'vynues-task' | 'step';
+export type ResultKind = 'questline' | 'quest' | 'action' | 'routine' | 'system' | 'project' | 'vynues-task' | 'step';
 
 export interface SearchResult {
   id: string;
@@ -40,7 +40,7 @@ const MATCH_EXACT = 0, MATCH_PREFIX = 1, MATCH_WORD = 2, MATCH_SUB = 3, MATCH_CO
 /** Ordering between kinds at equal match quality: the things you act on daily
  *  come before the containers they live in. */
 const KIND_RANK: Record<ResultKind, number> = {
-  routine: 0, action: 1, 'vynues-task': 1, quest: 2, step: 3, questline: 4, project: 4,
+  routine: 0, action: 1, 'vynues-task': 1, quest: 2, step: 3, system: 4, questline: 4, project: 4,
 };
 
 const norm = (s: string) => s.toLowerCase().trim();
@@ -75,12 +75,34 @@ function scoreItem(title: string, context: string | undefined, terms: string[]):
 export interface SearchSources {
   questlines: Questline[];
   routines: Routine[];
+  /** Optional so existing callers (and tests) don't have to supply it. */
+  systems?: System[];
   projects: VynuesProject[];
 }
 
 /** Every searchable thing in the app, flattened into one candidate list. */
-function candidates({ questlines, routines, projects }: SearchSources): Omit<SearchResult, 'score'>[] {
+function candidates({ questlines, routines, systems, projects }: SearchSources): Omit<SearchResult, 'score'>[] {
   const out: Omit<SearchResult, 'score'>[] = [];
+
+  for (const sys of systems ?? []) {
+    if (sys.hidden) continue;
+    const goals = [
+      ...systemGoalIds(sys).map(gid => questlines.find(x => x.id === gid)?.title),
+      // Quests too — a system can feed one goal inside a questline rather than
+      // the whole direction.
+      ...systemQuestIds(sys).map(qid => {
+        const quest = questlines.flatMap(ql => ql.quests).find(q => q.id === qid);
+        return quest && cleanQuest(quest.title);
+      }),
+    ].filter((t): t is string => !!t);
+    const members = routines.filter(r => routineSystemIds(r).includes(sys.id) && !r.hidden).length;
+    out.push({
+      id: sys.id, kind: 'system', title: sys.title,
+      context: goals.length ? `System · serves ${goals.join(', ')}` : 'System',
+      path: '/systems',
+      hint: `${members} habit${members === 1 ? '' : 's'}`,
+    });
+  }
 
   for (const ql of questlines) {
     const path = `/questline/${ql.id}`;
@@ -157,11 +179,11 @@ export function search(sources: SearchSources, query: string, limit = 24): Searc
 
 /** Glyph shown beside a result, so the kind reads without a text label. */
 export const KIND_ICON: Record<ResultKind, string> = {
-  questline: '📜', quest: '⚔', action: '•', routine: '◇', project: '🚩', 'vynues-task': '•', step: '↳',
+  questline: '📜', quest: '⚔', action: '•', routine: '◇', system: '⚙', project: '🚩', 'vynues-task': '•', step: '↳',
 };
 
 /** Human name for a kind, for the result's right-hand caption. */
 export const KIND_LABEL: Record<ResultKind, string> = {
-  questline: 'Questline', quest: 'Quest', action: 'Task', routine: 'Task',
+  questline: 'Questline', quest: 'Quest', action: 'Task', routine: 'Task', system: 'System',
   project: 'Project', 'vynues-task': 'Task', step: 'Step',
 };

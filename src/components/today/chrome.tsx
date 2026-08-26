@@ -1,6 +1,7 @@
 /** The furniture around the Today list: the progress bar, the category filter
  *  chips, and the button that flips to tomorrow's preview. */
 import { motion } from 'framer-motion';
+import QuestIcon from '../QuestIcon';
 
 export function ProgressSummary({ label, done, total }: { label: string; done: number; total: number }) {
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
@@ -42,7 +43,8 @@ export function Chip({ label, icon, color, open, total, active, onClick }: {
   return (
     <button type="button" className="chip" data-active={active} onClick={onClick}>
       {icon
-        ? <span style={{ fontSize: 12, lineHeight: 1 }}>{icon}</span>
+        // A system's mark can be an uploaded picture, not just a character.
+        ? <QuestIcon icon={icon} size={13} />
         : color && <span className="chip-dot" style={{ background: color }} />}
       <span>{label}</span>
       <span className="chip-count" style={cleared ? { color: 'var(--success)' } : undefined}>

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useQuestStore, dateKey } from '../store';
+import { useQuestStore, dateKey, isGeneralTask, routineSystemIds } from '../store';
 import { useVynuesStore, type TaskPriority } from '../vynuesStore';
 import { RepeatPicker, type RepeatValue } from '../recurrence';
 import { MenuSelect, PrioritySegmented, PROJECT_COLOR_VAR, toDateTimeLocalInput } from '../vynuesUi';
 import SubtaskTree from './SubtaskTree';
 import Field from './Field';
-import { cleanQuest, routineSubNodes, vynuesSubNodes, ANCHOR_LABEL, ANCHOR_ICON, ANCHOR_CATEGORY as ANCHOR_KEY } from '../lib/ui';
+import MultiSelect from './MultiSelect';
+import { cleanQuest, routineSubNodes, vynuesSubNodes, ANCHOR_LABEL, ANCHOR_ICON } from '../lib/ui';
 
 /** Which task the drawer is editing. One drawer covers all three stores. */
 export type EditTarget =
@@ -20,6 +21,8 @@ export type EditTarget =
 function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
   const routine     = useQuestStore(s => s.routines.find(r => r.id === id));
   const questlines  = useQuestStore(s => s.questlines);
+  const systems     = useQuestStore(s => s.systems);
+  const setRoutineSystems    = useQuestStore(s => s.setRoutineSystems);
   const updateRoutine        = useQuestStore(s => s.updateRoutine);
   const deleteRoutine        = useQuestStore(s => s.deleteRoutine);
   const toggleRoutineTracked = useQuestStore(s => s.toggleRoutineTracked);
@@ -30,7 +33,11 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
 
   const [title, setTitle]     = useState(routine?.title ?? '');
   const [desc, setDesc]       = useState(routine?.description ?? '');
-  const [category, setCategory] = useState(routine?.anchor ? ANCHOR_KEY : (routine?.questlineId ?? ''));
+  // Two independent questions now: is this one of my core habits, and what is
+  // it for. Filing a habit under a goal used to silently drop it out of the
+  // anchor group, which meant you could not have both.
+  const [anchorOn, setAnchorOn]  = useState(!!routine?.anchor);
+  const [category, setCategory]  = useState(routine?.questlineId ?? '');
   const [questId, setQuestId] = useState(routine?.questId ?? '');
   const [repeat, setRepeat]   = useState<RepeatValue>({ recurring: routine?.recurring ?? null, intervalDays: routine?.intervalDays, monthlyRule: routine?.monthlyRule });
   const [dueDate, setDueDate] = useState(routine?.dueDate ?? '');
@@ -41,12 +48,19 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
   // `undefined` means "follow the default derived from the task's shape"; once the
   // user touches the toggle it becomes an explicit yes/no stored on the routine.
   const [oncePerDay, setOncePerDay] = useState<boolean | undefined>(routine?.oncePerDay);
+  const [streak, setStreak]   = useState(String(routine?.streak ?? 0));
+  const [systemIds, setSystemIds] = useState<string[]>(routine ? routineSystemIds(routine) : []);
 
   if (!routine) return null;
 
   const ql = questlines.find(q => q.id === category);
   const isRepeating = !!repeat.recurring || !!repeat.intervalDays || !!repeat.monthlyRule;
-  const canPin = (routine.recurring && routine.recurring !== 'daily') || !!routine.intervalDays || !!routine.monthlyRule;
+  const savedOneOff = !routine.recurring && !routine.intervalDays && !routine.monthlyRule;
+  // A daily is always on Today and has nothing to toggle. Everything else that
+  // Today doesn't carry by itself needs the pin — including a General one-off,
+  // which never had one while a due date put it on the list unasked.
+  const canPin = (routine.recurring && routine.recurring !== 'daily') || !!routine.intervalDays || !!routine.monthlyRule
+    || (savedOneOff && isGeneralTask(routine));
   // The "counts days" choice only exists for a goal whose cycle spans several
   // days — mirrors isMultiDayCycle, but against the *pending* edits rather than
   // the saved task, so the option appears the moment you pick "weekly".
@@ -63,9 +77,9 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
     updateRoutine(routine.id, {
       title: title.trim() || routine.title,
       description: desc.trim(),
-      questlineId: category && category !== ANCHOR_KEY ? category : null,
-      questId: category && category !== ANCHOR_KEY && questId ? questId : null,
-      anchor: category === ANCHOR_KEY,
+      questlineId: category || null,
+      questId: category && questId ? questId : null,
+      anchor: anchorOn,
       recurring: repeat.recurring,
       intervalDays: repeat.intervalDays,
       monthlyRule: repeat.monthlyRule,
@@ -74,7 +88,15 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
         ? { target: goal, step: per > 1 ? per : undefined, unit: unit.trim() || undefined }
         : null,
       oncePerDay: oncePerDay ?? null,
+      // Only sent for repeating tasks, which are the only ones that carry a streak.
+      ...(isRepeating ? { streak: parseInt(streak, 10) || 0 } : {}),
     });
+    // Separate from the patch above: system membership is its own relationship,
+    // independent of the questline the task may also serve.
+    const before = routineSystemIds(routine);
+    if (before.length !== systemIds.length || before.some(x => !systemIds.includes(x))) {
+      setRoutineSystems(routine.id, systemIds);
+    }
     onClose();
   }
 
@@ -102,17 +124,34 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
           />
         </Field>
 
-        <Field label="Category">
+        <Field label="Questline">
           <MenuSelect
-            label="Category"
+            label="Questline"
             value={category}
             onChange={v => { setCategory(v); setQuestId(''); }}
             options={[
               { key: '', label: 'General' },
-              { key: ANCHOR_KEY, label: `${ANCHOR_ICON} ${ANCHOR_LABEL}` },
               ...questlines.filter(q => !q.hidden).map(q => ({ key: q.id, label: q.title })),
             ]}
           />
+        </Field>
+
+        <Field label="Anchor habit">
+          <button
+            type="button"
+            onClick={() => setAnchorOn(v => !v)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content',
+              fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              padding: '8px 13px', borderRadius: 10,
+              border: anchorOn ? '1px solid var(--accent-border)' : '1px solid var(--input-border)',
+              background: anchorOn ? 'var(--accent-soft)' : 'var(--input-bg)',
+              color: anchorOn ? 'var(--accent)' : 'var(--text-dim)',
+              transition: 'all 0.15s',
+            }}
+          >
+            {ANCHOR_ICON} {anchorOn ? `In ${ANCHOR_LABEL}` : `Add to ${ANCHOR_LABEL}`}
+          </button>
         </Field>
 
         {ql && ql.quests.filter(q => !q.hidden).length > 0 && (
@@ -126,14 +165,7 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
           </Field>
         )}
 
-        <Field
-          label="Repeats"
-          hint={repeat.monthlyRule
-            ? 'Lands on exactly that date each month — it shows on Today when the day arrives.'
-            : repeat.recurring === 'weekly' || repeat.recurring === 'monthly' || (repeat.intervalDays ?? 0) > 1
-              ? 'Multi-day goals with a counter or steps show on Today every day — knock out a bit whenever, skip a day without losing the week.'
-              : undefined}
-        >
+        <Field label="Repeats">
           <RepeatPicker value={repeat} onChange={setRepeat} />
         </Field>
 
@@ -199,15 +231,8 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
                     onChange={e => setOncePerDay(e.target.checked)}
                     style={{ marginTop: 2 }}
                   />
-                  <span>
-                    <span style={{ display: 'block', fontSize: 13, color: 'var(--page-text)' }}>
-                      Counts days, not taps
-                    </span>
-                    <span style={{ display: 'block', fontSize: 12, color: 'var(--text-dim)', marginTop: 2, lineHeight: 1.5 }}>
-                      For goals like “go to the gym 3 times a week”, where one day can only
-                      count once. A strip of the week appears under the task — tap a day to
-                      log it, or an earlier one to fill in a session you forgot.
-                    </span>
+                  <span style={{ fontSize: 13, color: 'var(--page-text)' }}>
+                    Counts days, not taps
                   </span>
                 </label>
               )}
@@ -215,8 +240,34 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
           )}
         </Field>
 
+        {isRepeating && systems.length > 0 && (
+          <Field label="Systems">
+            <MultiSelect
+              options={systems.filter(sys => !sys.hidden).map(sys => ({ id: sys.id, label: sys.title }))}
+              values={systemIds}
+              onToggle={sid => setSystemIds(ids => (ids.includes(sid) ? ids.filter(x => x !== sid) : [...ids, sid]))}
+              placeholder="No system"
+              noun="systems"
+            />
+          </Field>
+        )}
+
+        {isRepeating && (
+          <Field label="Streak">
+            <input
+              className="rune-input"
+              type="number"
+              min={0}
+              value={streak}
+              onChange={e => setStreak(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') save(); }}
+              style={{ fontSize: 14, padding: '9px 12px', width: 120 }}
+            />
+          </Field>
+        )}
+
         {canPin && (
-          <Field label="Today" hint="Non-daily tasks without a counter or steps stay off Today until their due day — pin to work on it today anyway.">
+          <Field label="Today">
             <button
               type="button"
               onClick={() => toggleRoutineTracked(routine.id)}
@@ -235,7 +286,7 @@ function RoutineEditor({ id, onClose }: { id: string; onClose: () => void }) {
           </Field>
         )}
 
-        <Field label="Steps" hint="Every step can be broken down again with its own ＋ — as deep as it takes.">
+        <Field label="Steps">
           <SubtaskTree
             nodes={routineSubNodes(routine.subtasks)}
             showRootAdd
@@ -387,7 +438,7 @@ function VynuesEditor({ projectId, taskId, onClose }: { projectId: string; taskI
           />
         </Field>
 
-        <Field label="Steps" hint="Ticking every step completes the task. Any step can be broken down again.">
+        <Field label="Steps">
           <SubtaskTree
             nodes={vynuesSubNodes(task.subtasks)}
             showRootAdd

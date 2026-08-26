@@ -19,25 +19,8 @@ export default function UndoToast() {
   const run = useUndoStore(s => s.run);
   const dismiss = useUndoStore(s => s.dismiss);
 
-  // Ctrl/⌘-Z, because that is the first thing anyone tries. Captured on window so
-  // it works wherever focus is — except inside a field, where it has to keep
-  // meaning "undo my typing".
-  useEffect(() => {
-    if (!entry) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'z' && e.key !== 'Z') return;
-      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
-      // `instanceof Element`, not a cast: a key event can be dispatched at
-      // `window` or `document`, neither of which has `closest`, and reaching for
-      // it there throws and kills the handler outright.
-      const el = e.target instanceof Element ? e.target : null;
-      if (el?.closest('input, textarea, select, [contenteditable]')) return;
-      e.preventDefault();
-      run();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [entry, run]);
+  // Ctrl/⌘-Z is bound once, in lib/history.ts, and reaches this toast from there.
+  // Handling it here as well meant two listeners answering one press.
 
   return (
     <AnimatePresence>
@@ -96,7 +79,7 @@ function Toast({ entry, onRun, onDismiss }: { entry: UndoEntry; onRun: () => voi
               onClick={onRun}
               style={{ marginLeft: 'auto', flexShrink: 0, padding: '5px 14px', fontSize: 12.5 }}
             >
-              Undo
+              {entry.action ?? 'Undo'}
             </button>
             <button
               onClick={onDismiss}

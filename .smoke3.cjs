@@ -99,7 +99,11 @@ function fixture() {
       { id: 'r-water', title: 'Drink water', description: '', recurring: 'daily', completed: false, trackedToday: true, lastResetAt: now, streak: 0, anchor: true, target: 64, progress: 16, step: 16, unit: 'oz' },
       { id: 'r-gym', title: 'Go to Gym 3 times', description: '', recurring: 'weekly', completed: false, trackedToday: true, lastResetAt: now, streak: 0, anchor: true, target: 3, progress: 0 },
       { id: 'r-gymlink', title: 'Gym session', description: '', recurring: 'daily', completed: false, trackedToday: true, lastResetAt: now, streak: 2, questlineId: 'ql-health' },
-      { id: 'r-notes', title: 'Write up notes', description: '', recurring: null, completed: false, trackedToday: false, lastResetAt: now,
+      // Pinned deliberately: a General one-off (no questline, no system, not an
+      // anchor) no longer reaches Today on its due date alone — it waits to be
+      // pinned there. The checks below are about rendering, reordering and the
+      // tray count, so the fixture puts it on the list the way a user now would.
+      { id: 'r-notes', title: 'Write up notes', description: '', recurring: null, completed: false, trackedToday: true, lastResetAt: now,
         subtasks: [{ id: 's-out', title: 'Outline', completed: false }, { id: 's-draft', title: 'Draft', completed: false }] },
     ],
     completionLog: {},
@@ -270,19 +274,9 @@ app.whenReady().then(async () => {
   check('an ordinary habit grows no strip', plain === 0, plain + ' pips');
   await shot('I-strips.png');
 
-  // ── 2. Consistency panel ──────────────────────────────────────────────────
-  const consistency = await js(`(() => {
-    const panel = [...document.querySelectorAll('.parchment')].find(p => p.innerText.startsWith('Consistency'));
-    if (!panel) return { present: false };
-    const rows = [...panel.querySelectorAll('span[aria-label$="days"]')].length;
-    const text = panel.innerText.replace(/\\n/g, ' | ');
-    return { present: true, rows, text, firstRow: text.split('|')[3] };
-  })()`);
-  check('consistency panel renders', consistency.present);
-  check('one row per repeating habit', consistency.rows === 5, `${consistency.rows} rows`);
-  // "Drink water" stopped 21 days ago, so coldest-first must float it to the top.
-  check('coldest habit sorts to the top', /Drink water/.test(consistency.text.split('|').slice(2, 6).join(' ')),
-        consistency.text.slice(0, 200));
+  // ── 2. The per-habit history panel is gone; the streak carries that meaning ──
+  const noPanel = await js(`[...document.querySelectorAll('.parchment')].some(p => p.innerText.startsWith('Consistency'))`);
+  check('no per-habit history panel under Today', noPanel === false, 'panel present: ' + noPanel);
 
   // ── 3. Undo ───────────────────────────────────────────────────────────────
   await js(`location.hash = '#/quests'`);

@@ -2,13 +2,13 @@
  * Labelled form field — the layout every drawer uses for its inputs.
  * Previously copy-pasted into all four drawers; this is the single definition.
  *
- * `label` is a ReactNode rather than a string: the quest drawer decorates its
- * labels with inline hints.
+ * A label and its control, and nothing else. There was a `hint` here that drew a
+ * paragraph explaining what each box was for; a form that has to be narrated is
+ * a form with the wrong labels, and the prose was most of what you read.
  */
-export default function Field({ label, children, hint }: {
+export default function Field({ label, children }: {
   label: React.ReactNode;
   children: React.ReactNode;
-  hint?: string;
 }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -16,7 +16,6 @@ export default function Field({ label, children, hint }: {
         {label}
       </span>
       {children}
-      {hint && <p style={{ margin: 0, fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.5 }}>{hint}</p>}
     </div>
   );
 }

@@ -93,6 +93,50 @@ export interface Quest {
   completedAt?: string;
 }
 
+/**
+ * A system: the set of small, repeated behaviours you're actually running.
+ *
+ * The distinction from a Questline is the whole point, and it is not cosmetic.
+ * A questline is an *outcome* you're aiming at — it can be missed, and missing
+ * it is discouraging in a way that tells you nothing about what to do next. A
+ * system is the *process*, which you either ran today or didn't. You can act on
+ * a system; you can only hope for a goal.
+ *
+ * So the goals are optional by design, not by omission. A system with no goal
+ * attached is the healthiest kind — it says you've stopped needing the outcome
+ * to justify the practice — and a system must be able to outlive the goal that
+ * prompted it. Deleting a questline therefore detaches its systems rather than
+ * taking them with it.
+ */
+export interface System {
+  id: string;
+  title: string;
+  description?: string;
+  /** Emoji shown beside the name. Purely cosmetic. */
+  icon?: string;
+  /** The questlines this system serves — the broad direction, when the system
+   *  isn't tied to one goal within it. None, one, or several: one process
+   *  usually feeds more than one outcome, and forcing a single choice made you
+   *  pick a favourite. Still optional on purpose — see above. */
+  questlineIds?: string[];
+  /** The individual quests this system contributes to. The finer of the two
+   *  attachments: a questline is a direction ("learn Korean"), a quest is a goal
+   *  inside it ("finish Hangul"), and a system is the process that gets the goal
+   *  done. A system can hold both — some of what it does serves the direction,
+   *  some serves a particular goal. */
+  questIds?: string[];
+  /** @deprecated Single-goal field from before a system could serve several.
+   *  Migrated into `questlineIds` on load and then left alone; read through
+   *  `systemGoalIds()` rather than touching either field directly. */
+  questlineId?: string;
+  hidden?: boolean;
+  /** Manual sort position on the Systems page. */
+  order?: number;
+  /** ISO instant the system was created — the floor for its health window, so a
+   *  system started yesterday isn't scored against a month it didn't exist for. */
+  createdAt?: string;
+}
+
 export interface Questline {
   id: string;
   title: string;
@@ -127,6 +171,29 @@ export interface Routine {
   id: string;
   title: string;
   description?: string;
+  /** The systems this habit is part of — none, one, or several. A habit can serve
+   *  a system and a questline at once (the system is *how* you run, the questline
+   *  is *what for*), and it can be part of more than one process: a morning walk
+   *  is both physical base and getting outside. A single slot made you pick.
+   *  Read through `routineSystemIds()` rather than touching either field. */
+  systemIds?: string[];
+  /** @deprecated Single-system field from before a habit could be in several.
+   *  Understood on read, retired the first time membership is written. */
+  systemId?: string;
+  /** ISO instant the task was created. Only set on tasks made after systems
+   *  landed; older ones fall back to the first day in their history, so a
+   *  consistency score is never computed over a stretch the task didn't exist. */
+  createdAt?: string;
+  /**
+   * Explicitly taken off Today.
+   *
+   * `trackedToday` can't carry this on its own: `false` there means "never
+   * pinned", which is the default for a weekly task, and is indistinguishable
+   * from "I took this off deliberately". Daily habits, anchor habits and
+   * multi-day goals are on Today by default, so without a separate flag their
+   * pin would have nothing to write and would sit there doing nothing — which
+   * is exactly what it did. */
+  offToday?: boolean;
   /** Cadence bucket, or null for a one-time task (no reset; persists until deleted). */
   recurring: RecurringType | null;
   /** Custom repeat interval in days (overrides cadence; e.g. 21 = every 3 weeks). */

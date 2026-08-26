@@ -39,7 +39,10 @@ export default function NavBar() {
     .reduce((n, p) => n + p.tasks.filter(t => !t.done).length, 0);
 
   const tabs = [
-    { path: '/',       label: 'Today',  badge: dailyRemaining },
+    { path: '/',        label: 'Today',   badge: dailyRemaining },
+    // Systems sits before Quests deliberately: the process is the thing you act
+    // on, the goal is the thing you hope for.
+    { path: '/systems', label: 'Systems', badge: 0 },
     { path: '/quests', label: 'Quests', badge: 0 },
     { path: '/vynues', label: 'Vynues', badge: vynuesOpen },
     { path: '/all',    label: 'All',    badge: 0 },
@@ -61,7 +64,7 @@ export default function NavBar() {
 
   return (
     <>
-      <nav style={{
+      <nav className="app-nav" style={{
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
@@ -110,7 +113,7 @@ export default function NavBar() {
         </span>
 
         {/* Tabs — the active pill glides between them */}
-        <div style={{
+        <div className="app-tabs" style={{
           display: 'flex', gap: 2, padding: 3,
           borderRadius: 12, border: '1px solid var(--card-border)',
           background: 'var(--input-bg)',

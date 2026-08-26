@@ -1,7 +1,7 @@
 import { useState, useRef, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Quest, Routine } from '../types';
-import { useQuestStore, useUIStore, isArchivedRoutine, logicalDateKey, subtaskStats } from '../store';
+import { useQuestStore, useUIStore, isArchivedRoutine, isGeneralTask, logicalDateKey, onToday, subtaskStats } from '../store';
 import { RepeatPicker, RecurrenceBadge, type RepeatValue } from '../recurrence';
 import QuestlineAccordionItem from '../components/QuestlineAccordionItem';
 import AddModal from '../components/AddModal';
@@ -9,6 +9,7 @@ import QuestCreateDrawer from '../components/QuestCreateDrawer';
 import type { EditTarget } from '../components/TaskEditDrawer';
 import NavBar from '../components/NavBar';
 import IconButton from '../components/IconButton';
+import PinButton from '../components/PinButton';
 
 // Opened on demand, so it stays out of the page's own chunk.
 const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
@@ -21,7 +22,9 @@ const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
 function GeneralRow({ r, onEdit }: { r: Routine; onEdit: () => void }) {
   const toggleRoutine = useQuestStore(s => s.toggleRoutine);
   const deleteRoutine = useQuestStore(s => s.deleteRoutine);
+  const toggleRoutineTracked = useQuestStore(s => s.toggleRoutineTracked);
   const [hovered, setHovered] = useState(false);
+  const pinned = onToday(r);
 
   const stats = subtaskStats(r.subtasks);
   const counter = r.target != null ? { done: r.progress ?? 0, total: r.target } : null;
@@ -81,6 +84,15 @@ function GeneralRow({ r, onEdit }: { r: Routine; onEdit: () => void }) {
         <span style={{ fontSize: 11, fontWeight: 600, color: '#f97316', flexShrink: 0 }}>🔥{r.streak}</span>
       )}
 
+      {/* This bucket is a list you work from, so nothing here reaches Today on
+          its own. The pin is how one gets there — and how it comes back off. */}
+      <PinButton
+        state={pinned ? 'all' : 'none'}
+        hovered={hovered}
+        onClick={() => toggleRoutineTracked(r.id)}
+        title={pinned ? 'On Today — click to take it off' : 'Put this on Today'}
+      />
+
       <IconButton
         onClick={onEdit}
         title="Edit everything — name, due date, schedule, steps…"
@@ -114,7 +126,9 @@ function GeneralPanel({ onEdit }: { onEdit: (t: EditTarget) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const todayKey = logicalDateKey();
-  const general = routines.filter(r => !r.questlineId && !r.anchor && !r.hidden && !isArchivedRoutine(r, todayKey));
+  // System actions are not quests — see the note in QuestlinePage.
+  const general = routines.filter(r =>
+    isGeneralTask(r) && !r.hidden && !isArchivedRoutine(r, todayKey));
   const open = general.filter(r => !r.completed);
   const done = general.filter(r => r.completed);
 
@@ -136,15 +150,12 @@ function GeneralPanel({ onEdit }: { onEdit: (t: EditTarget) => void }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4 }}>
         <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--page-text)' }}>General</h2>
         <span style={{ fontSize: 12, color: 'var(--page-text-dim)' }}>
-          things to accomplish, no questline needed
+          things to accomplish · 📌 one to put it on Today
         </span>
         <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: open.length === 0 && general.length > 0 ? 'var(--success)' : 'var(--page-text-dim)', fontVariantNumeric: 'tabular-nums' }}>
           {done.length}/{general.length}
         </span>
       </div>
-      <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.5 }}>
-        One-time entries stay done once you finish them — they never come back. Repeating ones reset on their cadence.
-      </p>
 
       <AnimatePresence initial={false}>
         {open.map(r => (

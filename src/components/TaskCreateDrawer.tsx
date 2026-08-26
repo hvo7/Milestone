@@ -5,6 +5,7 @@ import { useVynuesStore, vynuesCategoryKey, vynuesProjectId } from '../vynuesSto
 import { RepeatPicker, type RepeatValue } from '../recurrence';
 import { MenuSelect } from '../vynuesUi';
 import Field from './Field';
+import MultiSelect from './MultiSelect';
 import { cleanQuest, ANCHOR_LABEL, ANCHOR_ICON, ANCHOR_CATEGORY } from '../lib/ui';
 
 /**
@@ -12,8 +13,11 @@ import { cleanQuest, ANCHOR_LABEL, ANCHOR_ICON, ANCHOR_CATEGORY } from '../lib/u
  * General (uncategorized) tasks and quest-linked ones — pick a questline (and
  * optionally a specific quest) plus a recurrence (defaults to one-time).
  */
-export default function TaskCreateDrawer({ open, onClose, initialCategory = '' }: { open: boolean; onClose: () => void; initialCategory?: string }) {
+export default function TaskCreateDrawer({ open, onClose, initialCategory = '', initialSystem = '' }: { open: boolean; onClose: () => void; initialCategory?: string; initialSystem?: string }) {
   const questlines = useQuestStore(s => s.questlines);
+  const systems = useQuestStore(s => s.systems);
+  const setRoutineSystems = useQuestStore(s => s.setRoutineSystems);
+  const toggleRoutineTracked = useQuestStore(s => s.toggleRoutineTracked);
   const addRoutine = useQuestStore(s => s.addRoutine);
   const addAnchorRoutine = useQuestStore(s => s.addAnchorRoutine);
   const vynuesProjects = useVynuesStore(s => s.projects);
@@ -26,6 +30,10 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '' }
   const [repeat, setRepeat]           = useState<RepeatValue>({ recurring: null });
   const [dueDate, setDueDate]         = useState('');    // one-time tasks default to today
   const [anchorRepeat, setAnchorRepeat] = useState<'daily' | 'weekly'>('daily');
+  // Which systems this task is part of, if any — a habit can be several. These are
+  // independent of the category above: the system is the process it belongs to,
+  // the category is where it's filed.
+  const [systemIds, setSystemIds]     = useState<string[]>([]);
   // Counter mode — the task completes progressively (e.g. "go gym 3×", "drink 64oz").
   const [counterOn, setCounterOn]     = useState(false);
   const [target, setTarget]           = useState('3');
@@ -42,15 +50,16 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '' }
   // Reset the form each time the drawer opens, and focus the title.
   useEffect(() => {
     if (!open) return;
-    setTitle(''); setDescription(''); setQuestlineId(initialCategory); setQuestId(''); setRepeat({ recurring: null }); setDueDate(dateKey()); setAnchorRepeat('daily');
+    setTitle(''); setDescription(''); setQuestlineId(initialCategory); setQuestId(''); setRepeat({ recurring: null }); setDueDate(dateKey()); setAnchorRepeat('daily'); setSystemIds(initialSystem ? [initialSystem] : []);
     setCounterOn(false); setTarget('3'); setStep('1'); setUnit('');
     const t = setTimeout(() => titleRef.current?.focus(), 80);
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseRef.current(); };
     document.addEventListener('keydown', onKey);
     return () => { clearTimeout(t); document.removeEventListener('keydown', onKey); };
-  }, [open, initialCategory]);
+  }, [open, initialCategory, initialSystem]);
 
   const isAnchor  = questlineId === ANCHOR_CATEGORY;
+  const repeats   = !!repeat.recurring || !!repeat.intervalDays || !!repeat.monthlyRule || isAnchor;
   const projectId = vynuesProjectId(questlineId);
   const ql = questlines.find(q => q.id === questlineId);
   const visibleQuestlines = questlines.filter(q => !q.hidden);
@@ -63,8 +72,9 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '' }
     const counter = counterOn && goal > 0
       ? { target: goal, step: per > 1 ? per : undefined, unit: unit.trim() || undefined }
       : undefined;
+    let newId: string | undefined;
     if (isAnchor) {
-      addAnchorRoutine(title.trim(), anchorRepeat, counter);
+      newId = addAnchorRoutine(title.trim(), anchorRepeat, counter);
     } else if (projectId) {
       // Vynues keeps its own task shape (no counters). A one-off with no due date
       // would never surface on Today, so pin it there instead — it was added from
@@ -80,7 +90,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '' }
         repeat.monthlyRule,
       );
     } else {
-      addRoutine(
+      newId = addRoutine(
         title.trim(), description.trim(), repeat.recurring,
         questlineId || undefined, repeat.intervalDays, questId || undefined,
         (repeat.recurring || repeat.monthlyRule) ? null : (dueDate || null),
@@ -88,6 +98,12 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '' }
         repeat.monthlyRule,
       );
     }
+    // Vynues tasks live in their own store and have no systems, hence the guard.
+    if (newId && systemIds.length) setRoutineSystems(newId, systemIds);
+    // A General one-off no longer reaches Today on its due date alone — but this
+    // drawer only opens *from* Today, so that is plainly where it's wanted. Same
+    // reasoning as the Vynues branch above, which pins for the same reason.
+    if (newId && !repeats && !questlineId && !systemIds.length) toggleRoutineTracked(newId);
     onClose();
   }
 
@@ -174,6 +190,21 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '' }
                     value={description}
                     onChange={e => setDescription(e.target.value)}
                     style={{ fontSize: 14, padding: '9px 12px', resize: 'vertical', minHeight: 56 }}
+                  />
+                </Field>
+              )}
+
+              {/* Vynues tasks live in their own store, which has no systems. */}
+              {/* Only for something that repeats. A system is made of the things
+                  you do frequently; a one-and-done task belongs to a quest. */}
+              {systems.length > 0 && !projectId && repeats && (
+                <Field label="Systems">
+                  <MultiSelect
+                    options={systems.filter(sys => !sys.hidden).map(sys => ({ id: sys.id, label: sys.title }))}
+                    values={systemIds}
+                    onToggle={sid => setSystemIds(ids => (ids.includes(sid) ? ids.filter(x => x !== sid) : [...ids, sid]))}
+                    placeholder="No system"
+                    noun="systems"
                   />
                 </Field>
               )}

@@ -8,7 +8,7 @@
  * cannot be allowed to drift.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { showsOnDay, vynuesShowsOnDay, actionShowsOnDay, dueSummary, routineSettledOnDay } from './today';
+import { showsOnDay, vynuesShowsOnDay, actionShowsOnDay, dueSummary, routineSettledOnDay, alwaysOnToday, onToday } from './today';
 import { logicalDayStart, dateKey } from '../store';
 import type { Routine, Action, Questline } from '../types';
 import type { VynuesProject, VynuesTask } from '../vynuesStore';
@@ -55,6 +55,42 @@ describe('showsOnDay', () => {
     expect(showsOnDay(routine({ recurring: 'weekly', trackedToday: true, lastResetAt: localTime(2026, AUG, 9).toISOString() }), k, s)).toBe(true);
   });
 
+  it('keeps a weekly anchor habit up every day, counter or not', () => {
+    const [k, s] = day();
+    // The anchor group is the practice you singled out. A weekly one appearing
+    // only on the day its week runs out is how you find out you missed it.
+    const anchor = routine({ recurring: 'weekly', anchor: true, lastResetAt: localTime(2026, AUG, 9).toISOString() });
+    expect(showsOnDay(anchor, k, s)).toBe(true);
+    // …and the same task without the anchor flag still waits for its due day.
+    expect(showsOnDay({ ...anchor, anchor: undefined }, k, s)).toBe(false);
+  });
+
+  it('leaves a system action off Today until it is pinned', () => {
+    const [k, s] = day();
+    // Belonging to a system is not by itself a reason to be on the day's list —
+    // that's the pin's job, so the choice stays the user's.
+    const action = routine({ recurring: 'weekly', systemId: 'sys-1', lastResetAt: localTime(2026, AUG, 9).toISOString() });
+    expect(showsOnDay(action, k, s)).toBe(false);
+    expect(showsOnDay({ ...action, trackedToday: true }, k, s)).toBe(true);
+  });
+
+  it('shows a daily system action without needing a pin', () => {
+    const [k, s] = day();
+    expect(showsOnDay(routine({ recurring: 'daily', systemId: 'sys-1' }), k, s)).toBe(true);
+  });
+
+  it('drops a finished anchor habit after its completion day', () => {
+    const done = routine({
+      recurring: 'weekly', anchor: true, completed: true,
+      completedAt: localTime(2026, AUG, 10).toISOString(),
+      lastResetAt: localTime(2026, AUG, 9).toISOString(),
+    });
+    const [k, s] = day();
+    expect(showsOnDay(done, k, s)).toBe(true);
+    const [nk, ns] = day(localTime(2026, AUG, 11));
+    expect(showsOnDay(done, nk, ns)).toBe(false);
+  });
+
   it('keeps a multi-day goal up every day while it is open', () => {
     const [k, s] = day();
     // A weekly counter is something you chip at, not something that appears once.
@@ -76,18 +112,98 @@ describe('showsOnDay', () => {
 
   it('holds a one-off back until its due date, then keeps it', () => {
     const [k, s] = day();
-    expect(showsOnDay(routine({ dueDate: '2026-08-12' }), k, s)).toBe(false);
-    expect(showsOnDay(routine({ dueDate: '2026-08-10' }), k, s)).toBe(true);
+    // Filed under a questline: a due date is a plan, so it drives the list.
+    const task = (dueDate: string) => routine({ questlineId: 'ql-1', dueDate });
+    expect(showsOnDay(task('2026-08-12'), k, s)).toBe(false);
+    expect(showsOnDay(task('2026-08-10'), k, s)).toBe(true);
     // Overdue stays up rather than quietly disappearing.
-    expect(showsOnDay(routine({ dueDate: '2026-08-01' }), k, s)).toBe(true);
+    expect(showsOnDay(task('2026-08-01'), k, s)).toBe(true);
+  });
+
+  /**
+   * The General bucket is a list you work *from*, not a schedule. Its create
+   * drawer defaults every task's due date to today, so "due today" said nothing
+   * about whether you meant to do it today — and the day's list filled up with
+   * car chores nobody had chosen for that day.
+   */
+  it('keeps a General one-off off Today until it is pinned there', () => {
+    const [k, s] = day();
+    expect(showsOnDay(routine({ dueDate: '2026-08-10' }), k, s)).toBe(false);
+    expect(showsOnDay(routine(), k, s)).toBe(false);
+    expect(showsOnDay(routine({ dueDate: '2026-08-10', trackedToday: true }), k, s)).toBe(true);
+    // Pinned means today, whatever the date on it says.
+    expect(showsOnDay(routine({ dueDate: '2026-12-25', trackedToday: true }), k, s)).toBe(true);
+    // …and unpinning takes it straight back off.
+    expect(showsOnDay(routine({ trackedToday: false, offToday: true }), k, s)).toBe(false);
+  });
+
+  it('still schedules a one-off that belongs to a questline or a system', () => {
+    const [k, s] = day();
+    expect(showsOnDay(routine({ questlineId: 'ql-1', dueDate: '2026-08-10' }), k, s)).toBe(true);
+    expect(showsOnDay(routine({ systemIds: ['sys-1'], dueDate: '2026-08-10' }), k, s)).toBe(true);
+    // The anchor rail is its own place on the page, and stays one.
+    expect(showsOnDay(routine({ anchor: true, dueDate: '2026-08-10' }), k, s)).toBe(true);
   });
 
   it('lets a completed one-off linger only through the day it was finished', () => {
-    const done = routine({ completed: true, completedAt: localTime(2026, AUG, 10).toISOString() });
+    const done = routine({ questlineId: 'ql-1', completed: true, completedAt: localTime(2026, AUG, 10).toISOString() });
     const [k, s] = day();
     expect(showsOnDay(done, k, s)).toBe(true);
     const [nk, ns] = day(localTime(2026, AUG, 11));
     expect(showsOnDay(done, nk, ns)).toBe(false);
+  });
+
+  it('lets a pinned General task linger the same way once ticked off', () => {
+    const done = routine({ trackedToday: true, completed: true, completedAt: localTime(2026, AUG, 10).toISOString() });
+    const [k, s] = day();
+    expect(showsOnDay(done, k, s)).toBe(true);
+    const [nk, ns] = day(localTime(2026, AUG, 11));
+    expect(showsOnDay(done, nk, ns)).toBe(false);
+  });
+});
+
+describe('the pin', () => {
+  it('names why a task is on Today by default', () => {
+    expect(alwaysOnToday(routine({ recurring: 'daily' }))).toBe('daily');
+    expect(alwaysOnToday(routine({ recurring: 'weekly', anchor: true }))).toBe('anchor');
+    expect(alwaysOnToday(routine({ recurring: 'weekly', target: 3 }))).toBe('goal');
+    expect(alwaysOnToday(routine({ recurring: 'weekly' }))).toBeNull();
+  });
+
+  /**
+   * The property the pin depends on, asserted against `showsOnDay` itself
+   * rather than a restated rule: for *every* shape, taking it off Today has to
+   * take it off Today. A control that offers to change something the list
+   * ignores is the bug this exists to prevent.
+   */
+  it('can take any repeating task off Today, and put it back', () => {
+    const shapes: Partial<Routine>[] = [
+      { recurring: 'daily' },
+      { recurring: 'weekly' },
+      { recurring: 'monthly' },
+      { recurring: 'weekly', anchor: true },
+      { recurring: 'daily', anchor: true },
+      { recurring: 'weekly', target: 3 },
+      { recurring: 'weekly', subtasks: [{ id: 's', title: 'x', completed: false }] },
+      { recurring: null, intervalDays: 3 },
+    ];
+    const [k, s] = day();
+    for (const shape of shapes) {
+      const base = routine({ ...shape, lastResetAt: localTime(2026, AUG, 9).toISOString() });
+      const off = { ...base, trackedToday: false, offToday: true };
+      const on  = { ...base, trackedToday: true,  offToday: undefined };
+      expect({ shape, shown: showsOnDay(off, k, s) }).toEqual({ shape, shown: false });
+      expect({ shape, shown: showsOnDay(on, k, s) }).toEqual({ shape, shown: true });
+    }
+  });
+
+  it('reads its own state back', () => {
+    expect(onToday(routine({ recurring: 'daily' }))).toBe(true);
+    expect(onToday(routine({ recurring: 'daily', offToday: true }))).toBe(false);
+    expect(onToday(routine({ recurring: 'weekly' }))).toBe(false);
+    expect(onToday(routine({ recurring: 'weekly', trackedToday: true }))).toBe(true);
+    // An explicit unpin beats a pin left over from before.
+    expect(onToday(routine({ recurring: 'weekly', trackedToday: true, offToday: true }))).toBe(false);
   });
 });
 

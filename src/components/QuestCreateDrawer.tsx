@@ -66,10 +66,12 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
       setDueDate(q.dueDate ?? '');
       setQuestlineId(editing.questlineId);
     } else {
-      const firstVisible = useQuestStore.getState().questlines.filter(q => !q.hidden)[0]?.id ?? '';
       // One-time items default their due date to today (editable / cleared for recurring).
       setTitle(''); setDescription(''); setRepeat({ recurring: null }); setDueDate(dateKey());
-      setQuestlineId(initialQuestlineId || firstVisible || GENERAL_CATEGORY);
+      // General, not the first questline: opened from the page header this has no
+      // questline in mind, and filing a stray task under whichever questline
+      // happens to sort first is the one guess that's always wrong.
+      setQuestlineId(initialQuestlineId || GENERAL_CATEGORY);
     }
     const t = setTimeout(() => titleRef.current?.focus(), 80);
     return () => clearTimeout(t);
@@ -176,7 +178,7 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
                   <Field label={<>Description <span style={{ fontWeight: 400, textTransform: 'none', opacity: 0.7 }}>· optional</span></>}>
                     <textarea
                       className="rune-input"
-                      placeholder="What is this quest about?"
+                      placeholder={isGeneral ? 'What is this task about?' : 'What is this quest about?'}
                       rows={2}
                       value={description}
                       onChange={e => setDescription(e.target.value)}

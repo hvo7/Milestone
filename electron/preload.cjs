@@ -25,6 +25,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
       return () => ipcRenderer.removeListener('sync:changed', listener);
     },
   },
+  /** Serving the app to a phone on this Wi-Fi — see electron/phone.cjs. */
+  phone: {
+    status:  ()     => ipcRenderer.invoke('phone:status'),
+    start:   ()     => ipcRenderer.invoke('phone:start'),
+    stop:    ()     => ipcRenderer.invoke('phone:stop'),
+    setPort: (port) => ipcRenderer.invoke('phone:set-port', port),
+  },
   /** Rolling on-disk snapshots of the stores — see electron/backups.cjs. */
   backup: {
     save:   (bundle) => ipcRenderer.invoke('backup:save', bundle),

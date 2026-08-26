@@ -1,11 +1,62 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { RecurringType, MonthlyRule } from '../types';
-import { useQuestStore, recurrenceLabel, isArchivedRoutine, ARCHIVE_RETENTION_DAYS, logicalDateKey, logicalDayStart } from '../store';
+import { useQuestStore, recurrenceLabel, isArchivedRoutine, isGeneralTask, ARCHIVE_RETENTION_DAYS, logicalDateKey, logicalDayStart } from '../store';
 import { useVynuesStore } from '../vynuesStore';
 import { RepeatPicker, RecurrenceBadge, type RepeatValue } from '../recurrence';
 import NavBar from '../components/NavBar';
 import { categoryColor, cleanQuest, ANCHOR_LABEL, ANCHOR_ICON } from '../lib/ui';
+import { duplicateGroups } from '../lib/duplicates';
+
+/**
+ * The same habit entered twice, offered as one click to fix.
+ *
+ * Shown here rather than on Today: Today is the day's work, and this is
+ * housekeeping about the list itself. It renders nothing at all when there's
+ * nothing to merge, so it costs a line of the page only when it's needed.
+ */
+function Duplicates() {
+  const routines = useQuestStore(s => s.routines);
+  const taskHistory = useQuestStore(s => s.taskHistory);
+  const mergeRoutines = useQuestStore(s => s.mergeRoutines);
+
+  const groups = duplicateGroups(routines.filter(r => !isArchivedRoutine(r)), taskHistory);
+  if (!groups.length) return null;
+
+  return (
+    <div
+      className="parchment"
+      style={{ borderRadius: 14, padding: '14px 18px', marginBottom: 18, borderLeft: '3px solid #fbbf24' }}
+    >
+      <h2 style={{ margin: '0 0 10px', fontSize: 13, fontWeight: 700, color: 'var(--page-text)' }}>
+        Entered twice
+      </h2>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {groups.map(({ keep, drop }) => (
+          <div key={keep.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: 'var(--page-text)', minWidth: 0 }}>
+              {keep.title}
+              <span style={{ color: 'var(--page-text-dim)' }}>
+                {drop.map(d => ` · ${d.title}`).join('')}
+              </span>
+            </span>
+            <button
+              type="button"
+              className="rune-input"
+              onClick={() => drop.forEach(d => mergeRoutines(keep.id, d.id))}
+              // Says which name survives, because that is the part you can't
+              // tell from a button called "Merge".
+              title={`Keep “${keep.title}” — it takes the history, streak and systems of ${drop.map(d => `“${d.title}”`).join(', ')}`}
+              style={{ marginLeft: 'auto', cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '5px 11px', width: 'auto' }}
+            >
+              Merge into “{keep.title}”
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** A task normalised across the quest, routine and Vynues stores so every group
  *  renders and edits through one shape. */
@@ -172,7 +223,7 @@ function AllRow({ task }: { task: AllTask }) {
                   <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--page-text-dim)' }}>Today</span>
                   <button
                     onClick={task.onToggleTracked}
-                    title="Non-daily tasks stay off Today until their due day — pin one to work on it today anyway"
+                    title="General tasks and non-daily cadences stay off Today until you put them there — pin one to work on it today"
                     style={{
                       background: task.tracked ? 'var(--accent-soft)' : 'none',
                       border: `1px solid ${task.tracked ? 'var(--accent-border)' : 'var(--card-border)'}`,
@@ -300,9 +351,12 @@ export default function AllPage() {
     id: r.id, title: r.title, done: r.completed, streak: r.streak,
     recurring: r.recurring, intervalDays: r.intervalDays, monthlyRule: r.monthlyRule, repeatOnly: false,
     dueDate: r.dueDate,
-    // The Today pin only matters for cadences Today no longer auto-shows.
+    // The Today pin only matters for what Today doesn't auto-show: non-daily
+    // cadences, and General one-offs, which wait to be pinned rather than
+    // arriving on a due date the create drawer filled in with today.
     tracked: r.trackedToday,
     onToggleTracked: (r.recurring && r.recurring !== 'daily') || r.intervalDays
+      || (!r.recurring && !r.intervalDays && !r.monthlyRule && isGeneralTask(r))
       ? () => toggleRoutineTracked(r.id)
       : undefined,
     onToggle: () => toggleRoutine(r.id),
@@ -377,10 +431,12 @@ export default function AllPage() {
       <div style={{ maxWidth: 860, margin: '0 auto', padding: '28px 20px 60px' }}>
         <header style={{ marginBottom: 22 }}>
           <h1 className="page-title" style={{ margin: 0 }}>All tasks</h1>
-          <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--page-text-dim)', lineHeight: 1.5 }}>
-            Every task across General, Quests and Vynues — grouped by project. Rename, reschedule (any interval, even “every 3 weeks”), complete or delete; changes show everywhere. {totalTasks} task{totalTasks === 1 ? '' : 's'} total.
+          <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--page-text-dim)' }}>
+            {totalTasks} task{totalTasks === 1 ? '' : 's'}
           </p>
         </header>
+
+        <Duplicates />
 
         {/* General — uncategorized */}
         <GroupPanel
@@ -406,9 +462,8 @@ export default function AllPage() {
           <GroupPanel
             group={{ id: 'archived', name: '🗄 Archived', tasks: archivedTasks }}
             addSlot={
-              <p style={{ margin: '10px 0 0', fontSize: 11.5, color: 'var(--page-text-dim)', lineHeight: 1.5 }}>
-                Finished one-time tasks land here the day after completion and delete themselves {ARCHIVE_RETENTION_DAYS} days
-                after they were done. Un-check one to restore it to General.
+              <p style={{ margin: '10px 0 0', fontSize: 11.5, color: 'var(--page-text-dim)' }}>
+                Deleted {ARCHIVE_RETENTION_DAYS} days after completion.
               </p>
             }
           />

@@ -46,6 +46,9 @@ import { create } from 'zustand';
 import { QUEST_STORE_KEY, UI_STORE_KEY, useQuestStore, useUIStore } from '../store';
 import { VYNUES_STORE_KEY, useVynuesStore } from '../vynuesStore';
 import { APP_VERSION } from '../buildInfo';
+import { withoutHistory, clearHistory } from './history';
+import { httpBridge, compositeBridge, servedByMilestone, identity, rememberToken, type SyncBridge } from './phoneTransport';
+import { loadRelay, relayConfigured } from './relay';
 
 export type Clock = Record<string, number>;
 export type Slot = 'quest' | 'vynues' | 'ui';
@@ -97,11 +100,17 @@ export interface SyncStatus {
   error: string | null;
   /** Something the user should read once — a conflict, or a first-run adoption. */
   notice: string | null;
+  /** True in a browser rather than the desktop app — a phone, or a tab. The
+   *  reconciliation is identical; the wording isn't. */
+  overWifi: boolean;
+  /** True when this copy has some route to its other copies. False means it is
+   *  working alone: everything still saves, nothing is being exchanged. */
+  linked: boolean;
 }
 
 export const useSyncStatus = create<SyncStatus>(() => ({
   available: false, enabled: false, folder: '', deviceName: '',
-  peers: [], lastSyncedAt: null, busy: false, error: null, notice: null,
+  peers: [], lastSyncedAt: null, busy: false, error: null, notice: null, overWifi: false, linked: false,
 }));
 
 const setStatus = (patch: Partial<SyncStatus>) => useSyncStatus.setState(patch);
@@ -148,7 +157,60 @@ let applying = false;
 let writeTimer: ReturnType<typeof setTimeout> | null = null;
 let pullChain: Promise<void> = Promise.resolve();
 
-const bridge = () => window.electronAPI?.sync;
+/**
+ * Where documents are exchanged.
+ *
+ * The desktop uses the Electron bridge (a folder the cloud drive carries, plus
+ * the phone server this computer runs). A phone has no bridge, but if the page
+ * was served by a Milestone desktop it can reach the same documents over HTTP —
+ * see lib/phoneTransport.ts. Either way the reconciler below is unchanged: it
+ * asks for peers, writes its own document, and decides per slot.
+ */
+let transport: SyncBridge | null = null;
+const bridge = () => transport ?? (window.electronAPI?.sync as SyncBridge | undefined) ?? null;
+
+/**
+ * Every route this device has to its other copies, as one bridge.
+ *
+ * A desktop has the cloud folder and the Wi-Fi server (both behind the Electron
+ * bridge) and, if you set one up, the relay. A phone has the relay and — when it
+ * is home — the desktop that served it. Reads take the union and writes go
+ * everywhere, so which routes happen to be up is not something the reconciler
+ * has to think about.
+ */
+async function buildTransport(): Promise<SyncBridge | null> {
+  const parts: SyncBridge[] = [];
+  const local = window.electronAPI?.sync as SyncBridge | undefined;
+  if (local) parts.push(local);
+
+  // A page served by a desktop or a relay can always reach the endpoint it came
+  // from, at the origin it came from.
+  if (!local && await servedByMilestone()) {
+    parts.push(httpBridge({ token: rememberToken(), me: identity() }));
+  }
+
+  const relay = loadRelay();
+  // Not added twice: a phone that loaded the app *from* the relay is already
+  // talking to it through the line above.
+  const servedByRelay = !local && relay.url && location.origin.startsWith(relay.url);
+  if (relayConfigured(relay) && !servedByRelay) {
+    parts.push(httpBridge({
+      base: relay.url,
+      token: relay.token,
+      // The desktop's own identity, so the relay leaves its document out of the
+      // peer list rather than handing this machine back its own clock.
+      me: local ? await local.getConfig() : identity(),
+      // The desktop's own identity comes from Electron, and its poll comes from
+      // the folder watcher; a second timer would only duplicate the work.
+      poll: !local,
+    }));
+  }
+
+  if (!parts.length) return null;
+  // A single route needs no wrapper, and the desktop's own bridge must stay
+  // itself — enableSync and friends reach for it directly.
+  return parts.length === 1 && local ? null : compositeBridge(parts);
+}
 
 interface Meta {
   /** What this device believes it has seen, per slot. */
@@ -203,6 +265,12 @@ function snapshot(): Partial<Record<Slot, string>> {
  *  an edit made on the other computer appears without a restart. */
 function applyStores(stores: Partial<Record<Slot, string>>) {
   applying = true;
+  // Outside the undo history, and it *clears* it. Adopting the other computer's
+  // data makes every local step meaningless: those snapshots describe a state
+  // this profile is no longer in, and restoring one would throw away what just
+  // arrived — then sync that loss back over the wire.
+  clearHistory();
+  return withoutHistory(() => {
   try {
     for (const { slot, key, store } of SLOTS) {
       const raw = stores[slot];
@@ -221,6 +289,7 @@ function applyStores(stores: Partial<Record<Slot, string>>) {
   } finally {
     applying = false;
   }
+  });
 }
 
 const backupBundle = () => {
@@ -392,6 +461,12 @@ function pull() {
 
 /** Called once at startup. Safe to call in a browser (no bridge → no-op). */
 export async function startCloudSync() {
+  transport = await buildTransport();
+  const browser = !window.electronAPI?.sync;
+  // Said even when there is nothing to sync with, because a browser copy that is
+  // working alone still needs the settings card to point it at a relay.
+  setStatus({ overWifi: browser, linked: !!bridge() });
+
   const api = bridge();
   if (!api) return;
 
@@ -426,7 +501,9 @@ export async function startCloudSync() {
  *   'push'  — publish this computer's data, replacing what the peers hold
  */
 export async function enableSync(folder: string, mode: 'adopt' | 'push') {
-  const api = bridge();
+  // Folder sync is a desktop arrangement: picking one on a phone would be
+  // choosing a folder that phone cannot see.
+  const api = window.electronAPI?.sync;
   if (!api) return;
 
   config = await api.setConfig({ enabled: true, folder });
@@ -452,7 +529,7 @@ export async function enableSync(folder: string, mode: 'adopt' | 'push') {
     } else if (peers.length) {
       // Explicitly discarding this machine's data, so keep a rescue copy.
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      await api.writeBackup(`${config.deviceName}-before-adopt-${stamp}.json`, backupBundle());
+      await api.writeBackup(`${config?.deviceName ?? 'device'}-before-adopt-${stamp}.json`, backupBundle());
       // Take every slot from the best peer for it — this is the deliberate
       // "replace what's here", so no slot is exempt.
       const plans = SLOT_NAMES.map(slot => ({
@@ -473,7 +550,7 @@ export async function enableSync(folder: string, mode: 'adopt' | 'push') {
 }
 
 export async function disableSync() {
-  const api = bridge();
+  const api = window.electronAPI?.sync;
   if (!api) return;
   config = await api.setConfig({ enabled: false });
   setStatus({ enabled: false, peers: [] });
@@ -487,7 +564,7 @@ export async function syncNow() {
 
 /** Peers found in the folder, for the enable-time choice. */
 export async function peekFolder(folder: string): Promise<{ deviceName: string; updatedAt: string }[]> {
-  const api = bridge();
+  const api = window.electronAPI?.sync;
   if (!api) return [];
   // readPeers reads the *saved* folder, so record the choice before looking.
   config = await api.setConfig({ folder });
