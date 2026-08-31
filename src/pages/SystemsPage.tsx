@@ -7,7 +7,7 @@
  * so the copy and the colours are chosen to make a stalled system read as
  * information rather than as a telling-off.
  */
-import { useState, useRef, lazy, Suspense } from 'react';
+import { useState, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuestStore, onToday, systemGoalIds, systemQuestIds, routineSystemIds } from '../store';
 import {
@@ -22,9 +22,10 @@ import type { SystemTarget } from '../components/SystemDrawer';
 import type { EditTarget } from '../components/TaskEditDrawer';
 import NavBar from '../components/NavBar';
 import IconButton from '../components/IconButton';
+import { lazyChunk } from '../lib/lazyChunk';
 
-const SystemDrawer = lazy(() => import('../components/SystemDrawer'));
-const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
+const SystemDrawer = lazyChunk(() => import('../components/SystemDrawer'));
+const TaskEditDrawer = lazyChunk(() => import('../components/TaskEditDrawer'));
 
 const pct = (r: number) => `${Math.round(r * 100)}%`;
 

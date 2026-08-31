@@ -7,6 +7,39 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.0.2 — 2026-08-31
+
+The other tabs open on the phone.
+
+- **Quests, Vynues, Systems and All went blank when tapped.** Every tab but Today
+  is fetched over the network the first time it's opened, and on a phone that
+  fetch fails — no signal, a dropped request, or an app left on the home screen
+  across a deploy asking for a file the new build replaced. A rejected import
+  reaches React through `lazy()`, and with nothing to catch it React unmounts the
+  whole app: a black screen with no nav bar, recoverable only by killing the app.
+  Today kept working because it is the one page that ships in the main bundle,
+  which is exactly why it looked like the *tabs* were broken.
+- **A failed load now retries**, twice, with a widening pause — most of these are
+  one dropped request. If the chunk really is gone, the app reloads itself once
+  to pick up the current build's file names, which is the only thing that can fix
+  a page left open across a release.
+- **And if all that fails, you get a page instead of a void**: the nav bar stays
+  on screen with a short explanation and a way back to Today. It comes back on
+  its own when the network does.
+- **The installed app now downloads every tab at install**, not just the one you
+  happened to open. The service worker took a copy of what had been loaded, so an
+  offline phone could open Today and nothing else — the offline promise only held
+  for the first screen. The build writes the list of its own files and the worker
+  precaches all of them.
+- **One previous build is kept in the cache** rather than evicted the moment a
+  new worker takes over. A phone keeps the app resident for days, so the document
+  on screen is often from the build just replaced, and pulling its files out from
+  under it is the same blank screen by another route.
+- **A missing asset is a 404**, from both the desktop Wi-Fi bridge and the relay.
+  Both used to answer any unknown path with the app shell, so a phone asking for
+  a rebuilt chunk got HTML at status 200 where a module was expected — a failure
+  the app could neither diagnose nor recover from.
+
 ## 2.0.0 — 2026-08-14
 
 Systems: the app now models the *process* you run, not only the outcome you're

@@ -8,7 +8,7 @@
  * predicates live in lib/today.ts, where the reminder scheduler and the tests can
  * reach them without rendering a page.
  */
-import { useState, lazy, Suspense } from 'react';
+import { useState, Suspense } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import type { Routine, Schedule, Action, Questline, System } from '../types';
 import {
@@ -20,11 +20,12 @@ import { showsOnDay, vynuesShowsOnDay } from '../lib/today';
 import { useVynuesStore, vynuesCategoryKey } from '../vynuesStore';
 import { RecurrenceBadge } from '../recurrence';
 import NavBar from '../components/NavBar';
+import { lazyChunk } from '../lib/lazyChunk';
 // The two drawers are the heaviest thing on this page and neither is on screen
 // until the user asks for one — so they load on demand rather than sitting in
 // the chunk that has to arrive before anything renders.
-const TaskCreateDrawer = lazy(() => import('../components/TaskCreateDrawer'));
-const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
+const TaskCreateDrawer = lazyChunk(() => import('../components/TaskCreateDrawer'));
+const TaskEditDrawer = lazyChunk(() => import('../components/TaskEditDrawer'));
 // `import type`, not `import { type ... }`: under verbatimModuleSyntax the latter
 // still emits the import statement, which pins the module into this chunk and
 // silently undoes the lazy() above.

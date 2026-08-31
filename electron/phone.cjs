@@ -127,6 +127,11 @@ const TYPES = {
 
 const distDir = () => path.join(__dirname, '..', 'dist');
 
+/** A request for a build artefact, as opposed to a stray route the shell should
+ *  answer. Answering one of these with HTML is worse than answering with a 404 —
+ *  see the fallback below. */
+const isAssetRequest = rel => /^assets\//.test(rel) || /\.(js|css|map|json|webmanifest)$/i.test(rel);
+
 function serveStatic(res, urlPath) {
   const rel = urlPath === '/' ? 'index.html' : decodeURIComponent(urlPath).replace(/^\/+/, '');
   const root = distDir();
@@ -135,16 +140,26 @@ function serveStatic(res, urlPath) {
   if (!file.startsWith(root)) { res.writeHead(403).end('Not allowed.'); return; }
   fs.readFile(file, (err, data) => {
     if (err) {
-      // Unknown path falls back to the app shell. Routing is hash-based, so this
+      // A missing *asset* is a real 404. It used to get the shell back, at status
+      // 200 and typed text/html — so a phone asking for a chunk that had been
+      // rebuilt under it received a page of HTML where a module was expected, the
+      // import rejected, and the app unmounted to a blank screen. A 404 tells the
+      // app the truth, and it reloads onto the current build (src/lib/lazyChunk.ts).
+      if (isAssetRequest(rel)) { res.writeHead(404, { 'Content-Type': TYPES['.txt'] }).end('Not found.'); return; }
+      // Anything else falls back to the app shell. Routing is hash-based, so this
       // is only reached by a stray URL and the app can sort it out from there.
       fs.readFile(path.join(root, 'index.html'), (shellErr, shell) => {
         if (shellErr) { res.writeHead(404).end('Milestone has not been built yet.'); return; }
-        res.writeHead(200, { 'Content-Type': TYPES['.html'] }).end(shell);
+        res.writeHead(200, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-cache' }).end(shell);
       });
       return;
     }
     const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': type }).end(data);
+    // The shell names the hashed files, so it must be revalidated every load or
+    // the phone keeps asking for a build this computer no longer has. Everything
+    // else carries its hash in its name and can be kept forever.
+    const cache = rel === 'index.html' ? 'no-cache' : 'public, max-age=31536000, immutable';
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cache }).end(data);
   });
 }
 

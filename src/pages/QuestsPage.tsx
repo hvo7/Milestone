@@ -1,4 +1,4 @@
-import { useState, useRef, lazy, Suspense } from 'react';
+import { useState, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Quest, Routine } from '../types';
 import { useQuestStore, useUIStore, isArchivedRoutine, isGeneralTask, logicalDateKey, onToday, subtaskStats } from '../store';
@@ -10,9 +10,10 @@ import type { EditTarget } from '../components/TaskEditDrawer';
 import NavBar from '../components/NavBar';
 import IconButton from '../components/IconButton';
 import PinButton from '../components/PinButton';
+import { lazyChunk } from '../lib/lazyChunk';
 
 // Opened on demand, so it stays out of the page's own chunk.
-const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
+const TaskEditDrawer = lazyChunk(() => import('../components/TaskEditDrawer'));
 
 // ── General: things to accomplish overall ────────────────────────────────────
 // Uncategorized goals live here alongside the questlines — the "just get it

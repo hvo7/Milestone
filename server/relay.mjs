@@ -93,16 +93,24 @@ const TYPES = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+/** A build artefact rather than a stray route — see the 404 below. */
+const isAssetRequest = rel => /^assets\//.test(rel) || /\.(js|css|map|json|webmanifest)$/i.test(rel);
+
 function serveStatic(res, urlPath) {
   const rel = urlPath === '/' ? 'index.html' : decodeURIComponent(urlPath).replace(/^\/+/, '');
   const file = path.join(DIST, rel);
   if (!file.startsWith(DIST)) { res.writeHead(403).end('Not allowed.'); return; }
   fs.readFile(file, (err, data) => {
     if (err) {
+      // A missing asset is a 404, not the shell: a phone asking for a chunk this
+      // build no longer has must be told so. Handed HTML at status 200 instead,
+      // the import rejects on the MIME type and the app unmounts to a blank
+      // screen rather than reloading onto the current build.
+      if (isAssetRequest(rel)) { res.writeHead(404, { 'Content-Type': TYPES['.txt'] }).end('Not found.'); return; }
       // Unknown path falls back to the shell; routing is hash-based.
       fs.readFile(path.join(DIST, 'index.html'), (shellErr, shell) => {
         if (shellErr) { res.writeHead(404).end('No build here. Copy dist/ next to this file.'); return; }
-        res.writeHead(200, { 'Content-Type': TYPES['.html'] }).end(shell);
+        res.writeHead(200, { 'Content-Type': TYPES['.html'], 'Cache-Control': 'no-cache' }).end(shell);
       });
       return;
     }

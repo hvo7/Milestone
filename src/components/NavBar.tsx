@@ -1,15 +1,16 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, Suspense } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useQuestStore, useUIStore } from '../store';
 import { useVynuesStore } from '../vynuesStore';
 import { VERSION_LABEL, BUILD_MODE, buildSummary } from '../buildInfo';
+import { lazyChunk } from '../lib/lazyChunk';
 
 // The nav bar is on every page, but these two panels open rarely — and the Data
 // panel drags in the whole sync/backup surface. Loaded when actually opened.
-const NotionSyncModal = lazy(() => import('./NotionSyncModal'));
-const DataModal = lazy(() => import('./DataModal'));
-const RemindersModal = lazy(() => import('./RemindersModal'));
+const NotionSyncModal = lazyChunk(() => import('./NotionSyncModal'));
+const DataModal = lazyChunk(() => import('./DataModal'));
+const RemindersModal = lazyChunk(() => import('./RemindersModal'));
 
 const isElectron = !!window.electronAPI;
 

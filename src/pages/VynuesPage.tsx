@@ -1,4 +1,4 @@
-import { useMemo, useState, lazy, Suspense } from 'react';
+import { useMemo, useState, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NavBar from '../components/NavBar';
 import VynuesProjectModal from '../components/VynuesProjectModal';
@@ -6,9 +6,10 @@ import VynuesTaskCreateDrawer, { type VynuesDrawerTarget } from '../components/V
 import type { EditTarget } from '../components/TaskEditDrawer';
 import SubtaskTree from '../components/SubtaskTree';
 import IconButton from '../components/IconButton';
+import { lazyChunk } from '../lib/lazyChunk';
 
 // Opened on demand, so it stays out of the page's own chunk.
-const TaskEditDrawer = lazy(() => import('../components/TaskEditDrawer'));
+const TaskEditDrawer = lazyChunk(() => import('../components/TaskEditDrawer'));
 import { PRIORITY_META, MenuSelect, PROJECT_COLOR_VAR as COLOR_VAR } from '../vynuesUi';
 import { vynuesSubNodes } from '../lib/ui';
 import { repeats } from '../store';

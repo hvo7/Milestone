@@ -1,12 +1,14 @@
-import { useEffect, lazy, Suspense } from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { useEffect, Suspense } from 'react';
+import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useQuestStore, useUIStore } from './store';
 import { useVynuesStore } from './vynuesStore';
 import Today from './pages/Today';
 import UndoToast from './components/UndoToast';
 import CommandPalette from './components/CommandPalette';
+import RouteBoundary from './components/RouteBoundary';
 import { startReminders } from './lib/reminders';
 import { startHistory, installUndoHotkeys, withoutHistory } from './lib/history';
+import { lazyChunk } from './lib/lazyChunk';
 
 // Today is the landing route, so it ships in the main bundle — splitting it would
 // only add a flash on launch. The other tabs are pulled in the first time they're
@@ -15,11 +17,14 @@ import { startHistory, installUndoHotkeys, withoutHistory } from './lib/history'
 // Chunks load by relative URL, which is why vite.config.ts pins `base: './'` —
 // Electron serves the built app over file://, where an absolute /assets path
 // would resolve to the filesystem root and 404.
-const AllPage       = lazy(() => import('./pages/AllPage'));
-const SystemsPage   = lazy(() => import('./pages/SystemsPage'));
-const QuestsPage    = lazy(() => import('./pages/QuestsPage'));
-const QuestlinePage = lazy(() => import('./pages/QuestlinePage'));
-const VynuesPage    = lazy(() => import('./pages/VynuesPage'));
+// `lazyChunk` rather than `lazy`: on a phone that fetch fails often enough to
+// matter, and a rejected import with nothing to catch it unmounts the whole app.
+// See lib/lazyChunk.ts and components/RouteBoundary.tsx.
+const AllPage       = lazyChunk(() => import('./pages/AllPage'));
+const SystemsPage   = lazyChunk(() => import('./pages/SystemsPage'));
+const QuestsPage    = lazyChunk(() => import('./pages/QuestsPage'));
+const QuestlinePage = lazyChunk(() => import('./pages/QuestlinePage'));
+const VynuesPage    = lazyChunk(() => import('./pages/VynuesPage'));
 
 // Hash routing everywhere. Electron serves the built app over file://, which
 // requires it — and the web build is hosted on GitHub Pages, a static file server
@@ -38,6 +43,7 @@ function AppRoutes() {
   const checkAndResetRecurring = useQuestStore(s => s.checkAndResetRecurring);
   const checkAndResetVynues    = useVynuesStore(s => s.checkAndReset);
   const theme = useUIStore(s => s.theme);
+  const { pathname } = useLocation();
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -63,17 +69,22 @@ function AppRoutes() {
   useEffect(() => { startReminders(); }, []);
 
   return (
-    <Suspense fallback={<RouteFallback />}>
-      <Routes>
-        <Route path="/"              element={<Today />} />
-        <Route path="/all"           element={<AllPage />} />
-        <Route path="/systems"       element={<SystemsPage />} />
-        <Route path="/quests"        element={<QuestsPage />} />
-        <Route path="/questline/:id" element={<QuestlinePage />} />
-        <Route path="/vynues"        element={<VynuesPage />} />
-        <Route path="/tracked"       element={<Navigate to="/" replace />} />
-      </Routes>
-    </Suspense>
+    // The boundary sits outside Suspense so it catches the chunk that never
+    // arrived as well as anything the page throws once it has. Keyed on the
+    // path, so moving to another tab is always a fresh attempt.
+    <RouteBoundary resetKey={pathname}>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/"              element={<Today />} />
+          <Route path="/all"           element={<AllPage />} />
+          <Route path="/systems"       element={<SystemsPage />} />
+          <Route path="/quests"        element={<QuestsPage />} />
+          <Route path="/questline/:id" element={<QuestlinePage />} />
+          <Route path="/vynues"        element={<VynuesPage />} />
+          <Route path="/tracked"       element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </RouteBoundary>
   );
 }
 
