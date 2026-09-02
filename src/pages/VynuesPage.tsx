@@ -185,7 +185,7 @@ export default function VynuesPage() {
 
   return (
     <>
-      <div style={{ minHeight: '100vh', paddingBottom: 60 }}>
+      <div className="page-shell" style={{ paddingBottom: 60 }}>
         <NavBar />
 
         <div style={{ maxWidth: 1080, margin: '0 auto', padding: '28px 20px' }}>

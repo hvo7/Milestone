@@ -83,14 +83,37 @@ export function reminderBody(open: number, titles: string[]): string {
   return `${named.join(' · ')}${rest > 0 ? ` · and ${rest} more` : ''}`;
 }
 
-/** Show a notification through whichever mechanism this build has. */
+/**
+ * Show a notification through whichever mechanism this build has.
+ *
+ * The service worker is tried first, and not as a fallback: an installed iOS
+ * web app has a `Notification` object and grants permission through it, but
+ * refuses the *constructor* — `showNotification` on the registration is the
+ * only route Safari accepts. Calling `new Notification()` there throws, and
+ * because the tick marks the day as fired before it notifies, that threw away
+ * the reminder rather than retrying it. The phone therefore had reminders
+ * switched on, permission granted, and silence.
+ */
 async function notify(title: string, body: string): Promise<void> {
   const api = window.electronAPI?.notify;
   if (api) { await api(title, body); return; }
   // Browser build. Permission is requested when the setting is turned on, so a
   // denial here just means no reminders — never a prompt out of nowhere.
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  new Notification(title, { body, tag: 'milestone-daily' });
+
+  const options = { body, tag: 'milestone-daily', icon: './pwa-192.png' };
+  if ('serviceWorker' in navigator) {
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      if (registration) { await registration.showNotification(title, options); return; }
+    } catch { /* fall through to the direct constructor below */ }
+  }
+  try {
+    new Notification(title, options);
+  } catch {
+    // Nothing left to try — a missed nudge must not become an unhandled
+    // rejection out of a timer.
+  }
 }
 
 /** Ask for notification permission, if this build needs it and hasn't got it.

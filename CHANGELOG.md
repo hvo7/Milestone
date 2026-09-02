@@ -7,6 +7,105 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.0.3 — 2026-09-01
+
+A review pass over 3.0.2 and the service worker it touched, then a second one
+over the phone itself — and the two devices now update each other as it happens
+rather than when they next think to ask.
+
+### The two screens keep up with each other
+
+- **Changes are pushed, not waited for.** Both servers now hold an event stream
+  open per device (`GET /api/events`) and write to it the moment a document
+  lands; every device listens and reconciles immediately. The desktop already
+  learned about the phone's edits this way — `writeDoc` woke the renderer
+  directly — but the other direction had nothing, so anything done on the laptop
+  took up to four seconds to reach your hand, and over a relay it took whatever
+  the next poll was.
+- Server-sent events rather than a socket: plain HTTP on the connection the app
+  already has, no dependency, no upgrade handshake, and `EventSource` reconnects
+  on its own — which matters most here, because a phone drops the connection
+  every time you switch apps. The relay still stores one opaque document per
+  device and still decides nothing; it is told something landed and passes that
+  on.
+- **The poll stays, as a backstop.** It drops from every 4 seconds to every 30
+  while the stream is up, and goes straight back to 4 if the stream drops — so a
+  missed reconnect still self-corrects, and a phone doing nothing is no longer
+  waking its radio fifteen times a minute.
+- **The publish delay is 700ms, down from 1500.** Still long enough that typing a
+  title is one write rather than twenty, and now that a write is pushed rather
+  than polled for, that delay *is* the gap between the two screens.
+- **A phone returning from the background refreshes.** The catch-up pull was
+  hung on `focus`, which a suspended phone often never fires — the page was never
+  unfocused. It now listens for `visibilitychange` too.
+- **The desktop no longer wakes itself.** Publishing went through the same store
+  the phone writes to, so every edit made on the desktop told the desktop that
+  something had changed — a full reconcile per edit, against a document it had
+  just written itself.
+- Measured end to end, two devices through a real relay, driven through the real
+  UI: **~830ms in both directions**, consistently.
+
+### On the phone
+
+### On the phone
+
+- **The Wi-Fi bridge never synced.** Minting this device's sync identity called
+  `crypto.randomUUID()`, which is defined only in a *secure context* — and the
+  bridge is `http://192.168.x.x:4785`, which is not one. It threw
+  `crypto.randomUUID is not a function`, taking `identity()` and the whole of
+  `buildTransport()` with it, so a phone handed the app by the desktop set up no
+  sync at all and said nothing about it. The id is now built from
+  `getRandomValues`, which carries no such restriction.
+- **Typing anything zoomed the app in and left it there.** iOS zooms the page
+  when a text field's font is under 16px, and with no `maximum-scale` it does not
+  zoom back out afterwards. Every input in the app is 13–14.5px, so editing a
+  title, searching, or adding a subtask left the phone zoomed and scrolling
+  sideways. Text fields are 16px on touch devices now; the desktop keeps its 14px.
+- **Daily reminders were silent on iOS.** An installed iOS web app grants
+  notification permission and then refuses the `Notification` constructor —
+  `showNotification` on the service worker registration is the only route Safari
+  accepts. The constructor threw, and because the tick marks the day as fired
+  *before* notifying, the nudge was discarded rather than retried. Reminders now
+  go through the worker where there is one, and a failure can no longer escape as
+  an unhandled rejection.
+- **Every page was slightly taller than the screen.** The page shells were sized
+  with `100vh`, which on iOS means the viewport with the toolbar *hidden* — so
+  each one carried a phantom scroll and hid its own bottom padding behind the
+  toolbar. Same mistake 3.0.0 fixed for the modals and drawers; the pages were
+  left behind. They track the visible viewport now.
+
+### The service worker
+
+- **The phone stopped seeing the desktop's changes.** When the app is served by
+  the Wi-Fi bridge or a relay, the sync API lives on the same origin — and
+  `api/peers` is polled every four seconds on a URL that never varies. The
+  worker's cache-first branch treated that like an asset: the first poll's answer
+  was returned to every poll after it, so the phone kept syncing, kept seeing the
+  same document, and silently never learned anything. `cache: 'no-store'` on the
+  call was no defence — that governs the HTTP cache, and a worker sits in front
+  of it. The worker now stays out of `/api/` entirely.
+- **An error page could become the offline shell.** Navigations were cached
+  whatever their status, so one 404 or 502 while online left the installed app
+  opening onto that error every time it was launched without a network. Only a
+  200 is kept now.
+- **The installed shell is fetched past the HTTP cache.** `cache.add` honoured
+  it, and index.html carries a short max-age — so a worker installing just after
+  a deploy could precache the *previous* build's HTML, naming chunks that build
+  no longer has.
+- **A loading tab keeps the nav bar.** The route fallback was an empty
+  full-height div: on a phone fetching a tab for the first time, a second or two
+  of blank page is indistinguishable from the app having died, which is the whole
+  complaint 3.0.2 set out to fix. The chrome now stays put while the page
+  arrives, and the other tabs stay tappable.
+- **Tapping a failed tab again retries it.** The error boundary reset on the path
+  changing, so the one gesture everyone tries first did nothing. It now resets on
+  any navigation, and clears before the render rather than after, so leaving a
+  failed page doesn't paint the error one last time on the way out.
+- **`immutable` is for hashed files only.** Both servers pinned everything but
+  index.html for a year — including sw.js, the web manifest and the icons, whose
+  names never change. A phone holding an old copy of one of those had no way to
+  find out.
+
 ## 3.0.2 — 2026-08-31
 
 The other tabs open on the phone.

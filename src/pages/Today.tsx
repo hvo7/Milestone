@@ -570,7 +570,7 @@ export default function Today() {
   const dateHeading = viewStart.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
-    <div style={{ minHeight: '100vh', paddingBottom: 80 }}>
+    <div className="page-shell" style={{ paddingBottom: 80 }}>
       <NavBar />
 
       <div className="today-shell">

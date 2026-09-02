@@ -5,6 +5,7 @@ import { useVynuesStore } from './vynuesStore';
 import Today from './pages/Today';
 import UndoToast from './components/UndoToast';
 import CommandPalette from './components/CommandPalette';
+import NavBar from './components/NavBar';
 import RouteBoundary from './components/RouteBoundary';
 import { startReminders } from './lib/reminders';
 import { startHistory, installUndoHotkeys, withoutHistory } from './lib/history';
@@ -33,17 +34,33 @@ const VynuesPage    = lazyChunk(() => import('./pages/VynuesPage'));
 // routes also sidestep needing a `basename` for the /<repo>/ subpath.
 const Router = HashRouter;
 
-/** Shown only while a route chunk is in flight — locally that's a frame or two,
- *  so it stays deliberately quiet rather than flashing a spinner. */
+/**
+ * Shown while a route chunk is in flight.
+ *
+ * The nav bar is part of it deliberately. "A frame or two" is a desktop
+ * assumption: on a phone fetching a tab for the first time this is a real
+ * wait, and an empty page for a second or two is indistinguishable from the
+ * app having died — which is the complaint this whole area exists to answer.
+ * Keeping the chrome means a slow tab looks like a slow tab, and the other
+ * tabs stay tappable while it loads.
+ *
+ * Below it stays quiet rather than flashing a spinner that usually resolves
+ * before it can be read.
+ */
 function RouteFallback() {
-  return <div style={{ minHeight: '100vh', background: 'var(--dark-bg)' }} />;
+  return (
+    <>
+      <NavBar />
+      <div style={{ minHeight: '60vh' }} />
+    </>
+  );
 }
 
 function AppRoutes() {
   const checkAndResetRecurring = useQuestStore(s => s.checkAndResetRecurring);
   const checkAndResetVynues    = useVynuesStore(s => s.checkAndReset);
   const theme = useUIStore(s => s.theme);
-  const { pathname } = useLocation();
+  const location = useLocation();
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -70,9 +87,11 @@ function AppRoutes() {
 
   return (
     // The boundary sits outside Suspense so it catches the chunk that never
-    // arrived as well as anything the page throws once it has. Keyed on the
-    // path, so moving to another tab is always a fresh attempt.
-    <RouteBoundary resetKey={pathname}>
+    // arrived as well as anything the page throws once it has. `key` changes on
+    // every navigation and `pathname` covers the first entry, which has no key
+    // of its own yet — together they make any tap a fresh attempt, including a
+    // second tap on the tab that just failed.
+    <RouteBoundary resetKey={`${location.key}:${location.pathname}`}>
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/"              element={<Today />} />

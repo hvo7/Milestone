@@ -33,7 +33,17 @@ const configPath = () => path.join(app.getPath('userData'), 'phone-config.json')
 
 let server = null;
 let listening = null;   // { port, token, urls } while running
-let onDocsChanged = () => {};
+
+/** Everyone who wants to know a document landed: the renderer (through
+ *  main.cjs) and every phone holding an open event stream. A single slot used
+ *  to be enough because there was only ever one listener; the push channel
+ *  below is the second. */
+const docListeners = new Set();
+const notifyDocsChanged = fromDeviceId => {
+  for (const fn of docListeners) {
+    try { fn(fromDeviceId); } catch { /* one bad listener must not stop the rest */ }
+  }
+};
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -91,7 +101,9 @@ function writeDoc(doc) {
     // Written aside and renamed, so a reader never catches a half-written file.
     fs.writeFileSync(temp, JSON.stringify(doc), 'utf8');
     fs.renameSync(temp, target);
-    onDocsChanged();
+    // Carries who wrote it, so the push channel can skip telling that device
+    // about its own edit.
+    notifyDocsChanged(doc.deviceId);
     return { ok: true, at: new Date().toISOString() };
   } catch (err) {
     return { ok: false, error: err.message };
@@ -155,16 +167,88 @@ function serveStatic(res, urlPath) {
       return;
     }
     const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
-    // The shell names the hashed files, so it must be revalidated every load or
-    // the phone keeps asking for a build this computer no longer has. Everything
-    // else carries its hash in its name and can be kept forever.
-    const cache = rel === 'index.html' ? 'no-cache' : 'public, max-age=31536000, immutable';
+    // Only the hashed build output is immutable — its name *is* its version, so
+    // a stale copy is impossible. Everything else (index.html, the worker, the
+    // manifest, the icons) keeps one name across every build, and pinning those
+    // for a year means a phone holding the wrong one has no way to find out.
+    const cache = rel.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
     res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cache }).end(data);
   });
 }
 
 const json = (res, status, body) =>
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }).end(JSON.stringify(body));
+
+// ── The push channel ──────────────────────────────────────────────────────────
+
+/**
+ * Telling a phone the moment something changed, instead of it asking.
+ *
+ * The desktop already learned about a phone's edit immediately — writeDoc wakes
+ * the renderer directly. The other direction had nothing, so a phone only found
+ * out by polling, and "I ticked it on the laptop" took up to four seconds to
+ * show up in your hand. This closes that: one long-lived response per device,
+ * written to whenever a document lands.
+ *
+ * Server-sent events rather than a socket, deliberately. It is plain HTTP on the
+ * connection the app already has, needs no dependency and no upgrade handshake,
+ * and `EventSource` reconnects on its own — which matters more here than
+ * anywhere, because a phone drops the connection every time you switch apps.
+ * The poll stays as a slow safety net underneath (src/lib/phoneTransport.ts).
+ */
+const streams = new Set();
+
+/** Kept short enough to beat any idle timeout between here and the phone, and
+ *  it doubles as the check that finds a connection that died without saying so. */
+const HEARTBEAT_MS = 25_000;
+
+function openStream(req, res, deviceId) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    // Nothing here proxies today, but a stream that gets buffered is a stream
+    // that never arrives, and this is the one header that says "don't".
+    'X-Accel-Buffering': 'no',
+  });
+  // Retry hint for EventSource's own reconnect, and an immediate byte so the
+  // client's `onopen` fires rather than waiting for the first real event.
+  res.write('retry: 3000\n\n');
+  res.write('event: hello\ndata: {}\n\n');
+
+  const client = { res, deviceId };
+  streams.add(client);
+
+  const beat = setInterval(() => {
+    // A comment line: valid SSE, ignored by the client, and it fails loudly here
+    // if the socket is gone.
+    try { res.write(': beat\n\n'); } catch { close(); }
+  }, HEARTBEAT_MS);
+
+  const close = () => {
+    clearInterval(beat);
+    streams.delete(client);
+    try { res.end(); } catch { /* already gone */ }
+  };
+  req.on('close', close);
+  req.on('error', close);
+}
+
+/** Fan a change out to every device except the one that made it — a device
+ *  pulling in response to its own write is pure churn. */
+function broadcast(fromDeviceId) {
+  const payload = JSON.stringify({ from: fromDeviceId || null, at: new Date().toISOString() });
+  for (const client of [...streams]) {
+    if (fromDeviceId && client.deviceId === fromDeviceId) continue;
+    try {
+      client.res.write(`event: changed\ndata: ${payload}\n\n`);
+    } catch {
+      streams.delete(client);
+    }
+  }
+}
+
+docListeners.add(broadcast);
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -197,6 +281,10 @@ async function handle(req, res, token) {
   const sent = url.searchParams.get('t') || req.headers['x-milestone-token'];
   if (sent !== token) { json(res, 401, { ok: false, error: 'Wrong or missing token.' }); return; }
 
+  if (route === '/api/events' && req.method === 'GET') {
+    openStream(req, res, url.searchParams.get('deviceId') || '');
+    return;
+  }
   if (route === '/api/peers' && req.method === 'GET') {
     json(res, 200, { ok: true, peers: readDocs(url.searchParams.get('deviceId') || '') });
     return;
@@ -253,6 +341,14 @@ function start() {
 }
 
 function stop() {
+  // Event streams are open responses by design, and `server.close()` waits for
+  // every one of them — so turning the bridge off would hang until each phone
+  // gave up. Hang them up first; EventSource takes that as a disconnect and
+  // stops asking once the port is gone.
+  for (const client of [...streams]) {
+    try { client.res.end(); } catch { /* already gone */ }
+    streams.delete(client);
+  }
   if (server) { server.close(); server = null; }
   listening = null;
   return { ok: true };
@@ -274,6 +370,6 @@ function status() {
 
 /** Lets main.cjs wake the renderer when a document arrives from the phone, the
  *  same way a file landing in the sync folder does. */
-const onChange = fn => { onDocsChanged = fn; };
+const onChange = fn => { docListeners.add(fn); return () => docListeners.delete(fn); };
 
 module.exports = { loadConfig, setConfig, start, stop, status, readDocs, writeDoc, writeBackup, onChange };

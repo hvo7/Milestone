@@ -62,26 +62,29 @@ function RouteFailed() {
 }
 
 interface Props {
-  /** Changes when the route does. A new route deserves a fresh attempt — being
-   *  stuck on the error for a page you've already navigated away from would be
-   *  the blank screen again, only with words on it. */
+  /** Changes on every navigation, including one back to the page that failed.
+   *  Any navigation deserves a fresh attempt — being stuck on the error for a
+   *  page you've already left would be the blank screen again, only with words
+   *  on it, and tapping the same tab a second time is the obvious way to ask
+   *  for another go. */
   resetKey: string;
   children: ReactNode;
 }
 
-interface State { failed: boolean }
+interface State { failed: boolean; shownFor: string }
 
 export default class RouteBoundary extends Component<Props, State> {
-  state: State = { failed: false };
+  state: State = { failed: false, shownFor: '' };
 
-  static getDerivedStateFromError(): State {
+  static getDerivedStateFromError(): Partial<State> {
     return { failed: true };
   }
 
-  componentDidUpdate(prev: Props) {
-    if (prev.resetKey !== this.props.resetKey && this.state.failed) {
-      this.setState({ failed: false });
-    }
+  /** Cleared *before* the render rather than after it, so a navigation away
+   *  from a failed page never paints the error one last time on the way out. */
+  static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
+    if (props.resetKey === state.shownFor) return null;
+    return { failed: false, shownFor: props.resetKey };
   }
 
   render() {

@@ -143,6 +143,8 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   font-size: 15px;
   min-height: 100vh;
+  /* Tracks Safari's toolbar; see .page-shell below. */
+  min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   transition: background-color 0.3s, color 0.3s;
 }
@@ -171,7 +173,20 @@ body::before {
   transition: opacity 0.3s;
 }
 
-#root { min-height: 100vh; position: relative; z-index: 1; }
+#root { min-height: 100vh; min-height: 100dvh; position: relative; z-index: 1; }
+
+/* Every page's outer wrapper.
+ *
+ * `100vh` on iOS is the viewport with the toolbar *hidden*, so a page sized to
+ * it is always taller than what you can see — every screen carries a phantom
+ * scroll and its bottom padding sits behind the toolbar. That is the same
+ * mistake 3.0.0 fixed for the modal overlay and the drawers; the page shells
+ * were left on the old unit. `dvh` tracks the toolbar, and the `vh` line above
+ * each one keeps a sensible answer for browsers that don't know `dvh`. */
+.page-shell {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
 
 /* Installed as a PWA on a phone the page runs edge to edge, under the notch and
    the home-bar strip (index.html sets viewport-fit=cover so the background fills
@@ -643,6 +658,25 @@ select.rune-input option:disabled { color: var(--text-dim); }
    so the same build has to hold together at 390px. These are the places where a
    layout built for a 1280px window doesn't: a nav row of eleven controls, and
    page padding sized for a window with room to spare. */
+
+/* iOS zooms the whole page in when you focus a text field whose font is under
+   16px — and with no `maximum-scale` it does not zoom back out when the field
+   is done with. Every input in the app is 13–14.5px, so editing a task title,
+   searching, or typing a subtask left the app zoomed and scrolling sideways,
+   which is the one thing that makes an app feel broken on a phone.
+
+   Raising them to 16px on touch devices is the only fix Safari accepts — the
+   alternative, pinning `maximum-scale`, takes away pinch-zoom from people who
+   need it. Gated on the pointer rather than the width so it holds in landscape
+   and leaves the desktop's 14px alone. `!important` because several of these
+   fields carry their size inline. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not([type='file']),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
 
 @media (max-width: 700px) {
   .app-nav {

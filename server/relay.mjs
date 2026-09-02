@@ -67,7 +67,67 @@ function writeDoc(doc) {
   const temp = path.join(DATA, '.' + doc.deviceId + '.tmp');
   fs.writeFileSync(temp, JSON.stringify(doc), 'utf8');
   fs.renameSync(temp, target);   // atomic, so a reader never sees half a document
+  broadcast(doc.deviceId);
   return { ok: true, at: new Date().toISOString() };
+}
+
+// ── The push channel ──────────────────────────────────────────────────────────
+
+/**
+ * The same "tell me the moment it changes" the Wi-Fi bridge offers, at an
+ * address that is always up — so two devices that are never on the same network
+ * still update each other as soon as both are online, rather than on whatever
+ * poll happens next.
+ *
+ * Server-sent events: plain HTTP on the connection already open, no dependency,
+ * no upgrade handshake, and `EventSource` reconnects by itself — which is the
+ * whole game on a phone that drops the socket every time you switch apps.
+ *
+ * The relay still learns nothing. It is told a document landed and passes that
+ * on; what changed and whose version wins is decided on the devices, exactly as
+ * before.
+ */
+const streams = new Set();
+const HEARTBEAT_MS = 25_000;
+
+function openStream(req, res, deviceId) {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    // A buffered stream is a stream that never arrives; proxies in front of a
+    // hosted relay are exactly where that happens.
+    'X-Accel-Buffering': 'no',
+  });
+  res.write('retry: 3000\n\n');
+  res.write('event: hello\ndata: {}\n\n');
+
+  const client = { res, deviceId };
+  streams.add(client);
+
+  const beat = setInterval(() => {
+    try { res.write(': beat\n\n'); } catch { close(); }
+  }, HEARTBEAT_MS);
+
+  const close = () => {
+    clearInterval(beat);
+    streams.delete(client);
+    try { res.end(); } catch { /* already gone */ }
+  };
+  req.on('close', close);
+  req.on('error', close);
+}
+
+/** Everyone but the device that wrote it — pulling in response to your own
+ *  edit is pure churn. */
+function broadcast(fromDeviceId) {
+  const payload = JSON.stringify({ from: fromDeviceId || null, at: new Date().toISOString() });
+  for (const client of [...streams]) {
+    if (fromDeviceId && client.deviceId === fromDeviceId) continue;
+    try { client.res.write(`event: changed\ndata: ${payload}\n\n`); }
+    catch { streams.delete(client); }
+  }
 }
 
 function writeBackup(name, bundle) {
@@ -115,8 +175,10 @@ function serveStatic(res, urlPath) {
       return;
     }
     const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
-    // The service worker wants a fresh shell; hashed assets never change.
-    const cache = rel === 'index.html' ? 'no-cache' : 'public, max-age=31536000, immutable';
+    // Only the hashed build output is immutable — its name is its version.
+    // index.html, sw.js, the web manifest and the icons keep one name across
+    // every build, so pinning them for a year strands a phone on an old copy.
+    const cache = rel.startsWith('assets/') ? 'public, max-age=31536000, immutable' : 'no-cache';
     res.writeHead(200, { 'Content-Type': type, 'Cache-Control': cache }).end(data);
   });
 }
@@ -167,6 +229,10 @@ const server = http.createServer(async (req, res) => {
     const sent = url.searchParams.get('t') || req.headers['x-milestone-token'];
     if (sent !== TOKEN) { json(res, 401, { ok: false, error: 'Wrong or missing key.' }); return; }
 
+    if (route === '/api/events' && req.method === 'GET') {
+      openStream(req, res, url.searchParams.get('deviceId') || '');
+      return;
+    }
     if (route === '/api/peers' && req.method === 'GET') {
       json(res, 200, { ok: true, peers: readDocs(url.searchParams.get('deviceId') || '') });
       return;

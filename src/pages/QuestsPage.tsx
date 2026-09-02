@@ -220,7 +220,7 @@ export default function QuestsPage() {
 
   return (
     <>
-      <div style={{ minHeight: '100vh', paddingBottom: 80 }}>
+      <div className="page-shell" style={{ paddingBottom: 80 }}>
         <NavBar />
 
         <div style={{ maxWidth: 760, margin: '0 auto', padding: '28px 20px' }}>

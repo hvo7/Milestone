@@ -343,9 +343,12 @@ async function publish(bump: boolean) {
 function scheduleWrite() {
   if (applying || !config?.enabled) return;
   if (writeTimer) clearTimeout(writeTimer);
-  // Long enough that typing a task title is one write rather than twenty, short
-  // enough that walking to the other computer finds the change already there.
-  writeTimer = setTimeout(() => { writeTimer = null; void publish(true); }, 1500);
+  // Long enough that typing a task title is one write rather than twenty — a
+  // pause this long means you stopped typing — and short enough that the other
+  // device has it before you've finished picking it up. Now that a write is
+  // pushed rather than waited for, this delay *is* the latency between the two
+  // screens, so it is worth keeping honest.
+  writeTimer = setTimeout(() => { writeTimer = null; void publish(true); }, 700);
 }
 
 // ── Pull ──────────────────────────────────────────────────────────────────────
@@ -488,6 +491,11 @@ export async function startCloudSync() {
   // ways fs.watch doesn't report, and coming back to a machine you left open is
   // exactly when you most expect it to have caught up.
   window.addEventListener('focus', () => { void pull(); });
+  // `focus` is the desktop's version of that moment. A phone returning from the
+  // background often never fires it — the page was never unfocused, it was
+  // suspended — so the one thing you always do before looking at your tasks
+  // wouldn't refresh them. Both, because either can arrive without the other.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) void pull(); });
   setInterval(() => { void pull(); }, 60_000);
 
   if (config.enabled) await pull();

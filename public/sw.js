@@ -5,7 +5,7 @@
  *
  * Electron never registers this — see the guard in src/main.tsx.
  *
- * Cache busting rides on the registration URL (`sw.js?v=3.0.2&b=<built-at>`). The
+ * Cache busting rides on the registration URL (`sw.js?v=3.0.3&b=<built-at>`). The
  * browser treats a changed script URL as a new worker, and that string keys the
  * cache, so a release both installs a fresh worker and drops the previous one's
  * entries.
@@ -42,9 +42,27 @@ async function cacheEach(cache, urls) {
   await Promise.all(urls.map(url => cache.add(url).catch(() => {})));
 }
 
+/**
+ * The shell, fetched past the HTTP cache.
+ *
+ * `cache.add` would honour it, and index.html is served with a short max-age —
+ * so a worker installing just after a deploy could precache the *previous*
+ * build's HTML, which names chunk files this build no longer has. The offline
+ * shell would then boot into missing scripts. Hashed assets don't need this
+ * (their names are their versions) and are better off reusing the HTTP cache.
+ */
+async function cacheFresh(cache, urls) {
+  await Promise.all(urls.map(async url => {
+    try {
+      const res = await fetch(url, { cache: 'reload' });
+      if (res.ok) await cache.put(url, res);
+    } catch { /* one missing shell entry is not worth failing the install over */ }
+  }));
+}
+
 async function precache() {
   const cache = await caches.open(CACHE);
-  await cacheEach(cache, SHELL);
+  await cacheFresh(cache, SHELL);
 
   // `no-store`, or the manifest itself could come from the HTTP cache and hand
   // back the *previous* build's file names — precisely the failure this exists
@@ -105,8 +123,14 @@ async function fromCache(request) {
 async function handleNavigate(request) {
   try {
     const res = await fetch(request);
-    const copy = res.clone();
-    caches.open(CACHE).then(c => c.put('./index.html', copy));
+    // Only a real page becomes the offline shell. A 404 or a 502 from the host
+    // is still a response, and caching one would leave the installed app
+    // opening onto an error page every time it was launched without a network —
+    // until some later launch happened to be online *and* succeed.
+    if (res.ok) {
+      const copy = res.clone();
+      caches.open(CACHE).then(c => c.put('./index.html', copy));
+    }
     return res;
   } catch (err) {
     const shell = await fromCache('./index.html') || await fromCache('./');
@@ -132,7 +156,19 @@ async function handleAsset(request) {
 self.addEventListener('fetch', event => {
   const { request } = event;
   if (request.method !== 'GET') return;
-  if (new URL(request.url).origin !== self.location.origin) return;
+
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+
+  // Sync is not an asset. When the app is served by the desktop bridge or by a
+  // relay, the same origin also carries the sync API, and `api/peers` is polled
+  // every few seconds on an unchanging URL (src/lib/phoneTransport.ts). Handing
+  // that to the cache-first branch below meant the first poll's answer was
+  // returned to every later poll for the life of the cache: the phone went on
+  // syncing, saw the same document forever, and silently never learned anything
+  // the desktop did. `cache: 'no-store'` on the call doesn't help — that governs
+  // the HTTP cache, and a service worker sits in front of it.
+  if (url.pathname.includes('/api/')) return;
 
   if (request.mode === 'navigate') { event.respondWith(handleNavigate(request)); return; }
 

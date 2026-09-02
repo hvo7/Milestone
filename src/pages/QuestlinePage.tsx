@@ -85,7 +85,7 @@ export default function QuestlinePage() {
 
   return (
     <>
-      <div style={{ minHeight: '100vh', padding: '0 0 100px' }}>
+      <div className="page-shell" style={{ padding: '0 0 100px' }}>
         {/* ── Top bar ── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '20px 24px 0' }}>
           <Link to="/quests" style={{ textDecoration: 'none' }}>

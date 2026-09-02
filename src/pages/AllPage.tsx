@@ -425,7 +425,7 @@ export default function AllPage() {
     projectGroups.reduce((n, g) => n + g.tasks.length, 0);
 
   return (
-    <div style={{ minHeight: '100vh', paddingBottom: 80 }}>
+    <div className="page-shell" style={{ paddingBottom: 80 }}>
       <NavBar />
 
       <div style={{ maxWidth: 860, margin: '0 auto', padding: '28px 20px 60px' }}>

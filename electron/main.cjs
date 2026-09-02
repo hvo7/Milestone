@@ -262,7 +262,11 @@ app.whenReady().then(() => {
   createWindow();
   // A document arriving from the phone wakes the renderer exactly like one
   // landing in the sync folder — same channel, same reconciliation.
-  phone.onChange(() => {
+  phone.onChange(fromDeviceId => {
+    // Except our own. `sync:write` publishes through this same store, so every
+    // edit made here was waking this window to reconcile against a document it
+    // had just written itself — a full pull per edit, for nothing.
+    if (fromDeviceId && fromDeviceId === cloudSync.loadConfig().deviceId) return;
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed');
   });
   if (phone.loadConfig().enabled) void phone.start();
