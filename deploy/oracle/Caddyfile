@@ -1,0 +1,25 @@
+# HTTPS in front of the relay.
+#
+# Caddy gets and renews a Let's Encrypt certificate for RELAY_HOST on its own,
+# which is the whole reason it is here: the app is served to your phone over
+# HTTPS, and a page loaded over HTTPS cannot talk to a plain-HTTP address. The
+# browser blocks it as mixed content, silently — no error, just a phone that
+# never syncs.
+
+{$RELAY_HOST} {
+	reverse_proxy relay:8787 {
+		# The line that makes this a *live* sync rather than a slow one.
+		#
+		# Devices hold an SSE stream open (GET /api/events) and the relay writes
+		# to it the moment a document lands. A proxy that buffers holds those
+		# writes until the buffer fills — which for a few hundred bytes of JSON
+		# is never. The stream stays open, nothing arrives, and every device
+		# quietly falls back to its poll.
+		#
+		# -1 flushes each write straight through.
+		flush_interval -1
+	}
+}
+
+# Deliberately no `encode`. Compressing a response means buffering it, which is
+# the same trap as above, and the payloads here are a few kilobytes of JSON.

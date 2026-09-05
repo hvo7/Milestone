@@ -1,0 +1,56 @@
+# The relay on an always-free VM: the relay itself, and Caddy in front of it for
+# HTTPS. See docs/relay-oracle.md.
+#
+#   docker compose up -d --build
+#
+# Both halves restart with the machine, so a reboot brings the relay back with
+# nothing to remember.
+
+services:
+  relay:
+    build:
+      # The repo root — the Dockerfile builds the app and the server together.
+      context: ../..
+      dockerfile: Dockerfile
+    image: milestone-relay
+    restart: unless-stopped
+    environment:
+      # No default on purpose: the relay refuses to start without a key, and a
+      # compose file that invented one would be an open relay with a password
+      # anyone could read here.
+      MILESTONE_TOKEN: ${MILESTONE_TOKEN:?set MILESTONE_TOKEN in deploy/oracle/.env}
+      MILESTONE_DATA: /data
+      MILESTONE_DIST: /app/dist
+      PORT: "8787"
+    volumes:
+      - relay-data:/data
+    # Not `ports:` — only Caddy should be reachable from outside. Publishing 8787
+    # would expose the relay over plain HTTP alongside the HTTPS one, and Docker
+    # punches its own holes in the firewall to do it.
+    expose:
+      - "8787"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      RELAY_HOST: ${RELAY_HOST:?set RELAY_HOST in deploy/oracle/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Certificates live here. Losing this volume means re-issuing on restart,
+      # and Let's Encrypt rate-limits that per week.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - relay
+
+volumes:
+  # Named, so `docker compose down` and a rebuild keep the device documents and
+  # the certificates. Losing the documents is survivable — every device rewrites
+  # its own on the next publish — but it looks like an outage until they do.
+  relay-data:
+  caddy-data:
+  caddy-config:

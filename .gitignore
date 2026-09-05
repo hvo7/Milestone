@@ -42,3 +42,9 @@ milestone-recovered-*.json
 *.njsproj
 *.sln
 *.sw?
+
+# The relay's key, written by deploy/oracle/setup.sh on the server. It is the
+# only thing standing between the internet and your whole profile, so it lives
+# on the machine that uses it and nowhere else — never in the repo.
+.env
+deploy/oracle/.env

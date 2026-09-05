@@ -110,7 +110,8 @@ folder, so it needs one of the other two routes:
 - **Through a relay**, for everything else. One small always-on address all three
   devices reach, so an edit made on a train is on the desktop as it happens. See
   **[docs/relay.md](docs/relay.md)** — `fly deploy` and pasting an address into
-  each device.
+  each device, or **[docs/relay-oracle.md](docs/relay-oracle.md)** to run the
+  same relay for nothing on an always-free VM.
 
 All three routes speak the same protocol and a device uses whichever are up at
 once, so the reconciler never has to care which one a change arrived by. Changes
