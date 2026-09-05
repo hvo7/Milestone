@@ -4,6 +4,7 @@ import { useQuestStore, useUIStore } from './store';
 import { useVynuesStore } from './vynuesStore';
 import Today from './pages/Today';
 import UndoToast from './components/UndoToast';
+import UpdateToast from './components/UpdateToast';
 import CommandPalette from './components/CommandPalette';
 import NavBar from './components/NavBar';
 import RouteBoundary from './components/RouteBoundary';
@@ -116,6 +117,9 @@ export default function App() {
           you between pages. */}
       <CommandPalette />
       <UndoToast />
+      {/* Same reasoning: a release can land on any page, and the offer to take
+          it should not depend on which one you happen to be looking at. */}
+      <UpdateToast />
     </Router>
   );
 }

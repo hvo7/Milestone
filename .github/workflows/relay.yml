@@ -1,0 +1,55 @@
+# Redeploys the relay whenever the app changes.
+#
+# The relay serves its own copy of the built app (see the Dockerfile), so without
+# this it would go on handing phones whatever build was current when it was last
+# deployed by hand — the same staleness this whole arrangement exists to remove,
+# just moved to a server.
+#
+# Does nothing until FLY_API_TOKEN is set:
+#
+#   fly tokens create deploy -x 999999h        # then paste it into
+#   gh secret set FLY_API_TOKEN                # repo → Settings → Secrets
+#
+# Until then the job runs, finds no token, and says so. That is deliberate — a
+# workflow that fails red on every push because an optional deployment isn't set
+# up yet is a workflow people learn to ignore.
+name: Deploy the relay
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: relay
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # Secrets can't be read in a job-level `if`, so the check is a step that
+      # publishes an output the rest of the job hangs off.
+      - id: guard
+        name: Is a Fly token configured?
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          if [ -n "$FLY_API_TOKEN" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No FLY_API_TOKEN set — skipping. See docs/relay.md to set the relay up."
+            echo "go=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.guard.outputs.go == 'true'
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # --remote-only: the image is built on Fly's builder rather than here, so
+      # the ~1GB of build context and layers never crosses the runner.
+      - if: steps.guard.outputs.go == 'true'
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

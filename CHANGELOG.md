@@ -7,6 +7,73 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.1.0 — 2026-09-04
+
+Every copy of Milestone now updates itself, and there is somewhere for the
+devices to meet that doesn't depend on one of them being awake. Nothing about how
+data is reconciled has changed — this release is about the two things that kept
+leaving a device on the wrong build or the wrong data with no sign that it had.
+
+### The app updates itself
+
+- **The desktop checks GitHub for a newer release**, downloads it in the
+  background, and swaps it in when you next close the app — or right away from
+  Sync & Backup → Updates → *Restart now*. Until now every computer was updated
+  by hand (pull, build, package, install script), which in practice meant
+  whichever machine you weren't sitting at was months behind.
+- The swap runs as a detached script *after* the process exits, because Windows
+  will not let a running executable be overwritten, and copies over the install
+  rather than deleting it first: a copy that dies halfway leaves a working
+  mixture of two builds, where a delete that dies halfway leaves nothing to
+  start. `%APPDATA%\Milestone` is never touched — an update costs a launch at
+  worst, never a questline.
+- Hand-rolled rather than electron-updater, which wants electron-builder, an NSIS
+  installer and a signing certificate to be at its best. Replacing the whole
+  packaging story to gain an update mechanism is a much bigger change than the
+  one being asked for. Same reasoning that left `sw.js` and `relay.mjs`
+  dependency-free.
+- **The phone and web copies reload themselves onto a new build.** The service
+  worker was already replacing itself correctly, but that never changed the code
+  *already running in the page* — so an installed phone app, which stays resident
+  for days, went on showing the previous release until it was force-quit twice.
+  It now notices within fifteen minutes, or the moment it is next opened, and
+  takes the update silently while it is in the background. If a release lands
+  while you are looking at the app, it says so and offers the reload rather than
+  yanking the page out from under you.
+- The build writes `dist/version.json`, which is how a stale app can find out it
+  is stale: its own code has an old idea of what the current version is, so the
+  answer has to come from something it asks. `public/sw.js` exempts that file
+  from the cache for the same reason `api/` is exempt — served from the cache, it
+  would confirm the app was current forever.
+- **A release is now a version bump and a push.** `.github/workflows/release.yml`
+  packages the Windows build and publishes it, `pages.yml` deploys the web app,
+  and `relay.yml` redeploys the relay — so all three land on the same version
+  from one action, with release notes taken from this file.
+
+### Somewhere for the devices to meet
+
+- **The relay is deployable.** `server/relay.mjs` has been the answer to "my
+  devices are never awake at the same time" since 3.0.0 and it was never running
+  anywhere, which is why the phone only ever synced next to an open desktop.
+  There is now a `Dockerfile`, a `fly.toml` and [docs/relay.md](docs/relay.md):
+  `fly deploy`, then paste the address into each device.
+- `auto_stop_machines` is off deliberately. Devices hold an event stream open and
+  the relay writes to it the moment a document lands; a stopped machine has no
+  open streams, so every device falls back to its poll and live sync quietly
+  becomes slow sync.
+- The image serves the built app as well as the documents, so the phone installs
+  Milestone from the relay and gets every subsequent build from it.
+- Nothing about the protocol moved. The relay still stores one opaque document
+  per device, still merges nothing, and still has no idea what a task is.
+
+### Also
+
+- Sync & Backup gained an **Updates** card — which build this is, whether it's
+  the current one, and a button for when "within six hours" isn't soon enough.
+- `electron/semver.cjs` is its own tested module because comparing the versions
+  as strings would have made 3.0.10 older than 3.0.9, and that release would
+  simply never have installed anywhere, with nothing to report.
+
 ## 3.0.3 — 2026-09-01
 
 A review pass over 3.0.2 and the service worker it touched, then a second one

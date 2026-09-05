@@ -2,8 +2,13 @@
   "_comment": "Ships as 'Milestone'. Electron derives userData from the app name, so every goal/streak/project lives in %APPDATA%/Milestone/Local Storage — electron/main.cjs calls app.setName('Milestone') to pin that (npm names must be lowercase, and we don't want a lowercase profile folder). Renaming either the npm `name` or that setName call moves the profile and points the app at an empty one; it was 'rpg-quest-tracker' until 2026-07-13, and main.cjs still migrates that old profile forward on first launch.",
   "name": "milestone",
   "private": true,
-  "_versioning": "`version` below is the single source of truth. vite.config.ts reads it at build time into __APP_VERSION__ (with a build timestamp), which surfaces as the chip beside the nav-bar brand and in the Data modal — that's how you tell a fresh exe from a stale one. @electron/packager picks the same value up from here by default and stamps it into the exe's file properties. Bump it with `npm run release:patch|minor|major`, which bumps, rebuilds and repackages in one go; never hand-edit it.",
-  "version": "3.0.3",
+  "_versioning": "`version` below is the single source of truth. vite.config.ts reads it at build time into __APP_VERSION__ (with a build timestamp), which surfaces as the chip beside the nav-bar brand and in the Data modal — that's how you tell a fresh exe from a stale one. @electron/packager picks the same value up from here by default and stamps it into the exe's file properties. Bump it with `npm run bump:patch|minor|major` and push: .github/workflows/release.yml packages the desktop build and publishes it, pages.yml redeploys the web app, and every installed copy picks both up on its own. `npm run release:patch|minor|major` is the local equivalent, for building on this machine without going through CI. Never hand-edit it.",
+  "version": "3.1.0",
+  "_repository": "Read by electron/updater.cjs to find where releases are published — an install checks this repo's releases and updates itself from them.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hvo7/Milestone.git"
+  },
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -21,6 +26,10 @@
     "electron:build": "npm run build && npx @electron/packager . \"Milestone\" --platform=win32 --arch=x64 --out=release --icon=build/icon.ico --extra-resource=build/icon.ico --overwrite --ignore=\"(node_modules|\\.git|src|scripts|\\.eslintrc|tsconfig|vite\\.config)\"",
     "package": "npm run generate-icons && npm run electron:build",
     "version:show": "node -e \"console.log('Milestone v'+require('./package.json').version)\"",
+    "_bumping": "Bump and push; CI packages, publishes the release, and every device updates itself from it. No tag is created here — release.yml makes v<version> when it publishes, and a tag pushed ahead of the build would claim a release that doesn't exist yet.",
+    "bump:patch": "npm version patch --no-git-tag-version",
+    "bump:minor": "npm version minor --no-git-tag-version",
+    "bump:major": "npm version major --no-git-tag-version",
     "release:patch": "npm version patch --no-git-tag-version && npm run package",
     "release:minor": "npm version minor --no-git-tag-version && npm run package",
     "release:major": "npm version major --no-git-tag-version && npm run package"

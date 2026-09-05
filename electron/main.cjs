@@ -6,6 +6,7 @@ const cloudSync = require('./cloudSync.cjs');
 const backups = require('./backups.cjs');
 const tray = require('./tray.cjs');
 const phone = require('./phone.cjs');
+const updater = require('./updater.cjs');
 
 // ── Identity ─────────────────────────────────────────────────────────────────
 // Electron derives userData from the app name, and npm names must be lowercase —
@@ -240,6 +241,14 @@ ipcMain.handle('phone:set-port', (_event, port) => {
   return { ok: true, status: phone.status() };
 });
 
+// ── Keeping this computer's copy current ──────────────────────────────────────
+// See electron/updater.cjs. The renderer only ever asks and is told; every
+// decision about what to download and when to swap it in lives there.
+
+ipcMain.handle('update:status', () => updater.status());
+ipcMain.handle('update:check', () => updater.check({ manual: true }));
+ipcMain.handle('update:apply', () => updater.applyStaged({ relaunch: true }));
+
 // ── Automatic local backups ───────────────────────────────────────────────────
 // The safety net under the single Local Storage database — see electron/backups.cjs.
 
@@ -273,6 +282,12 @@ app.whenReady().then(() => {
   cloudSync.initWatcher(() => {
     if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('sync:changed');
   });
+  // Progress goes to the window as it happens rather than being polled: a
+  // download that takes a minute should look like one.
+  updater.onChange(status => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:status', status);
+  });
+  updater.start();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -280,7 +295,13 @@ app.whenReady().then(() => {
 
 // Menu "Quit", ⌘Q and a system shutdown all arrive here first — after this the
 // close handler must let the window actually close.
-app.on('before-quit', () => tray.markQuitting());
+app.on('before-quit', () => {
+  tray.markQuitting();
+  // A build downloaded earlier gets installed on the way out, so the next launch
+  // is already the new version and nobody had to be asked. Explicitly without a
+  // relaunch: this is a quit, and it should stay one.
+  if (updater.hasStaged()) updater.applyStaged({ relaunch: false });
+});
 
 app.on('window-all-closed', () => {
   // With the tray holding the app open there are no windows by design; quitting

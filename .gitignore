@@ -16,6 +16,11 @@ dist-ssr
 # Rebuild with `npm run package`; never commit it.
 release
 
+# Sync documents written by a locally-run relay (server/relay.mjs). Same content
+# as the files in a cloud sync folder: one opaque document per device, holding
+# whatever that device last published.
+relay-data
+
 # PWA icons rendered from public/logo.svg by `npm run generate-icons`, which the
 # Pages workflow runs before every build. Committing them would let the installed
 # app icon drift from the source mark.

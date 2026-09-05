@@ -1,0 +1,123 @@
+# Packages the Windows desktop build and publishes it as a GitHub Release.
+#
+# This is the other half of "every device is on the same version". pages.yml
+# already redeploys the web and phone app on every push; until now the desktop
+# was built by hand on whichever computer you happened to be sitting at, which is
+# precisely why one of them was always months behind. The app's updater
+# (electron/updater.cjs) reads the releases this produces, so publishing one is
+# what makes every desktop install pick the version up on its own.
+#
+# ── When it runs ─────────────────────────────────────────────────────────────
+# On a push to main whose package.json version has no release yet. That makes
+# cutting a release exactly one act:
+#
+#     npm run bump:patch   &&   git commit -am "…"   &&   git push
+#
+# Ordinary commits that don't touch the version push the web app and stop there,
+# which is the right default: a 290MB desktop build per commit is waste, and the
+# version chip would stop meaning anything if every commit moved it.
+name: Release the desktop build
+
+on:
+  push:
+    branches: [main]
+  # For re-cutting a release whose build failed, without an empty version bump.
+  workflow_dispatch:
+
+# Creating a release is a write to the repository; nothing else here needs more.
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Windows, because @electron/packager stamps the exe's icon and file
+    # properties through rcedit. It can be persuaded to do that from Linux under
+    # wine; a Windows runner is the version of this that simply works.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      # Decide before building whether there is anything to do. `gh release view`
+      # exiting non-zero is the "no such release" answer, so failure here is the
+      # normal path rather than an error.
+      - id: gate
+        name: Is this version already released?
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "Release v$version already exists — nothing to do."
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.gate.outputs.needed == 'true'
+        run: npm ci
+
+      # Shipping a build whose recurrence engine is broken is worse than not
+      # shipping: the failure is silent and lands in someone's saved data. Same
+      # reasoning as the gate in pages.yml, and the same reason it runs first.
+      - if: steps.gate.outputs.needed == 'true'
+        run: npm test
+
+      - if: steps.gate.outputs.needed == 'true'
+        run: npm run package
+
+      # 7-Zip rather than Compress-Archive: it is already on the runner and this
+      # is ~290MB of Chromium, where the difference is minutes.
+      #
+      # The contents are zipped from *inside* the packager's output folder, so the
+      # archive holds the app at its root. electron/updater.cjs copes with either
+      # shape, but the flat one is what the install instructions assume.
+      - if: steps.gate.outputs.needed == 'true'
+        name: Zip the build
+        shell: pwsh
+        run: |
+          $version = "${{ steps.gate.outputs.version }}"
+          $out = "Milestone-win32-x64-$version.zip"
+          7z a -tzip -mx=5 $out ".\release\Milestone-win32-x64\*" | Out-Null
+          "asset=$out" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+        id: zip
+
+      # The changelog already says what changed, in prose written for a person.
+      # Restating it in a commit-log dump would be worse, so pull that section out
+      # and use it verbatim; a version with no entry gets a plain fallback.
+      - if: steps.gate.outputs.needed == 'true'
+        name: Take the release notes from CHANGELOG.md
+        shell: bash
+        run: |
+          version="${{ steps.gate.outputs.version }}"
+          awk -v v="$version" '
+            $0 ~ "^## " v ( "( |$)" ) { taking = 1; next }
+            taking && /^## / { exit }
+            taking { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "Milestone v$version." > notes.md
+          fi
+
+      - if: steps.gate.outputs.needed == 'true'
+        name: Publish the release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.gate.outputs.version }}"
+          gh release create "v$version" \
+            "${{ steps.zip.outputs.asset }}" \
+            --title "Milestone v$version" \
+            --notes-file notes.md

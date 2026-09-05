@@ -5,7 +5,7 @@ lands on today's list. Questlines hold the ambition, Today holds the work, and
 the same task shows up in both.
 
 Runs as a Windows desktop app (Electron) and as an installable PWA from the same
-source — see [Builds](#builds).
+source — see [Releases](#releases). Both keep themselves up to date.
 
 ![The Today tab: everything due, whatever it came from](docs/today.png)
 
@@ -62,21 +62,60 @@ completion log, vector-clock comparison, what lands on a given day's list, undo'
 cascade restores, search ranking, and reminder scheduling. Those are the places
 where a bug looks like "I forgot to do it" rather than like a crash.
 
-## Builds
+## Releases
+
+Cutting one is a version bump and a push:
+
+```bash
+npm run bump:patch     # or bump:minor / bump:major — never hand-edit the version
+git commit -am "…" && git push
+```
+
+From that one push, three things happen and every device ends up on the same
+build without being touched:
+
+| | what runs | what picks it up |
+|---|---|---|
+| **Web / phone** | `.github/workflows/pages.yml` | The open app notices within 15 minutes, or the moment it's next foregrounded, and reloads itself (`src/lib/appUpdate.ts`) |
+| **Desktop** | `.github/workflows/release.yml` — packages Windows, publishes a GitHub Release | Each install checks every 6 hours, downloads in the background, and swaps it in when you next close the app (`electron/updater.cjs`) |
+| **Relay** | `.github/workflows/relay.yml` | Redeployed, so the copy of the app *it* serves stays current too |
+
+The release workflow only fires when `package.json`'s version has no release yet,
+so ordinary commits deploy the web app and stop there.
+
+To build locally instead — for a machine with no network, or to test a package
+before publishing:
 
 ```bash
 npm run package        # regenerate icons, build, package to release/
 ```
 
 The desktop build lands in `release/Milestone-win32-x64/` (gitignored — it's
-~290MB of Chromium). The PWA deploys to GitHub Pages automatically on push to
-`main`, via `.github/workflows/pages.yml`.
+~290MB of Chromium), and `scripts/install.ps1` copies it to
+`%LOCALAPPDATA%\Milestone`. `npm run release:patch|minor|major` does the bump and
+the package in one step, without going through CI.
 
 Version lives in `package.json` and nowhere else: `vite.config.ts` reads it into
 `__APP_VERSION__`, which surfaces beside the nav-bar brand and in the Data modal —
-that's how you tell a fresh build from a stale one. Bump it with
-`npm run release:patch|minor|major`, which bumps, rebuilds and repackages in one
-step. Don't hand-edit it.
+that's how you tell a fresh build from a stale one. It's also written to
+`dist/version.json`, which is how a running phone app finds out that it isn't the
+current build any more.
+
+## Keeping the devices in step
+
+Two computers sharing a cloud folder sync through it. A phone can't read that
+folder, so it needs one of the other two routes:
+
+- **Over Wi-Fi**, from a desktop that's awake — Sync & Backup → *On your phone*.
+- **Through a relay**, for everything else. One small always-on address all three
+  devices reach, so an edit made on a train is on the desktop as it happens. See
+  **[docs/relay.md](docs/relay.md)** — `fly deploy` and pasting an address into
+  each device.
+
+All three routes speak the same protocol and a device uses whichever are up at
+once, so the reconciler never has to care which one a change arrived by. Changes
+are pushed over an event stream rather than polled for, with a poll underneath as
+a backstop.
 
 ## Where your data lives
 

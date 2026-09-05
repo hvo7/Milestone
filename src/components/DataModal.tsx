@@ -6,6 +6,7 @@ import { noteExternalWrite } from '../lib/cloudSync';
 import CloudSyncCard from './CloudSyncCard';
 import PhoneCard from './PhoneCard';
 import AutoBackupCard from './AutoBackupCard';
+import UpdateCard from './UpdateCard';
 import ModalShell from './ModalShell';
 
 interface Props { onClose: () => void; }
@@ -97,6 +98,9 @@ export default function DataModal({ onClose }: Props) {
             <CloudSyncCard />
             <PhoneCard />
             <AutoBackupCard />
+            {/* Which build this is and whether it's current. Renders in both
+                builds — they update by different means, and the card picks. */}
+            <UpdateCard />
 
             {/* Export */}
             <div style={{ background: 'var(--input-bg)', border: '1px solid var(--card-border)', borderRadius: 10, padding: '14px 16px' }}>

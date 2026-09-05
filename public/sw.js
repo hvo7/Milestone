@@ -170,6 +170,13 @@ self.addEventListener('fetch', event => {
   // the HTTP cache, and a service worker sits in front of it.
   if (url.pathname.includes('/api/')) return;
 
+  // Neither is version.json, for exactly the same reason. It is the file the app
+  // polls to find out whether it is still the current build (src/lib/appUpdate.ts)
+  // — answering that from the cache would hand back the stamp of the build doing
+  // the asking, so the app would confirm it was current forever. It is the one
+  // .json the branch below must not treat as an immutable asset.
+  if (/\/version\.json$/.test(url.pathname)) return;
+
   if (request.mode === 'navigate') { event.respondWith(handleNavigate(request)); return; }
 
   // A rejection here is deliberately left to reject: for a route chunk that is

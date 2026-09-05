@@ -1,0 +1,20 @@
+# The build context is uploaded to the host on every deploy, so the two folders
+# that would dominate it are exactly the two the image rebuilds for itself.
+node_modules
+dist
+release
+
+.git
+.github
+docs
+relay-data
+
+# Rendered from public/logo.svg during the image build (see the Dockerfile), and
+# gitignored for the same reason — a stale copy here would be baked in.
+public/pwa-*.png
+
+# Never anywhere near an image: these are verbatim dumps of personal task data.
+milestone-backup-*.json
+milestone-recovered-*.json
+
+*.log

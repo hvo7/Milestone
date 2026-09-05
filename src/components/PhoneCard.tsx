@@ -41,8 +41,9 @@ function RelaySection() {
       </h4>
       <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.5 }}>
         An address that stays up, so edits find each other even when the two devices
-        are never awake at once. Run <code>server/relay.mjs</code> anywhere, and put the
-        same address and key on both devices.
+        are never awake at once — and changes arrive as they happen rather than when
+        something next asks. Deploy it with <code>fly deploy</code> (see
+        <code>docs/relay.md</code>), then put the same address and key on every device.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <input

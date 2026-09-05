@@ -1,0 +1,60 @@
+# The relay on Fly.io.
+#
+#   fly launch --no-deploy          # once, to claim the app name
+#   fly volumes create milestone_data --size 1
+#   fly secrets set MILESTONE_TOKEN="$(openssl rand -base64 24)"
+#   fly deploy
+#
+# Then put the resulting https://<app>.fly.dev address and that same key into
+# Sync & Backup → "When you're away" on every device. See docs/relay.md.
+
+app = "milestone-relay"
+primary_region = "ord"          # change to the region you are actually near
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "8787"
+  MILESTONE_DATA = "/data"
+  MILESTONE_DIST = "/app/dist"
+
+# MILESTONE_TOKEN is a secret, not an env var — `fly secrets set` keeps it out of
+# this file and out of the image. The relay refuses to start without it, which is
+# deliberate: an open relay is your whole profile, readable by anyone who finds
+# the address.
+
+[http_service]
+  internal_port = 8787
+  force_https = true
+
+  # The two settings that make this a *live* sync rather than a slow one.
+  #
+  # Devices hold an SSE connection open (`GET /api/events`) and the relay writes
+  # to it the moment a document lands. A machine that has been stopped has no
+  # open streams to write to, so every device silently falls back to its poll and
+  # the whole point of the relay — an edit appearing on the other screen as you
+  # make it — is lost. Suspending is no better: the wake costs seconds on the
+  # first request, which is exactly the request carrying your edit.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/api/health"
+
+# Documents are a few kilobytes each and there is one per device, so the disk is
+# sized for the app build and the logs rather than the data.
+[mounts]
+  source = "milestone_data"
+  destination = "/data"
+
+# The relay stores small files and fans out short strings. It has never needed
+# more than this, and a bigger machine would only cost more to leave running.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

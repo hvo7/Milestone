@@ -30,6 +30,14 @@ declare global {
         stop:    () => Promise<{ ok: boolean; status: PhoneStatus }>;
         setPort: (port: number) => Promise<{ ok: boolean; status: PhoneStatus }>;
       };
+      /** Keeping this install current — see electron/updater.cjs. */
+      update: {
+        status:   () => Promise<DesktopUpdateStatus>;
+        check:    () => Promise<DesktopUpdateStatus>;
+        apply:    () => Promise<{ ok: boolean; error?: string }>;
+        /** Returns an unsubscribe function. */
+        onStatus: (callback: (status: DesktopUpdateStatus) => void) => () => void;
+      };
       /** Rolling on-disk snapshots of the stores — see electron/backups.cjs. */
       backup: {
         save:   (bundle: unknown) => Promise<{ ok: boolean; name?: string; at?: string; skipped?: string; error?: string }>;
@@ -56,6 +64,21 @@ declare global {
     urls: string[];
     /** False in `electron:dev`, where there is no build on disk to serve. */
     built: boolean;
+  }
+
+  /** Where this install is in the update cycle — see electron/updater.cjs. */
+  interface DesktopUpdateStatus {
+    phase: 'idle' | 'checking' | 'downloading' | 'staged' | 'error';
+    currentVersion: string;
+    /** Newest version published, once GitHub has been asked. */
+    latestVersion: string | null;
+    /** Directory holding an unpacked build waiting to be swapped in. */
+    staged: string | null;
+    stagedVersion: string | null;
+    checkedAt: string | null;
+    error: string | null;
+    /** False in development and off Windows, where there is nothing to replace. */
+    supported: boolean;
   }
 
   /** One automatic snapshot, as listed for the restore picker. */

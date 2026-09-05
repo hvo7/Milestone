@@ -14,6 +14,13 @@ import { readFileSync, writeFileSync } from 'node:fs'
  * public/ and the names change every build. Nor can it be derived from
  * index.html, which names only the entry chunk — the tabs are loaded on demand
  * and appear nowhere in the HTML.
+ *
+ * Alongside it goes dist/version.json — the same stamp that is compiled into the
+ * bundle, in a file that can be read *without* running the bundle. That is the
+ * whole point of it: a phone holding an old build has old code and therefore an
+ * old idea of what the current version is, so it can only find out by asking the
+ * server something the server answers freshly. It is a few dozen bytes, which is
+ * what makes it cheap enough to poll (see src/lib/appUpdate.ts).
  */
 function assetManifest(): Plugin {
   return {
@@ -32,6 +39,7 @@ function assetManifest(): Plugin {
       const dir = options.dir ?? 'dist'
       // Forward slashes are fine on every platform Node writes files on.
       writeFileSync(`${dir}/asset-manifest.json`, JSON.stringify({ files }, null, 2))
+      writeFileSync(`${dir}/version.json`, JSON.stringify({ version: pkg.version, builtAt: buildDate }, null, 2))
     },
   }
 }
@@ -73,6 +81,10 @@ export default defineConfig({
     // reaches for localStorage — so even the pure helpers need a DOM to be
     // importable.
     environment: 'jsdom',
-    include: ['src/**/*.test.ts'],
+    // The main process gets a look-in too. Only the pure pieces of it are worth
+    // testing — anything that reaches for `electron` cannot run outside it — but
+    // the version comparison that decides whether to overwrite the application
+    // very much is (electron/semver.test.mjs).
+    include: ['src/**/*.test.ts', 'electron/**/*.test.mjs'],
   },
 })

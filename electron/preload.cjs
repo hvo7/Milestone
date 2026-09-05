@@ -32,6 +32,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stop:    ()     => ipcRenderer.invoke('phone:stop'),
     setPort: (port) => ipcRenderer.invoke('phone:set-port', port),
   },
+  /** Keeping this install current — see electron/updater.cjs. */
+  update: {
+    status: () => ipcRenderer.invoke('update:status'),
+    check:  () => ipcRenderer.invoke('update:check'),
+    /** Install the staged build and come back on it. Resolves as the app quits,
+     *  so the renderer should not expect anything after this. */
+    apply:  () => ipcRenderer.invoke('update:apply'),
+    /** Pushed whenever the updater moves — checking, downloading, staged. Same
+     *  shape as `status()`, and returns an unsubscribe. */
+    onStatus: (callback) => {
+      const listener = (_event, status) => callback(status);
+      ipcRenderer.on('update:status', listener);
+      return () => ipcRenderer.removeListener('update:status', listener);
+    },
+  },
   /** Rolling on-disk snapshots of the stores — see electron/backups.cjs. */
   backup: {
     save:   (bundle) => ipcRenderer.invoke('backup:save', bundle),
