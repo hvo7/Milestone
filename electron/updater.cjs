@@ -344,6 +344,13 @@ $log    = ${psLiteral(logPath())}
 
 function Note($m) { Add-Content -LiteralPath $log -Value ("{0}  [swap] {1}" -f (Get-Date -Format o), $m) }
 
+# First statement on purpose. Without it the log cannot tell "the script ran and
+# the copy failed" from "the script never ran at all" — and those have nothing in
+# common except that the app is still the old version. Telling them apart once
+# took the Windows script-block event log to settle, which is not a thing this
+# file should ever ask of anyone again.
+Note "starting; waiting for pid ${process.pid} to exit"
+
 try { Wait-Process -Id ${process.pid} -Timeout 90 } catch { }
 Start-Sleep -Milliseconds 900
 
@@ -383,6 +390,22 @@ ${relaunch ? 'Start-Process -FilePath $exe' : '# Quit, not restart: the update i
  * bug than a stale one.
  *
  * Idempotent — the second caller finds `applying` already set.
+ *
+ * ── Why cmd's `start` and not just `detached` ───────────────────────────────
+ * `spawn(..., { detached: true })` + `unref()` is the documented way to outlive
+ * the parent on Windows, and it does not work here. The child stays in the job
+ * object this process belongs to, so quitting takes it down with us — before it
+ * runs a single statement. That failure is completely invisible from inside the
+ * app: the update stages, `applyStaged` reports success, the script is written,
+ * the app exits, and nothing else ever happens. It cost a release to find, and
+ * the only reason it was findable at all is that Windows logs script blocks.
+ *
+ * `cmd /c start` launches with breakaway semantics and cmd returns immediately,
+ * which measurably survives where the others do not — `Start-Process` from an
+ * intermediate PowerShell and `Win32_Process.Create` over WMI were both tried
+ * and both died, losing the race between launching the grandchild and being
+ * killed. The empty string after `start` is its window-title argument, which it
+ * requires before a quoted command and silently misreads without.
  */
 let applying = false;
 function applyStaged({ relaunch = true } = {}) {
@@ -397,7 +420,9 @@ function applyStaged({ relaunch = true } = {}) {
   try {
     const script = writeSwapScript(state.staged, target, exe, relaunch);
     log(`applying ${state.stagedVersion}: ${state.staged} -> ${target}`);
-    const child = spawn('powershell.exe', [
+    const child = spawn('cmd.exe', [
+      '/c', 'start', '', '/b',
+      'powershell.exe',
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden', '-File', script,
     ], { detached: true, stdio: 'ignore', windowsHide: true });
     child.unref();

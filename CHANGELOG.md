@@ -7,6 +7,27 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.1.2 — 2026-09-04
+
+The desktop update installs itself now. 3.1.1 found the new build, downloaded
+it and staged it exactly as intended, and then quietly did nothing with it —
+which is precisely the failure this whole mechanism was built to end, wearing a
+different hat.
+
+- **The script that swaps in the new build is launched so that it outlives the
+  app closing.** Handing it to a detached child process is the documented way to
+  do that on Windows, and it does not work: the child stays inside the job object
+  the app belongs to, so quitting killed it before it ran a single statement.
+  None of that was visible from inside the app — the build staged, the script was
+  written, the app exited, and the next launch was the old version again with a
+  finished update sitting on disk waiting to be applied by hand. It goes out
+  through `cmd`'s `start` now, which breaks away properly and survives.
+- **The swap script announces itself the moment it starts.** Its first line is
+  now a log entry, because "the copy failed" and "the script never ran" left
+  identical evidence behind — an app that hadn't changed version and a log that
+  simply stopped — and separating them took the Windows script-block event log.
+  The log in the profile is meant to be the whole story on its own.
+
 ## 3.1.1 — 2026-09-04
 
 A fix to the updater itself, found while checking that the 3.1.0 self-update
