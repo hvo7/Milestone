@@ -37,6 +37,8 @@ const { spawn } = require('child_process');
 // Its own module so it can be tested without pulling Electron into the test run
 // — it is the one decision here that fails silently when it is wrong.
 const { isNewer } = require('./semver.cjs');
+// The other one. Every path this file hands to PowerShell goes through here.
+const { psLiteral } = require('./psQuote.cjs');
 
 /** Where releases are published. Read from package.json so a fork does not have
  *  to remember this file exists. */
@@ -214,7 +216,7 @@ function unzip(zipFile, destination) {
   return new Promise((resolve, reject) => {
     const child = spawn('powershell.exe', [
       '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
-      '-Command', `Expand-Archive -LiteralPath '${zipFile.replace(/'/g, "''")}' -DestinationPath '${destination.replace(/'/g, "''")}' -Force`,
+      '-Command', `Expand-Archive -LiteralPath ${psLiteral(zipFile)} -DestinationPath ${psLiteral(destination)} -Force`,
     ], { windowsHide: true });
     let stderr = '';
     child.stderr.on('data', d => { stderr += d.toString(); });
@@ -326,14 +328,19 @@ async function check({ manual = false } = {}) {
  * Windows itself both hold files open for a moment after a process exits, and
  * "the update failed because a DLL was busy for 200ms" is not an acceptable way
  * to lose an application.
+ *
+ * The paths go in as PowerShell single-quoted literals (psQuote.cjs), not as
+ * JSON. They are data being pasted into a program written in another language,
+ * and the two disagree about what quoting means — see that file for what the
+ * disagreement costs.
  */
 function writeSwapScript(staged, target, exe, relaunch) {
   const script = `
 $ErrorActionPreference = 'Stop'
-$staged = ${JSON.stringify(staged)}
-$target = ${JSON.stringify(target)}
-$exe    = ${JSON.stringify(exe)}
-$log    = ${JSON.stringify(logPath())}
+$staged = ${psLiteral(staged)}
+$target = ${psLiteral(target)}
+$exe    = ${psLiteral(exe)}
+$log    = ${psLiteral(logPath())}
 
 function Note($m) { Add-Content -LiteralPath $log -Value ("{0}  [swap] {1}" -f (Get-Date -Format o), $m) }
 

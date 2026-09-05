@@ -7,6 +7,26 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.1.1 — 2026-09-04
+
+A fix to the updater itself, found while checking that the 3.1.0 self-update
+really works on a real installation. It does — but it would not have on every
+machine it could have landed on.
+
+- **The script that installs an update now quotes paths the way PowerShell
+  reads them.** The swap runs after the app exits, as a small PowerShell script
+  with the paths written into it, and those paths were being written as JSON —
+  which produces a double-quoted string, the one kind PowerShell interpolates.
+  On a machine whose profile or install folder contains a `$` or a backtick,
+  both of which Windows allows in a name, the path silently became a different
+  path. The copy would be aimed at a directory that does not exist, fail, retry
+  five times, and give up, leaving the previous version running: an app that
+  never updates again and gives no sign of it, which is indistinguishable from
+  an app with no updater at all. The paths are now single-quoted literals, where
+  nothing inside is interpreted. As a side effect `update.log` stops printing
+  every path with its backslashes doubled, which matters because that file is
+  the only witness when an update does go wrong.
+
 ## 3.1.0 — 2026-09-04
 
 Every copy of Milestone now updates itself, and there is somewhere for the
