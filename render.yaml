@@ -1,0 +1,35 @@
+# The relay on Render's free tier — see docs/relay-render.md.
+#
+# Render reads this file when you point it at the repo (New → Blueprint), so the
+# service arrives configured rather than filled in by hand through a form.
+#
+# Nothing here is Render-specific in the image: the same Dockerfile runs on Fly,
+# on Koyeb, on a VM (deploy/oracle/) or on your own machine. The relay reads PORT
+# from the environment, which is the one thing every container host insists on
+# setting itself.
+
+services:
+  - type: web
+    name: milestone-relay
+    runtime: docker
+    plan: free
+    region: ohio                 # nearest of Render's US regions to Central time
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+
+    envVars:
+      # sync: false means "ask me for this, and never look for it in the repo".
+      # The key is the only thing standing between the internet and the whole
+      # profile, so it is typed into Render's dashboard once and lives there —
+      # not in this file, and not in an image layer.
+      - key: MILESTONE_TOKEN
+        sync: false
+
+      # The free tier has no persistent disk, so this is ordinary container
+      # storage that resets whenever the service restarts. That is survivable by
+      # design: losing the documents is not losing data. Every device keeps the
+      # real copy locally and republishes the moment it finds the relay empty
+      # (see the peers.length === 0 branch in src/lib/cloudSync.ts), so a restart
+      # costs one round trip per device rather than anything you typed.
+      - key: MILESTONE_DATA
+        value: /data

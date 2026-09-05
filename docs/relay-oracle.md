@@ -20,6 +20,9 @@ once something wakes it" — and the first request after a sleep, the one carryi
 your edit, pays the cold start. Oracle's free tier doesn't stop, which is the
 whole reason to prefer it.
 
+If you would rather have it working in five minutes and can live with that,
+**[relay-render.md](relay-render.md)** is the short way round.
+
 ## What you need
 
 - An Oracle Cloud account. A card is required to verify identity; the Always

@@ -15,9 +15,11 @@ relay holds your data, but it cannot quietly decide what your data *is*.
 It also serves the app itself, so the phone installs Milestone from the relay and
 gets every new build from it too.
 
-Fly bills a couple of dollars a month for a machine that never stops. For the
-same relay at no cost, on Oracle Cloud's Always Free tier, see
-**[relay-oracle.md](relay-oracle.md)** — more assembly, no bill.
+Fly bills a couple of dollars a month for a machine that never stops. The same
+relay costs nothing two other ways: **[relay-render.md](relay-render.md)** is
+about five minutes of clicking onto a free tier that sleeps when idle, and
+**[relay-oracle.md](relay-oracle.md)** is an always-free VM that never sleeps but
+takes longer to build.
 
 ## Once, on Fly.io
 
