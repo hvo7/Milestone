@@ -93,7 +93,7 @@ function CounterControl({ progress, target, step = 1, unit, complete, accentHex,
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, minWidth: 104, alignSelf: 'center' }}>
+    <div className="task-counter-control" style={{ display: 'flex', flexDirection: 'column', gap: 4, flexShrink: 0, minWidth: 104, alignSelf: 'center' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
         {stepBtn('−', -step, progress <= 0)}
         <span style={{ flex: 1, textAlign: 'center', fontSize: 12, fontWeight: 700, color, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
@@ -360,7 +360,7 @@ export default function TaskRow({
 
   const compactContent = (
     <>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+      <div className="task-compact-head" style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         {isCounter ? (
           // A counter has no single "done" tick to offer here — its control is the
           // line below. The gutter stays, so every title starts in the same column
@@ -439,7 +439,7 @@ export default function TaskRow({
 
         {/* Half-lit rather than hover-only: the rail is the first thing on the
             page on a phone, where there is no hover to reveal anything with. */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginTop: -1 }}>
+        <div className="task-compact-actions" style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, marginTop: -1 }}>
           {onSkip && !completed && (
             <IconButton
               onClick={onSkip}
@@ -535,7 +535,7 @@ export default function TaskRow({
 
   const fullContent = (
     <>
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+      <div className="task-full-head" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         {drag && (
           <button
             type="button"
@@ -656,7 +656,7 @@ export default function TaskRow({
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, marginTop: 2 }}>
+        <div className="task-full-tools" style={{ display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0, marginTop: 2 }}>
           {/* The cadence lives on the right, not on a third line under the title.
               It says how often the task comes back, which is standing information
               about the task — it doesn't need a line of its own on every row. */}

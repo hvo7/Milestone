@@ -4,11 +4,13 @@ import { ANCHOR_LABEL, routineSubNodes, hasCheckpoints } from '../lib/ui';
 import { RecurrenceBadge } from '../recurrence';
 import TaskRow, { type RowStrip } from './today/TaskRow';
 import { DueLabel } from './today/labels';
+import { usePhoneLayout } from '../lib/usePhoneLayout';
 
 /** Same completion, counters, sessions and nested steps as Today; no copied data. */
 export default function RoutineTaskRow({ routine: r, onEdit, onRemove }: {
   routine: Routine; onEdit: () => void; onRemove?: () => void;
 }) {
+  const phoneLayout = usePhoneLayout();
   const toggle = useQuestStore(s => s.toggleRoutine);
   const increment = useQuestStore(s => s.incrementRoutine);
   const toggleSession = useQuestStore(s => s.toggleSession);
@@ -34,7 +36,7 @@ export default function RoutineTaskRow({ routine: r, onEdit, onRemove }: {
   if (r.hidden) return <div className="practice-task practice-task-tools"><span style={{ flex: 1, color: 'var(--page-text-dim)' }}>{r.title} · Hidden</span><button type="button" className="btn-ghost" onClick={() => toggleHidden(r.id)}>Restore task</button></div>;
   return (
     <div className="practice-task">
-      <TaskRow title={r.title} completed={r.completed} todayDone={todayDone} skipped={skipped}
+      <TaskRow compact={phoneLayout} title={r.title} completed={r.completed} todayDone={todayDone} skipped={skipped}
         onSkip={repeats(r) ? () => skip(r.id) : undefined} streak={r.streak} accentHex="var(--accent)"
         sourceLine={<><RecurrenceBadge recurring={r.recurring} intervalDays={r.intervalDays} monthlyRule={r.monthlyRule} />{r.dueDate && !r.completed && <DueLabel dueDate={r.dueDate} todayKey={today} />}</>}
         tag={r.anchor ? { label: ANCHOR_LABEL, color: 'var(--accent)' } : undefined}

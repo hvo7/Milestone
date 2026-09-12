@@ -164,7 +164,7 @@ function Panel({ id, onClose, initialQuestlineId }: { id: string | null; onClose
         <Field label="Actions">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             {actions.map(a => (
-              <div key={a.key} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <div key={a.key} className="system-action-fields" style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                 <input
                   className="rune-input"
                   placeholder="Go to the gym"

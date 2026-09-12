@@ -9,12 +9,12 @@ const root = path.resolve(__dirname, '..');
 app.disableHardwareAcceleration();
 const out = process.env.MILESTONE_TEST_OUTPUT || fs.mkdtempSync(path.join(os.tmpdir(), 'milestone-workspace-shots-'));
 app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'milestone-workspace-test-')));
-const timer = setTimeout(() => { console.error('Smoke test timed out'); app.exit(2); }, 90000);
+const timer = setTimeout(() => { console.error('Smoke test timed out'); app.exit(2); }, 180000);
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 app.whenReady().then(async () => {
   fs.mkdirSync(out, { recursive: true });
-  const win = new BrowserWindow({ width: 1280, height: 1050, show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+  const win = new BrowserWindow({ width: 1280, height: 1050, show: false, webPreferences: { offscreen: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
   const errors = [];
   win.webContents.on('console-message', e => { if (e.level >= 3 && !e.message.includes('Content-Security-Policy')) errors.push(e.message); });
   const js = code => win.webContents.executeJavaScript(code, true);
@@ -24,7 +24,7 @@ app.whenReady().then(async () => {
   };
   const go = async (route, condition) => { await js(`location.hash = ${JSON.stringify(route)}`); await pause(150); await waitFor(condition, route); await pause(800); };
   const click = async code => { assert.equal(await js(`(() => { const el = ${code}; if (!el) return false; el.click(); return true; })()`), true, `Missing ${code}`); await pause(200); };
-  const shot = async name => { await pause(400); fs.writeFileSync(path.join(out, name + '.png'), (await win.webContents.capturePage()).toPNG()); };
+  const shot = async name => { win.webContents.invalidate(); await pause(400); fs.writeFileSync(path.join(out, name + '.png'), (await win.webContents.capturePage()).toPNG()); };
   const state = () => js(`JSON.parse(localStorage.getItem('milestone-v1')).state`);
   const now = new Date().toISOString();
   const logical = new Date(Date.now() - 5 * 3600000);
@@ -101,14 +101,44 @@ app.whenReady().then(async () => {
   const afterAchievement = await state();
   assert.equal(afterAchievement.questlines[0].quests[0].completed, true);
   assert.equal(afterAchievement.questlines[0].quests[0].actions[0].completed, false, 'Achievement must not rewrite steps');
+  // Realistic density: many questlines and long counter units, not just a
+  // nearly-empty page that happens to fit a single phone width.
+  const stress = await state();
+  for (let n = 0; n < 7; n++) stress.questlines.push({ id: `extra-${n}`, title: `Another long-term questline ${n + 1}`, quests: [] });
+  stress.routines.push({ id: 'reading', title: 'Read a chapter and write a thoughtful summary of what I learned', recurring: 'daily', target: 100, progress: 0, step: 1, unit: 'minutes of focused reading and reflection', completed: false, trackedToday: true, systemId: 'running', lastResetAt: now });
+  await js(`localStorage.setItem('milestone-v1', ${JSON.stringify(JSON.stringify({ state: stress, version: 0 }))}); true`);
+  const reloaded = new Promise(resolve => win.webContents.once('did-finish-load', resolve));
+  win.webContents.reload(); await reloaded;
+  for (const width of [320, 375, 390, 430, 768, 844, 1280]) {
   for (const route of ['/quests?questline=marathon', '/systems?view=all', '/']) {
-    win.setSize(390, 900);
+    win.setContentSize(width, width === 844 ? 390 : 900);
     await go(route, route === '/' ? `!!document.querySelector('.today-rail')` : `!!document.querySelector('.questline-sidebar')`);
-    assert(await js(`document.documentElement.scrollWidth <= innerWidth + 1`), `Horizontal overflow on ${route}`);
-    await shot(route === '/' ? 'today-mobile' : route.startsWith('/quests') ? 'quests-mobile' : 'systems-mobile');
+    assert(await js(`document.documentElement.scrollWidth <= innerWidth + 1`), `Horizontal overflow at ${width}px on ${route}`);
+    if (width <= 760 && route !== '/') {
+      assert(await js(`document.querySelector('.questline-sidebar').getBoundingClientRect().height < 100`), 'Questline selection should not bury the page');
+      assert(await js(`getComputedStyle(document.querySelector('.questline-desktop-nav')).display === 'none'`));
+    }
+    if ([320, 390, 1280].includes(width)) {
+      await js('window.scrollTo(0, 0)');
+      await shot((route === '/' ? 'today' : route.startsWith('/quests') ? 'quests' : 'systems') + '-' + width);
+      if (route.startsWith('/systems') && width < 760) {
+        await js(`document.querySelector('.practice-task').scrollIntoView({block:'start'})`);
+        await shot('system-habits-' + width);
+      }
+    }
   }
+  }
+  win.setContentSize(320, 700);
+  await go('/systems?view=all', `!!document.querySelector('.questline-mobile-filter select')`);
+  await js(`(() => { const select = document.querySelector('.questline-mobile-filter select'); select.value = 'questline:marathon'; select.dispatchEvent(new Event('change', { bubbles: true })); })()`);
+  await waitFor(`location.hash.includes('questline=marathon')`, 'mobile questline selection');
+  await click(`document.querySelector('[aria-label="Edit system Running practice"]')`);
+  await waitFor(`!!document.querySelector('.system-action-fields')`, 'mobile system editor');
+  assert(await js(`document.querySelector('.system-action-fields > input').getBoundingClientRect().width > 230`), 'Action name must have a readable full line');
+  assert(await js(`document.querySelector('.side-drawer').scrollWidth <= document.querySelector('.side-drawer').clientWidth + 1`), 'Editor must fit phone');
+  await shot('system-editor-320');
   assert.equal(errors.length, 0, errors.join('\n'));
-  fs.writeFileSync(path.join(out, 'result.json'), JSON.stringify({ passed: true, checks: ['non-mutating navigation', 'legacy and quest-only links', 'General', 'shared spotlight completion', 'undo', 'weekly sessions', 'retained archive/history', 'bookmarked routes', 'independent achievement', 'Today styles', '390px layouts'], screenshots: out }, null, 2));
+  fs.writeFileSync(path.join(out, 'result.json'), JSON.stringify({ passed: true, checks: ['non-mutating navigation', 'legacy and quest-only links', 'General', 'shared spotlight completion', 'undo', 'weekly sessions', 'retained archive/history', 'bookmarked routes', 'independent achievement', 'desktop Today styles', '320/375/390/430/768/844/1280px layouts', 'mobile selector and editor'], screenshots: out }, null, 2));
   console.log('PASS: workspace navigation, shared completion/undo, sessions, archive preservation, achievement and responsive layouts.');
   console.log(`Screenshots: ${out}`);
   clearTimeout(timer); app.exit(0);

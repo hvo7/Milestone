@@ -1,5 +1,6 @@
 .questline-workspace { max-width: 1180px; margin: 0 auto; padding: 28px 24px; display: grid; grid-template-columns: 245px minmax(0, 1fr); gap: 26px; align-items: start; }
 .questline-sidebar { min-width: 0; position: sticky; top: 84px; }
+.questline-mobile-filter { display: none; }
 .questline-nav-label { margin: 16px 12px 8px; font-size: 11px; color: var(--page-text-dim); text-transform: uppercase; letter-spacing: .1em; }
 .questline-nav-item { width: 100%; display: flex; align-items: flex-start; gap: 10px; text-align: left; font: inherit; color: var(--page-text); padding: 12px; margin: 4px 0; border: 1px solid transparent; border-radius: 8px; background: transparent; cursor: pointer; }
 .questline-nav-item:hover { background: var(--page-surface-hover); }
@@ -10,6 +11,7 @@
 .questline-nav-separator { border-top: 1px solid var(--page-border); margin: 18px 12px 10px; }
 .questline-empty-nav { color: var(--page-text-dim); font-size: 12px; padding: 0 12px; }
 .questline-main { min-width: 0; }
+.questline-main h2, .questline-main p, .practice-links a { overflow-wrap: anywhere; }
 .questline-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
 .questline-toolbar h2 { margin: 0; }
 .questline-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -31,10 +33,23 @@
 .practice-stat { color: var(--page-text-dim); font-size: 12px; }
 .questline-workspace button:focus-visible, .questline-workspace a:focus-visible, .questline-workspace summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (max-width: 760px) {
-  .questline-workspace { grid-template-columns: 1fr; gap: 18px; padding: 20px 12px; }
-  .questline-sidebar { position: static; display: flex; flex-wrap: wrap; gap: 5px; }
-  .questline-sidebar .questline-nav-item { width: auto; flex: 1 1 160px; margin: 0; }
-  .questline-nav-label, .questline-nav-separator { width: 100%; margin: 8px 0; }
+  .questline-workspace { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 16px max(12px, var(--safe-right)) 24px max(12px, var(--safe-left)); }
+  .questline-sidebar { position: static; }
+  .questline-desktop-nav { display: none; }
+  .questline-mobile-filter { display: grid; gap: 7px; color: var(--page-text-dim); font-size: 12px; }
+  .questline-mobile-filter select { width: 100%; min-width: 0; min-height: 48px; padding: 10px 12px; font: inherit; font-size: 16px; color: var(--page-text); background: var(--page-surface); border: 1px solid var(--page-border); border-radius: 8px; }
+  .questline-toolbar { align-items: stretch; gap: 10px; margin-bottom: 16px; }
+  .questline-toolbar > div { min-width: 0; flex: 1 1 100%; }
+  .questline-toolbar-actions > button { flex: 1 1 auto; }
+  .questline-toolbar > button { width: 100%; min-height: 44px; }
   .questline-section { padding: 16px 12px; }
+  .questline-section-header { align-items: flex-start; }
+  .questline-section-header > div { flex: 1 1 160px; }
+  .questline-section-header > button { flex-shrink: 0; }
+  .practice-task { margin: 16px 0; }
+  .practice-task-tools { margin-top: 6px; gap: 4px; }
+  .practice-task-tools button { min-height: 44px; flex: 1 1 auto; }
+  .questline-workspace .btn-ghost, .questline-workspace .btn-gold { min-height: 44px; white-space: normal; }
+  .questline-support-link { min-height: 44px; }
+  .questline-workspace .task-row { overflow-wrap: anywhere; }
 }
-@media (pointer: coarse) { .questline-workspace button { min-height: 44px; } }

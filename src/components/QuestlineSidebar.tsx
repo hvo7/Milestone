@@ -12,6 +12,19 @@ export default function QuestlineSidebar({ questlines, systems, selection, onSel
 }) {
   return (
     <nav className="questline-sidebar" aria-label="Questline navigation">
+      <label className="questline-mobile-filter">
+        <span>{mode === 'systems' ? 'Show systems for' : 'Show quests for'}</span>
+        <select value={selection.kind === 'questline' ? `questline:${selection.id}` : selection.kind}
+          onChange={event => {
+            const value = event.target.value;
+            onSelect(value.startsWith('questline:') ? { kind: 'questline', id: value.slice(10) } : value === 'all' ? { kind: 'all' } : { kind: 'general' });
+          }}>
+          {mode === 'systems' && <option value="all">All systems</option>}
+          {questlines.map(ql => <option key={ql.id} value={`questline:${ql.id}`}>{ql.title}</option>)}
+          <option value="general">General</option>
+        </select>
+      </label>
+      <div className="questline-desktop-nav">
       {mode === 'systems' && <button type="button" className="questline-nav-item" aria-pressed={selection.kind === 'all'} onClick={() => onSelect({ kind: 'all' })}>All systems</button>}
       <div className="questline-nav-label">Questlines</div>
       {questlines.map(ql => {
@@ -29,6 +42,7 @@ export default function QuestlineSidebar({ questlines, systems, selection, onSel
       <button type="button" className="questline-nav-item" aria-pressed={selection.kind === 'general'} onClick={() => onSelect({ kind: 'general' })}>
         <span className="questline-nav-copy"><span>General</span><small>{mode === 'quests' ? 'Tasks & commitments' : 'Systems without a questline'}</small></span>
       </button>
+      </div>
     </nav>
   );
 }

@@ -7,6 +7,10 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.2.2 — 2026-09-12
+
+Phone layouts now use a compact questline selector on Systems and Quests. Habit titles, counters, weekly sessions, and action buttons stack and wrap to fit smaller screens. System editor fields use full-width task names, drawers fill narrow screens, and touch controls are larger. Desktop layouts and saved data are unchanged.
+
 ## 3.2.1 — 2026-09-12
 
 An unconfigured desktop can pick up a provisioned HTTPS relay connection from its existing private sync folder, so paired computers use the same live connection. Existing relay choices and explicit disconnects are preserved.

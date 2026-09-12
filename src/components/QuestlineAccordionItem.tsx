@@ -128,6 +128,7 @@ function CompactQuestRow({ questline, quest, locked, subdued, drag, registerRow,
       }}
     >
       <div
+        className="quest-mobile-row"
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onPointerDown={drag.onPointerDown}
@@ -139,7 +140,7 @@ function CompactQuestRow({ questline, quest, locked, subdued, drag, registerRow,
         }}
       >
         <QuestDoneToggle questlineId={questline.id} quest={quest} locked={locked} small />
-        <span style={{
+        <span className="quest-mobile-title" style={{
           flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0,
           color: complete ? 'var(--text-dim)' : 'var(--text-parchment)',
           textDecoration: complete && !quest.recurring ? 'line-through' : 'none',
@@ -477,7 +478,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                       <div style={{ background: 'var(--input-bg)', border: '1px solid var(--card-border)', borderRadius: 10, padding: '16px 18px', marginBottom: 14 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
                           <QuestDoneToggle questlineId={questline.id} quest={activeQuest} />
-                          <h3 style={{
+                          <h3 className="quest-mobile-title" style={{
                             margin: 0, fontSize: 14, fontWeight: 600, flex: 1, minWidth: 0,
                             color: isQuestComplete(activeQuest) ? 'var(--text-dim)' : categoryColor(questline.color),
                             textDecoration: isQuestComplete(activeQuest) && !activeQuest.recurring ? 'line-through' : 'none',

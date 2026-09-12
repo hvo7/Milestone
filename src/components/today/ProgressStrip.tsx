@@ -35,7 +35,7 @@ const pipBase: React.CSSProperties = {
 /** Shared framing so both strips indent and caption identically. */
 function StripFrame({ indent, children, caption }: { indent: number; children: React.ReactNode; caption?: React.ReactNode }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 9, paddingLeft: indent, flexWrap: 'wrap' }}>
+    <div className="task-progress-strip" style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 9, paddingLeft: indent, flexWrap: 'wrap' }}>
       <span style={{ display: 'flex', gap: PIP_GAP, flexWrap: 'wrap' }}>{children}</span>
       {caption && (
         <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--page-text-dim)', fontVariantNumeric: 'tabular-nums' }}>

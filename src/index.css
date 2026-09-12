@@ -958,3 +958,31 @@ select.rune-input option:disabled { color: var(--text-dim); }
   .today-main > div > section { padding: 16px 12px; }
   .app-nav { min-height: 60px; }
 }
+
+/* Phone layouts follow available CSS width, including rotation and zoom. */
+@media (max-width: 760px) {
+  .task-row { min-width: 0; overflow-wrap: anywhere; }
+  .task-compact-head { display: grid !important; grid-template-columns: 22px minmax(0, 1fr); }
+  .task-compact-actions { grid-column: 2; flex-wrap: wrap; }
+  .task-compact-actions:empty { display: none !important; }
+  .task-row .icon-btn, .task-row .counter-btn, .task-progress-strip button { min-width: 44px; min-height: 44px; }
+  .task-progress-strip { padding-left: 0 !important; }
+  .task-progress-strip > span { min-width: 0; max-width: 100%; }
+  .task-full-head { flex-wrap: wrap; gap: 10px !important; }
+  .task-full-head > div:not(.task-counter-control):not(.task-full-tools) { flex-basis: calc(100% - 80px) !important; }
+  .task-full-head .task-counter-control { order: 1; flex: 1 1 100%; min-width: 0 !important; }
+  .task-counter-control span { white-space: normal !important; overflow-wrap: anywhere; }
+  .task-full-tools { order: 2; flex: 1 1 100%; flex-wrap: wrap; }
+  .task-full-tools > span { flex-wrap: wrap; }
+  .today-shell { padding-left: max(12px, var(--safe-left)); padding-right: max(12px, var(--safe-right)); }
+  .app-nav { padding-left: max(12px, var(--safe-left)); padding-right: max(12px, var(--safe-right)); }
+  .system-action-fields { flex-wrap: wrap; }
+  .system-action-fields > input:first-child { flex: 1 1 100% !important; min-height: 44px; }
+  .system-action-fields > select { flex: 1 1 116px; min-width: 0; min-height: 44px; }
+  .system-action-fields > button { min-width: 44px; min-height: 44px; }
+  .quest-mobile-title { flex: 1 1 calc(100% - 100px) !important; overflow-wrap: anywhere; }
+  .side-drawer { max-width: 100%; }
+}
+@media (max-width: 480px) {
+  .side-drawer { width: 100% !important; border-left: 0 !important; }
+}
