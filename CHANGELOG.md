@@ -7,6 +7,10 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.2.1 — 2026-09-12
+
+An unconfigured desktop can pick up a provisioned HTTPS relay connection from its existing private sync folder, so paired computers use the same live connection. Existing relay choices and explicit disconnects are preserved.
+
 ## 3.2.0 — 2026-09-12
 
 - Questlines now sit directly in the left navigation on Quests and Systems. General keeps life maintenance and unlinked tasks accessible.

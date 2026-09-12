@@ -45,6 +45,13 @@ export function saveRelay(config: RelayConfig): RelayConfig {
 
 export const relayConfigured = (config: RelayConfig = loadRelay()): boolean => !!config.url && !!config.token;
 
+/** First setup only. A saved empty config is an explicit disconnect. */
+export function provisionSharedRelay(config: RelayConfig): boolean {
+  if (localStorage.getItem(KEY) !== null || !relayConfigured(config)) return false;
+  saveRelay(config);
+  return true;
+}
+
 /** Does this address answer, and with the right key? Used by the settings card,
  *  so a typo is caught while you're looking at it rather than silently never
  *  syncing. */

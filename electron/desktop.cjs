@@ -1,6 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 
+/** Optional connection provisioned in the user's private sync folder. */
+function readSharedRelay(config) {
+  if (!config.enabled || !config.folder) return undefined;
+  try {
+    const value = JSON.parse(fs.readFileSync(path.join(config.folder, 'milestone-relay-connection.json'), 'utf8'));
+    const url = new URL(value.url);
+    if (url.protocol !== 'https:' || url.username || url.password || typeof value.token !== 'string' || !value.token.trim()) return undefined;
+    return { url: value.url.replace(/\/+$/, ''), token: value.token.trim() };
+  } catch { return undefined; }
+}
+
 function createAppWindow({ app, BrowserWindow, shell, tray, openDevTools = false }) {
   const iconPath = app.isPackaged
     ? path.join(process.resourcesPath, 'icon.ico')
@@ -157,7 +168,10 @@ ipcMain.handle('notion:sync', async (_event, { questlines, routines }) => {
 // ── Cloud-folder sync IPC ─────────────────────────────────────────────────────
 // Folder access only — which side's data wins is decided in src/lib/cloudSync.ts.
 
-ipcMain.handle('sync:get-config', () => cloudSync.loadConfig());
+ipcMain.handle('sync:get-config', () => {
+  const config = cloudSync.loadConfig();
+  return { ...config, sharedRelay: readSharedRelay(config) };
+});
 ipcMain.handle('sync:set-config', (_event, patch) => cloudSync.setConfig(patch));
 ipcMain.handle('sync:pick-folder', () => cloudSync.pickFolder(getWindow()));
 // Two meeting points, one protocol: the cloud folder carries documents to
@@ -236,4 +250,4 @@ ipcMain.handle('tray:update', (_event, state) => tray.update(state));
 
 }
 
-module.exports = { createAppWindow, profileHasQuestData, migrateLegacyProfile, registerIpcHandlers };
+module.exports = { createAppWindow, profileHasQuestData, migrateLegacyProfile, registerIpcHandlers, readSharedRelay };

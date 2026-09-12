@@ -50,7 +50,7 @@ import { VYNUES_STORE_KEY, useVynuesStore } from '../vynuesStore';
 import { APP_VERSION } from '../buildInfo';
 import { withoutHistory, clearHistory } from './history';
 import { httpBridge, compositeBridge, servedByMilestone, identity, rememberToken, type SyncBridge } from './phoneTransport';
-import { loadRelay, relayConfigured } from './relay';
+import { loadRelay, relayConfigured, provisionSharedRelay } from './relay';
 
 export type Clock = Record<string, number>;
 export type Slot = 'quest' | 'vynues' | 'ui';
@@ -198,6 +198,8 @@ async function buildTransport(): Promise<SyncBridge | null> {
     parts.push(httpBridge({ token: rememberToken(), me: identity() }));
   }
 
+  const desktopConfig = local ? await local.getConfig() : null;
+  if (desktopConfig?.sharedRelay) provisionSharedRelay(desktopConfig.sharedRelay);
   const relay = loadRelay();
   // Not added twice: a phone that loaded the app *from* the relay is already
   // talking to it through the line above.

@@ -23,7 +23,7 @@
 
 /** Same surface as `window.electronAPI.sync`, so cloudSync can't tell them apart. */
 export interface SyncBridge {
-  getConfig: () => Promise<{ enabled: boolean; folder: string; deviceId: string; deviceName: string }>;
+  getConfig: () => Promise<{ enabled: boolean; folder: string; deviceId: string; deviceName: string; sharedRelay?: { url: string; token: string } }>;
   readPeers: () => Promise<{ ok: boolean; peers?: unknown[]; error?: string }>;
   write: (doc: unknown) => Promise<{ ok: boolean; at?: string; error?: string }>;
   writeBackup: (name: string, bundle: unknown) => Promise<{ ok: boolean; error?: string }>;

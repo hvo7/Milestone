@@ -1,7 +1,21 @@
-const { createAppWindow, registerIpcHandlers } = require('./desktop.cjs');
+const { createAppWindow, registerIpcHandlers, readSharedRelay } = require('./desktop.cjs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+
+test('relay provisioning requires an enabled private folder and valid HTTPS connection', t => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const folder = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'milestone-relay-config-test-'));
+  const file = path.join(folder, 'milestone-relay-connection.json');
+  t.after(() => { if (fs.existsSync(file)) fs.unlinkSync(file); fs.rmdirSync(folder); });
+  assert.equal(readSharedRelay({ enabled: true, folder }), undefined);
+  fs.writeFileSync(file, JSON.stringify({ url: 'https://example.test/', token: 'test' }));
+  assert.deepEqual(readSharedRelay({ enabled: true, folder }), { url: 'https://example.test', token: 'test' });
+  assert.equal(readSharedRelay({ enabled: false, folder }), undefined);
+  fs.writeFileSync(file, JSON.stringify({ url: 'http://example.test', token: 'test' }));
+  assert.equal(readSharedRelay({ enabled: true, folder }), undefined);
+});
 
 
 
