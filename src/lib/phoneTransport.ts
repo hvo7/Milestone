@@ -135,11 +135,11 @@ export async function servedByMilestone(): Promise<boolean> {
  * `base` is empty for the origin this page came from, or an absolute URL for a
  * relay the desktop reaches over the internet.
  */
-export function httpBridge({ base = '', token, me, poll = true }: {
+export function httpBridge({ base = '', token, me }: {
   base?: string;
   token: string;
   me: Identity;
-  /** False for an endpoint that shouldn't drive the clock — see the composite. */
+  /** Legacy option; all routes now keep a fallback poll for disconnected SSE. */
   poll?: boolean;
 }): SyncBridge {
   const listeners = new Set<() => void>();
@@ -200,7 +200,9 @@ export function httpBridge({ base = '', token, me, poll = true }: {
         if (timer) clearInterval(timer);
         timer = setInterval(() => { void tick(); }, every);
       };
-      if (poll) setPoll(POLL_MS);
+      // Every network route needs a fallback: a folder watcher cannot observe
+      // relay edits when SSE is blocked or reconnecting.
+      setPoll(POLL_MS);
 
       // The push channel. Opened for every endpoint, including the ones that
       // don't poll: a desktop pointed at a relay used to find out about the
@@ -216,10 +218,10 @@ export function httpBridge({ base = '', token, me, poll = true }: {
           // The stream is live, so the poll steps back to a backstop. Done on
           // open rather than at construction because an endpoint too old to
           // have the route still answers — with a 404, and no open.
-          stream.onopen = () => { if (poll) setPoll(SLOW_POLL_MS); };
+          stream.onopen = () => { setPoll(SLOW_POLL_MS); void tick(); };
           // EventSource reconnects on its own; the poll goes back to being the
           // primary route until it does.
-          stream.onerror = () => { if (poll) setPoll(POLL_MS); };
+          stream.onerror = () => { setPoll(POLL_MS); };
         } catch {
           stream = null;   // no stream, no change: the poll was already running
         }

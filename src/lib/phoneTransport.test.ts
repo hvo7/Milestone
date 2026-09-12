@@ -7,7 +7,7 @@
  * reaches a phone, and identity() is on the path that sets up all syncing.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { identity } from './phoneTransport';
+import { identity, httpBridge } from './phoneTransport';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -49,5 +49,37 @@ describe('minting a device id', () => {
     // The precise failure this guards: calling the gated member directly.
     expect(() => (globalThis.crypto as Crypto).randomUUID()).toThrow();
     expect(() => identity()).not.toThrow();
+  });
+});
+
+describe('live relay notifications', () => {
+  it('pulls immediately on reconnect and polls promptly when a desktop stream fails', async () => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn().mockResolvedValue({ json: async () => ({ ok: true, peers: [{ deviceId: 'phone', updatedAt: '1' }] }) });
+    vi.stubGlobal('fetch', fetcher);
+    let stream!: FakeStream;
+    class FakeStream {
+      onopen = () => {};
+      onerror = () => {};
+      addEventListener = vi.fn();
+      close = vi.fn();
+      constructor() { stream = this; }
+    }
+    vi.stubGlobal('EventSource', FakeStream);
+    const changed = vi.fn();
+    const off = httpBridge({ token: 'test', me: { deviceId: 'desktop', deviceName: 'Desktop' }, poll: false }).onChanged(changed);
+    try {
+      stream.onopen();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(changed).toHaveBeenCalledOnce();
+      stream.onerror();
+      fetcher.mockResolvedValue({ json: async () => ({ ok: true, peers: [{ deviceId: 'phone', updatedAt: '2' }] }) });
+      await vi.advanceTimersByTimeAsync(4000);
+      expect(changed).toHaveBeenCalledTimes(2);
+      off();
+      await vi.advanceTimersByTimeAsync(30000);
+      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect(stream.close).toHaveBeenCalledOnce();
+    } finally { off(); vi.useRealTimers(); }
   });
 });

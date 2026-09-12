@@ -11,7 +11,8 @@
  * render a number nobody had to store.
  */
 import type { Routine, System } from '../types';
-import { dateKey, historyOf, logicalDayStart, routineSystemIds, sessionMode, type TaskHistory } from '../store';
+import { dateKey, logicalDayStart, sessionMode } from '../domain/schedule';
+import { historyOf, routineSystemIds, type TaskHistory } from '../domain/taskState';
 
 /** Trailing window the score is computed over. */
 export const HEALTH_WINDOW_DAYS = 30;

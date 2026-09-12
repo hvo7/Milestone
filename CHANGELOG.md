@@ -7,6 +7,15 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.2.0 — 2026-09-12
+
+- Questlines now sit directly in the left navigation on Quests and Systems. General keeps life maintenance and unlinked tasks accessible.
+- Systems use the same task controls as Today. Shared habits retain their links and completion history; Today keeps its existing layout and daily spotlight.
+- Quests can be marked achieved separately from their preparation steps. Existing quests retain their completion rules.
+- Archived General tasks and history remain available until deliberately deleted.
+- Desktop relay connections receive live push updates, refresh immediately on reconnect, and keep a four-second fallback when the stream disconnects. Pending local edits are recorded before incoming data is reconciled.
+- Desktop packaging uses a minimal application archive and preserves the existing Milestone profile.
+
 ## 3.1.2 — 2026-09-04
 
 The desktop update installs itself now. 3.1.1 found the new build, downloaded

@@ -50,7 +50,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
   // Reset the form each time the drawer opens, and focus the title.
   useEffect(() => {
     if (!open) return;
-    setTitle(''); setDescription(''); setQuestlineId(initialCategory); setQuestId(''); setRepeat({ recurring: null }); setDueDate(dateKey()); setAnchorRepeat('daily'); setSystemIds(initialSystem ? [initialSystem] : []);
+    setTitle(''); setDescription(''); setQuestlineId(initialCategory); setQuestId(''); setRepeat({ recurring: initialSystem ? 'daily' : null }); setDueDate(dateKey()); setAnchorRepeat('daily'); setSystemIds(initialSystem ? [initialSystem] : []);
     setCounterOn(false); setTarget('3'); setStep('1'); setUnit('');
     const t = setTimeout(() => titleRef.current?.focus(), 80);
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseRef.current(); };

@@ -302,15 +302,15 @@ export default function TaskRow({
     position: 'relative',
     display: 'flex',
     flexDirection: 'column',
-    padding: '13px 16px',
+    padding: '16px 18px',
     // Draggable rows are spaced by the group's `gap` instead: framer measures
     // bounding boxes, which exclude margin, so a margin would leave an unmeasured
     // dead band between rows and make the crossover points feel imprecise.
     ...(drag ? {} : { marginBottom: 8 }),
     background: hovered && !completed && !skipped ? 'var(--page-surface-hover)' : 'var(--page-surface)',
     border: '1px solid var(--page-border)',
-    borderLeft: `3px solid ${edgeColor}`,
-    borderRadius: 12,
+    borderLeft: `2px solid ${edgeColor}`,
+    borderRadius: 8,
     // NB: `transform` must stay out of this CSS transition on a draggable row —
     // framer drives the drag and the reorder shuffle through transform, and a CSS
     // ease layered on top makes the row lag behind the cursor instead of tracking it.

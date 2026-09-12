@@ -7,29 +7,18 @@ export function ProgressSummary({ label, done, total }: { label: string; done: n
   const pct = total === 0 ? 0 : Math.round((done / total) * 100);
   const allDone = total > 0 && done === total;
   return (
-    <div className="parchment glass-card" style={{ borderRadius: 16, padding: '20px 24px', marginBottom: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-        <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--page-text)' }}>
-          {label}
-        </span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: allDone ? 'var(--success)' : 'var(--accent)', fontVariantNumeric: 'tabular-nums' }}>
-          {done}/{total} {allDone ? '· all done ✦' : 'done'}
-        </span>
+    <div className="daily-progress">
+      <div className="daily-progress-number">{pct}<small>%</small></div>
+      <div className="daily-progress-detail">
+        <div className="daily-progress-label">
+          <strong>{label}</strong>
+          <span>{done} of {total} complete{allDone ? ' · All done' : ''}</span>
+        </div>
+        <div role="progressbar" aria-label={label} aria-valuenow={done} aria-valuemin={0} aria-valuemax={total || 1} style={{ height: 4, background: 'var(--track-bg)', borderRadius: 2, overflow: 'hidden' }}>
+          <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.5 }} className={allDone ? 'bar-fill bar-fill-done' : 'bar-fill'} style={{ height: '100%', borderRadius: 2 }} />
+        </div>
+        {total === 0 && <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-dim)' }}>Add a task to start your day.</p>}
       </div>
-      <div style={{ height: 8, background: 'var(--track-bg)', borderRadius: 999, overflow: 'hidden' }}>
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
-          className={allDone ? 'bar-fill bar-fill-done' : 'bar-fill'}
-          style={{ height: '100%', borderRadius: 999 }}
-        />
-      </div>
-      {total === 0 && (
-        <p style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-dim)' }}>
-          Add tasks below to start tracking your day.
-        </p>
-      )}
     </div>
   );
 }
@@ -72,8 +61,6 @@ export function DayFlipper({ forward, onClick }: { forward: boolean; onClick: ()
       style={{ position: 'fixed', [forward ? 'right' : 'left']: 16, top: '38%', zIndex: 30 }}
     >
       <motion.span
-        animate={{ x: [0, sign * 5, 0] }}
-        transition={{ repeat: Infinity, duration: 1.6, ease: 'easeInOut' }}
         style={{ display: 'block', fontSize: 20, lineHeight: 1 }}
       >
         {forward ? '→' : '←'}

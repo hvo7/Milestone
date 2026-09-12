@@ -17,7 +17,7 @@
  * shrink and the caption goes away — the rail row prints the same numbers on its
  * own meta line, and printing them twice in 240px is what made it unreadable.
  */
-import { dayInitial, logicalDateKey } from '../../store';
+import { dayInitial, logicalDateKey } from '../../domain/schedule';
 
 const PIP = 22;
 const PIP_GAP = 4;
@@ -153,7 +153,7 @@ export function CheckpointPips({ progress, target, step, unit, indent, onSet, re
               width: compact ? 26 : PIP + 8,
               height: compact ? 19 : PIP,
               fontSize: compact ? 9.5 : 10,
-              background: on ? 'var(--accent)' : 'var(--page-surface)',
+              background: on ? 'var(--accent-strong)' : 'var(--page-surface)',
               borderColor: on ? 'var(--accent)' : 'var(--page-border)',
               color: on ? '#fff' : 'var(--page-text-dim)',
               cursor: readOnly ? 'default' : 'pointer',

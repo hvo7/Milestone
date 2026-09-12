@@ -58,6 +58,24 @@ if (peers.length === 0) { await publish(false); return; }   // src/lib/cloudSync
 — so a restart costs one round trip per device. Nothing you typed is at risk,
 and no device ever adopts an empty relay as truth.
 
+### What a sleeping or restarting relay looks like
+
+Not a timeout. Render's edge answers for a service with no running instance
+straight away, with a plain `404 Not Found` and the header that names the cause:
+
+```
+x-render-routing: no-server
+```
+
+Which matters because *Save and check* reports it as **"The address answered
+404."** — `testRelay` asks `/api/health` first, and a 404 there is
+indistinguishable from a wrong address. It is not wrong; the relay is coming
+back. Wait a few seconds and press it again.
+
+Expect this for the first ten minutes or so after a deploy, while the service
+settles, and on the first request after an idle spell. Sync itself needs no help:
+a failed poll just retries, and `EventSource` reconnects on its own.
+
 If either of those bothers you, [relay-oracle.md](relay-oracle.md) has neither
 problem and still costs nothing; it just takes longer to build.
 

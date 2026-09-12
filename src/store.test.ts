@@ -557,14 +557,14 @@ describe('taskHistory', () => {
     expect(h['a2']).toEqual(['2026-08-10']);
   });
 
-  it('prunes days past the retention window', () => {
+  it('preserves the full history of saved tasks beyond the old retention window', () => {
     vi.setSystemTime(localTime(2026, AUG, 10, 12));
     useQuestStore.setState({
       questlines: [], routines: [routine({ recurring: 'daily' })], completionLog: {}, todoOrder: {},
       taskHistory: { r1: ['2024-01-01', '2026-08-09'] },
     });
     useQuestStore.getState().checkAndResetRecurring();
-    expect(useQuestStore.getState().taskHistory['r1']).toEqual(['2026-08-09']);
+    expect(useQuestStore.getState().taskHistory['r1']).toEqual(['2024-01-01', '2026-08-09']);
   });
 
   it('keeps a just-deleted task’s history, so undo restores it whole', () => {

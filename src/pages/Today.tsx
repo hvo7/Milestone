@@ -571,7 +571,7 @@ export default function Today() {
 
   return (
     <div className="page-shell" style={{ paddingBottom: 80 }}>
-      <NavBar />
+      <NavBar cover={{ title: preview ? 'Tomorrow' : 'Today', subtitle: dateHeading }} />
 
       <div className="today-shell">
 
@@ -639,12 +639,7 @@ export default function Today() {
           transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
         >
 
-        <header style={{ marginBottom: 18 }}>
-          <p style={{ margin: 0, fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--accent)' }}>
-            {preview ? 'Planning ahead' : 'Today'}
-          </p>
-          <h1 className="page-title" style={{ margin: '2px 0 0' }}>{dateHeading}</h1>
-        </header>
+
 
         {preview && (
           <div style={{

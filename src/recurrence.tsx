@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { RecurringType, MonthlyRule, NthPosition, DayKind } from './types';
-import { recurrenceLabel } from './store';
+import { recurrenceLabel } from './domain/schedule';
 import {
   monthlyRuleLabel, currentMonthIndex, NTH_LABEL, KIND_LABEL,
 } from './lib/monthlyRule';

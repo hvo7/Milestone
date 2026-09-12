@@ -71,6 +71,9 @@ export interface Quest {
   description: string;
   order: number;
   actions: Action[];
+  /** New milestone quests confirm their outcome separately from preparation.
+   *  Absent on existing saves: keep their original checklist completion rules. */
+  completionMode?: 'manual' | 'steps';
   hidden?: boolean;
   recurring?: RecurringType | null;
   intervalDays?: IntervalDays;
@@ -86,7 +89,7 @@ export interface Quest {
   /** Completion for a quest that has no sub-tasks. When a quest has actions its
    *  completion is derived from them (all done = quest done); this field is the
    *  fallback for the action-less case, so such a quest can still be checked off
-   *  on Today. Ignored while the quest has visible actions. */
+   *  on Today. Also authoritative for quests with completionMode 'manual'. */
   completed?: boolean;
   /** ISO instant an action-less quest was checked off — the heatmap day its
    *  credit belongs to. See `Action.completedAt`. */
@@ -149,6 +152,20 @@ export interface Questline {
   recurring?: RecurringType | null;
   lastResetAt?: string;
   streak?: number;
+  /** ISO instant this questline was created. Only set on ones made after momentum
+   *  tracking landed; older questlines fall back to the first day anything under
+   *  them earned credit, so a goal is never scored over a stretch it didn't exist
+   *  for. See `lib/momentum.ts`. */
+  createdAt?: string;
+  /**
+   * The date you're aiming to finish by ('YYYY-MM-DD'), or null.
+   *
+   * Optional the same way a System's goal is optional, and for the same reason: a
+   * goal with no deadline is still a goal. The app never fills this in — a date
+   * invented so a projection could be drawn would be the app making up your
+   * intent — so with it unset, nothing is said about being on or off track.
+   */
+  targetDate?: string | null;
 }
 
 /** A checklist item under a routine. Subtasks nest without limit — any step can

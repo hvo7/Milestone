@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { RecurringType, MonthlyRule } from '../types';
-import { useQuestStore, recurrenceLabel, isArchivedRoutine, isGeneralTask, ARCHIVE_RETENTION_DAYS, logicalDateKey, logicalDayStart } from '../store';
+import { useQuestStore, recurrenceLabel, isArchivedRoutine, isGeneralTask, logicalDateKey, logicalDayStart } from '../store';
 import { useVynuesStore } from '../vynuesStore';
 import { RepeatPicker, RecurrenceBadge, type RepeatValue } from '../recurrence';
 import NavBar from '../components/NavBar';
@@ -378,10 +378,9 @@ export default function AllPage() {
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''))
     .map(r => {
       const completedDay = logicalDayStart(new Date(r.completedAt!));
-      const daysLeft = Math.max(0, ARCHIVE_RETENTION_DAYS - Math.round((logicalDayStart().getTime() - completedDay.getTime()) / 86_400_000));
       return {
         ...fromRoutine(r),
-        meta: `Completed ${completedDay.toLocaleDateString([], { month: 'short', day: 'numeric' })} · ${daysLeft === 0 ? 'auto-deletes today' : `auto-deletes in ${daysLeft}d`}`,
+        meta: `Completed ${completedDay.toLocaleDateString([], { month: 'short', day: 'numeric' })} · Kept until you delete it`,
         // Un-checking restores the task to General without disturbing today's heatmap.
         onToggle: () => setRoutineCompleted(r.id, false),
       };
@@ -428,9 +427,9 @@ export default function AllPage() {
     <div className="page-shell" style={{ paddingBottom: 80 }}>
       <NavBar />
 
-      <div style={{ maxWidth: 860, margin: '0 auto', padding: '28px 20px 60px' }}>
+      <div style={{ maxWidth: 1180, margin: '0 auto', padding: '28px 20px 60px' }}>
         <header style={{ marginBottom: 22 }}>
-          <h1 className="page-title" style={{ margin: 0 }}>All tasks</h1>
+          <h2 className="page-title" style={{ margin: 0 }}>Task library</h2>
           <p style={{ margin: '6px 0 0', fontSize: 13, color: 'var(--page-text-dim)' }}>
             {totalTasks} task{totalTasks === 1 ? '' : 's'}
           </p>
@@ -463,7 +462,7 @@ export default function AllPage() {
             group={{ id: 'archived', name: '🗄 Archived', tasks: archivedTasks }}
             addSlot={
               <p style={{ margin: '10px 0 0', fontSize: 11.5, color: 'var(--page-text-dim)' }}>
-                Deleted {ARCHIVE_RETENTION_DAYS} days after completion.
+                Kept until you choose to delete them. Uncheck a task to restore it.
               </p>
             }
           />

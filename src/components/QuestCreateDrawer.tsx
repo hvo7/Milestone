@@ -46,6 +46,7 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
   const [questlineId, setQuestlineId] = useState('');
   const [repeat, setRepeat]           = useState<RepeatValue>({ recurring: null });
   const [dueDate, setDueDate]         = useState('');
+  const [manualCompletion, setManualCompletion] = useState(true);
   const titleRef = useRef<HTMLInputElement>(null);
 
   // Keep the latest onClose in a ref so it doesn't drive the prefill effect. The quest
@@ -65,6 +66,7 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
       setRepeat({ recurring: q.recurring ?? null, intervalDays: q.intervalDays, monthlyRule: q.monthlyRule });
       setDueDate(q.dueDate ?? '');
       setQuestlineId(editing.questlineId);
+      setManualCompletion(q.completionMode === 'manual');
     } else {
       // One-time items default their due date to today (editable / cleared for recurring).
       setTitle(''); setDescription(''); setRepeat({ recurring: null }); setDueDate(dateKey());
@@ -72,6 +74,7 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
       // questline in mind, and filing a stray task under whichever questline
       // happens to sort first is the one guess that's always wrong.
       setQuestlineId(initialQuestlineId || GENERAL_CATEGORY);
+      setManualCompletion(true);
     }
     const t = setTimeout(() => titleRef.current?.focus(), 80);
     return () => clearTimeout(t);
@@ -109,9 +112,10 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
         intervalDays,
         monthlyRule: monthlyRule ?? null,
         dueDate: due,
+        completionMode: manualCompletion ? 'manual' : 'steps',
       });
     } else {
-      addQuest(questlineId, title.trim(), description.trim(), recurring, due, monthlyRule);
+      addQuest(questlineId, title.trim(), description.trim(), recurring, due, monthlyRule, manualCompletion ? 'manual' : 'steps');
     }
     onClose();
   }
@@ -190,6 +194,13 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
                   <Field label="Repeats">
                     <RepeatPicker value={repeat} onChange={setRepeat} />
                   </Field>
+
+                  {!isGeneral && <Field label="Achievement">
+                    <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', color: 'var(--page-text)', fontSize: 13 }}>
+                      <input type="checkbox" checked={manualCompletion} onChange={e => setManualCompletion(e.target.checked)} />
+                      <span>Confirm the quest separately from its steps.<small style={{ display: 'block', color: 'var(--page-text-dim)', marginTop: 5 }}>Finishing preparation will not automatically achieve this quest. Existing quests keep their current behavior unless you change this.</small></span>
+                    </label>
+                  </Field>}
 
                   {!isRepeating && (
                     <Field label={<>Due date <span style={{ fontWeight: 400, textTransform: 'none', opacity: 0.7 }}>· defaults to today</span></>}>

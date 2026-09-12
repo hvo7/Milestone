@@ -28,6 +28,12 @@ Long-term structure lives in questlines, and anything due surfaces on Today:
   streak without earning credit, for when a task was genuinely impossible.
 - **Consistency, per habit.** The heatmap says whether you were busy on the 14th;
   this says *which* habit you quietly stopped doing, sorted longest-neglected first.
+- **Momentum, per goal.** The same question one level up, which nothing used to
+  answer: a questline's only reading was `done / total`, a ratio with no time in
+  it, so a goal could never be late and could never go quiet. The Quests tab now
+  leads with which questlines have actually moved, coldest first, and says how
+  long is left at the rate of the last thirty days. A target date is optional —
+  set one and the pace is measured against it.
 - **Undo.** Every delete is reversible for twelve seconds, and the toast names the
   cascade — deleting a questline takes its quests and linked tasks with it, and
   that should be visible before it matters.
@@ -165,7 +171,8 @@ src/pages/    Today, Quests, All, Questline detail, Vynues
 src/components/  row/drawer/modal UI
 src/components/today/  the Today list's row, drag plumbing and furniture
 src/lib/      pure helpers — recurrence rules, subtask trees, sync reconciliation,
-              day membership, search ranking, undo, reminder scheduling
+              day membership, search ranking, undo, reminder scheduling,
+              habit consistency (systems.ts) and goal momentum (momentum.ts)
 src/store.ts  quest + routine state (zustand, persisted); the recurrence engine
 src/vynuesStore.ts  the Vynues half of the same
 *.test.ts     beside the module they cover
@@ -182,6 +189,13 @@ Notes for anyone reading the code:
   `completionLog` records how many tasks a day held, never which — so nothing
   already stored can be back-filled, and the Consistency panel says so on an empty
   install rather than implying you've done nothing.
+- **Momentum only counts completions** (`lib/momentum.ts`). Renaming a quest,
+  reordering the list or adding five tasks all feel productive and move nothing;
+  counting them would let a goal look healthy on the strength of being fiddled
+  with. For the same reason a projection needs a fortnight of history behind it
+  before it will name a span — one good afternoon must not forecast the whole
+  goal landing next month — and where it can't say, it says nothing rather than
+  drawing a bar.
 
 - **The Notion API key is encrypted at rest** via Electron's `safeStorage` (DPAPI
   on Windows). Configs written by older builds are upgraded in place on first read.
@@ -189,3 +203,65 @@ Notes for anyone reading the code:
   preferences carry their own vector clocks, so editing quests on one machine and
   Vynues on another isn't a conflict — both sides fast-forward. Only a store
   edited on *both* machines forces a choice, and only that store pays for it.
+
+## Patching your desktop copy
+
+Close Milestone, then run:
+
+```bash
+npm run patch
+```
+
+This builds the current code and replaces the application archive used by
+`release/Milestone-win32-x64/Milestone.exe`. Open that same executable afterward.
+The prior archive is kept in `release/.patch-backup/app.asar` for rollback.
+Saved goals and settings remain in the existing Milestone profile.
+
+Use `npm run package` for the first build or after changing the app or Electron
+version. Both commands package only the compiled app, Electron runtime modules,
+and required package metadata. Tests, source, docs, dependencies already bundled
+by Vite, and other release folders are excluded. Chromium DLLs/locales alongside
+the executable are runtime requirements; leave them in place.
+
+## Code organization
+
+| Where | What to edit |
+| --- | --- |
+| `src/index.css` | All colors, typography, component styling, and responsive rules, in cascade order. |
+| `src/pages`, `src/components` | Screens and reusable controls. |
+| `src/store.ts` | Persisted quest/routine/system state and actions. Original helper exports remain compatible. |
+| `src/uiStore.ts` | UI preferences, stable storage keys, and migration before store initialization. |
+| `src/domain/schedule.ts` | Logical days, recurrence, due dates, and session windows. |
+| `src/domain/taskState.ts` | Progress, immutable updates, resets, history credit, archives, and system membership. |
+| `electron/main.cjs` | Application identity and service lifecycle. |
+| `electron/desktop.cjs` | Window creation, profile migration, and renderer IPC registration. |
+| Other Electron modules | Feature services: sync, backups, reminders, phone access, and updates. |
+| `scripts/package.mjs` | Minimal packaging and in-place archive patches. |
+
+Calculations use domain imports without initializing saved stores. Persistence
+keys remain `milestone-v1` and `milestone-ui`, and the Electron profile remains
+`Milestone`. No saved-data shapes change. IPC resolves the current window when
+called, so reopening a window does not leave a stale folder-dialog target.
+
+Run `npm test` and `npm run test:desktop` for behavior and desktop checks.
+`npm run build` checks types and creates the production bundle. The full lint
+check currently includes pre-existing picker/drawer effect and Vynues export errors.
+
+Development launches with DevTools closed. Open it explicitly when needed:
+
+```bash
+npm run electron:dev -- --devtools
+```
+
+## Water theme
+
+The illustrated theme is shared by every tab and quest detail. Original pond and
+bridge artwork lives in `src/assets/`; headings and controls remain live text.
+Shared styling stays in `src/index.css`, and `NavBar.tsx` chooses each page's cover.
+Light mode matches the approved daytime mockups; dark mode keeps the same artwork
+with a darker overlay. Existing theme preferences are preserved. Use the sun/moon
+button to switch. Covers are bundled and included in the offline asset manifest.
+
+To apply local changes, fully quit Milestone (including the tray, if enabled), run
+`npm run patch` in this project folder, and reopen
+`release/Milestone-win32-x64/Milestone.exe`. No data export/import is needed.

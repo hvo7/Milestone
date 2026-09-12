@@ -48,11 +48,22 @@ export default function QuestDoneToggle({ questlineId, quest, locked = false, sm
     );
   }
 
+  if (quest.completionMode === 'manual') {
+    return <button type="button" className="btn-ghost" style={{ fontSize: small ? 11 : 12, padding: '5px 8px', flexShrink: 0 }}
+      aria-label={`${complete ? 'Undo achievement of' : 'Mark achieved:'} ${quest.title}`}
+      aria-pressed={complete}
+      title="Confirms the outcome; preparation steps keep their own completion history"
+      onClick={e => { e.stopPropagation(); setQuestComplete(questlineId, quest.id, !complete); }}>
+      {complete ? '✓ Achieved' : small ? 'Achieve' : 'Mark achieved'}
+    </button>;
+  }
+
   return (
     <input
       type="checkbox"
       className={small ? 'rune-check rune-check-sm' : 'rune-check'}
       checked={complete}
+      aria-label={`${toggleTitle(quest, complete)}: ${quest.title}`}
       title={toggleTitle(quest, complete)}
       // Quest rows expand when clicked, so the checkbox must not bubble.
       onClick={e => e.stopPropagation()}

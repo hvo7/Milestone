@@ -1,0 +1,40 @@
+.questline-workspace { max-width: 1180px; margin: 0 auto; padding: 28px 24px; display: grid; grid-template-columns: 245px minmax(0, 1fr); gap: 26px; align-items: start; }
+.questline-sidebar { min-width: 0; position: sticky; top: 84px; }
+.questline-nav-label { margin: 16px 12px 8px; font-size: 11px; color: var(--page-text-dim); text-transform: uppercase; letter-spacing: .1em; }
+.questline-nav-item { width: 100%; display: flex; align-items: flex-start; gap: 10px; text-align: left; font: inherit; color: var(--page-text); padding: 12px; margin: 4px 0; border: 1px solid transparent; border-radius: 8px; background: transparent; cursor: pointer; }
+.questline-nav-item:hover { background: var(--page-surface-hover); }
+.questline-nav-item[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-border); color: var(--accent); }
+.questline-nav-copy { min-width: 0; overflow-wrap: anywhere; }
+.questline-nav-copy > span { display: block; font-size: 14px; font-weight: 600; }
+.questline-nav-copy small { display: block; margin-top: 4px; font-size: 11px; color: var(--page-text-dim); }
+.questline-nav-separator { border-top: 1px solid var(--page-border); margin: 18px 12px 10px; }
+.questline-empty-nav { color: var(--page-text-dim); font-size: 12px; padding: 0 12px; }
+.questline-main { min-width: 0; }
+.questline-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.questline-toolbar h2 { margin: 0; }
+.questline-toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.questline-toolbar button { font-size: 12px; }
+.questline-section { padding: 20px; margin-bottom: 18px; border-radius: 10px; }
+.questline-section h2 { font-size: 16px; margin: 0 0 10px; color: var(--page-text); }
+.questline-section p, .questline-description { color: var(--page-text-dim); font-size: 13px; line-height: 1.6; }
+.questline-section-header { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.questline-support-link { display: flex; justify-content: space-between; gap: 12px; align-items: center; color: var(--accent); text-decoration: none; padding: 12px 0; border-top: 1px solid var(--page-border); }
+.questline-support-link span { min-width: 0; overflow-wrap: anywhere; }
+.questline-support-link small { display: block; color: var(--page-text-dim); font-size: 12px; margin-top: 4px; }
+.questline-insights { margin-top: 18px; color: var(--page-text-dim); }
+.questline-insights summary { cursor: pointer; font-size: 12px; margin-bottom: 12px; }
+.practice-task { margin: 12px 0; min-width: 0; }
+.practice-task-tools { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.practice-task-tools button { font-size: 11px; padding: 4px 8px; }
+.practice-links { display: flex; gap: 6px; flex-wrap: wrap; margin: 10px 0; }
+.practice-links a { color: var(--accent); font-size: 12px; text-decoration: none; border-bottom: 1px solid var(--accent-border); }
+.practice-stat { color: var(--page-text-dim); font-size: 12px; }
+.questline-workspace button:focus-visible, .questline-workspace a:focus-visible, .questline-workspace summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (max-width: 760px) {
+  .questline-workspace { grid-template-columns: 1fr; gap: 18px; padding: 20px 12px; }
+  .questline-sidebar { position: static; display: flex; flex-wrap: wrap; gap: 5px; }
+  .questline-sidebar .questline-nav-item { width: auto; flex: 1 1 160px; margin: 0; }
+  .questline-nav-label, .questline-nav-separator { width: 100%; margin: 8px 0; }
+  .questline-section { padding: 16px 12px; }
+}
+@media (pointer: coarse) { .questline-workspace button { min-height: 44px; } }

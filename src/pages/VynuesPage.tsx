@@ -188,12 +188,12 @@ export default function VynuesPage() {
       <div className="page-shell" style={{ paddingBottom: 60 }}>
         <NavBar />
 
-        <div style={{ maxWidth: 1080, margin: '0 auto', padding: '28px 20px' }}>
+        <div style={{ maxWidth: 1180, margin: '0 auto', padding: '28px 20px' }}>
 
           {/* Header */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, gap: 16, flexWrap: 'wrap' }}>
             <div>
-              <h1 className="page-title" style={{ margin: 0 }}>Vynues</h1>
+              <h2 className="page-title" style={{ margin: 0 }}>Your projects</h2>
               <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--text-dim)' }}>
                 Projects, and what needs doing in each — broken down as far as it takes.
               </p>

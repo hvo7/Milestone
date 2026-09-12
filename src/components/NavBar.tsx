@@ -1,10 +1,11 @@
 import { useState, Suspense } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { motion } from 'framer-motion';
 import { useQuestStore, useUIStore } from '../store';
 import { useVynuesStore } from '../vynuesStore';
-import { VERSION_LABEL, BUILD_MODE, buildSummary } from '../buildInfo';
+import { VERSION_LABEL, buildSummary } from '../buildInfo';
 import { lazyChunk } from '../lib/lazyChunk';
+import pondCover from '../assets/pond.webp';
+import bridgeCover from '../assets/bridge.webp';
 
 // The nav bar is on every page, but these two panels open rarely — and the Data
 // panel drags in the whole sync/backup surface. Loaded when actually opened.
@@ -14,7 +15,7 @@ const RemindersModal = lazyChunk(() => import('./RemindersModal'));
 
 const isElectron = !!window.electronAPI;
 
-export default function NavBar() {
+export default function NavBar({ cover }: { cover?: { title: string; subtitle: string } } = {}) {
   const { pathname } = useLocation();
   const routines     = useQuestStore(s => s.routines);
   const questlines   = useQuestStore(s => s.questlines);
@@ -49,163 +50,57 @@ export default function NavBar() {
     { path: '/all',    label: 'All',    badge: 0 },
   ];
 
-  function iconBtnStyle(): React.CSSProperties {
-    return {
-      background: 'transparent',
-      border: '1px solid var(--card-border)',
-      borderRadius: 9, cursor: 'pointer',
-      fontSize: 13, padding: '6px 10px',
-      color: 'var(--text-dim)', transition: 'all 0.15s',
-      lineHeight: 1,
-    };
-  }
-
-  const hoverOn  = (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.borderColor = 'var(--accent-border)'; e.currentTarget.style.color = 'var(--accent)'; };
-  const hoverOff = (e: React.MouseEvent<HTMLButtonElement>) => { e.currentTarget.style.borderColor = 'var(--card-border)'; e.currentTarget.style.color = 'var(--text-dim)'; };
+  const scene = pathname === '/' || pathname === '/systems' || pathname === '/all' ? pondCover : bridgeCover;
+  const heading = cover ?? ({
+    '/': { title: 'Today', subtitle: 'Small steps, brighter days.' },
+    '/systems': { title: 'Systems', subtitle: 'A little progress, consistently.' },
+    '/quests': { title: 'Quests', subtitle: 'Make room for what matters.' },
+    '/vynues': { title: 'Vynues', subtitle: 'A place for your next idea.' },
+    '/all': { title: 'All tasks', subtitle: 'Everything in its own time.' },
+  }[pathname] ?? { title: 'Quests', subtitle: 'One step closer.' });
 
   return (
     <>
-      <nav className="app-nav" style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        // Padding lives in `.app-nav` (index.css) — it carries the phone's top
-        // safe-area inset, and an inline padding here would silently outrank it.
-        borderBottom: '1px solid var(--nav-border)',
-        background: 'var(--nav-bg)',
-        backdropFilter: 'blur(14px)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 10,
-        transition: 'background 0.3s, border-color 0.3s',
-      }}>
-        {/* Brand */}
-        <span style={{ display: 'flex', alignItems: 'center', gap: 9, userSelect: 'none' }}>
-          <motion.span
-            whileHover={{ rotate: 8, scale: 1.06 }}
-            transition={{ type: 'spring', stiffness: 320, damping: 16 }}
-            style={{
-              width: 24, height: 24, borderRadius: 7,
-              background: 'var(--grad-accent)',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontSize: 12, fontWeight: 800,
-              boxShadow: '0 2px 10px rgba(99,102,241,0.35)',
-            }}
-          >
-            M
-          </motion.span>
-          <span style={{ fontFamily: 'var(--font-display)', fontSize: 14.5, fontWeight: 700, color: 'var(--page-text)', letterSpacing: '-0.01em' }}>
-            Milestone
+      <nav className="app-nav" aria-label="Main navigation">
+        <Link to="/" className="app-brand" aria-label="Milestone home">
+          <span className="brand-mark" aria-hidden="true">
+            <svg width="20" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19V9l4-4 4 7 4-7 4 4v10M8 19v-5m8 5v-5" />
+            </svg>
           </span>
-          {/* Which build is actually running. A packaged exe is only as current as
-              the last `npm run package`, so this is how you tell at a glance. */}
-          <span
-            title={buildSummary()}
-            style={{
-              fontSize: 9.5, fontWeight: 700, letterSpacing: '0.03em',
-              padding: '2px 6px', borderRadius: 999, cursor: 'default',
-              color: BUILD_MODE === 'dev' ? 'var(--color-amber)' : 'var(--text-dim)',
-              border: `1px solid ${BUILD_MODE === 'dev' ? 'var(--color-amber)' : 'var(--card-border)'}`,
-              background: BUILD_MODE === 'dev' ? 'transparent' : 'var(--input-bg)',
-              whiteSpace: 'nowrap',
-            }}
-          >
-            {VERSION_LABEL}
-          </span>
-        </span>
-
-        {/* Tabs — the active pill glides between them */}
-        <div className="app-tabs" style={{
-          display: 'flex', gap: 2, padding: 3,
-          borderRadius: 12, border: '1px solid var(--card-border)',
-          background: 'var(--input-bg)',
-        }}>
+          <span className="brand-name">Milestone</span>
+          <span className="build-label" title={buildSummary()}>{VERSION_LABEL}</span>
+        </Link>
+        <div className="app-tabs">
           {tabs.map(tab => {
-            const active = pathname === tab.path;
+            const active = tab.path === '/' ? pathname === '/' : (pathname.startsWith(tab.path) || (tab.path === '/quests' && pathname.startsWith('/questline/')));
             return (
-              <Link key={tab.path} to={tab.path} style={{ textDecoration: 'none' }}>
-                <button style={{
-                  position: 'relative',
-                  display: 'flex', alignItems: 'center', gap: 6,
-                  fontFamily: 'inherit', fontSize: 13, fontWeight: active ? 600 : 500,
-                  cursor: 'pointer', padding: '6px 14px', borderRadius: 9,
-                  border: 'none', background: 'transparent',
-                  color: active ? 'var(--accent)' : 'var(--text-dim)',
-                  transition: 'color 0.2s',
-                }}>
-                  {active && (
-                    <motion.span
-                      layoutId="nav-pill"
-                      transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                      style={{
-                        position: 'absolute', inset: 0, borderRadius: 9,
-                        background: 'var(--accent-soft)',
-                        border: '1px solid var(--accent-border)',
-                      }}
-                    />
-                  )}
-                  <span style={{ position: 'relative', zIndex: 1 }}>{tab.label}</span>
-                  {tab.badge > 0 && (
-                    <span style={{
-                      position: 'relative', zIndex: 1,
-                      background: 'var(--grad-accent)', color: '#fff',
-                      borderRadius: 999, fontSize: 10, fontWeight: 700,
-                      padding: '1px 7px', lineHeight: 1.6,
-                    }}>
-                      {tab.badge}
-                    </span>
-                  )}
-                </button>
+              <Link key={tab.path} to={tab.path} className="nav-link" aria-current={active ? 'page' : undefined}>
+                {tab.label}
+                {tab.badge > 0 && <span className="nav-count">{tab.badge}</span>}
               </Link>
             );
           })}
         </div>
-
-        {/* Icon buttons */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            onClick={toggleTheme}
-            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            style={iconBtnStyle()}
-            onMouseEnter={hoverOn}
-            onMouseLeave={hoverOff}
-          >
-            {theme === 'dark' ? '☀' : '🌙'}
+        <div className="nav-tools">
+          <button className="nav-tool" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+            <NavIcon name={theme === 'dark' ? 'sun' : 'moon'} />
           </button>
-
-          <button
-            onClick={() => setRemindOpen(true)}
-            title={reminders?.enabled ? `Daily reminder at ${reminders.time}` : 'Daily reminder — off'}
-            style={{ ...iconBtnStyle(), ...(reminders?.enabled ? { color: 'var(--accent)', borderColor: 'var(--accent-border)' } : {}) }}
-            onMouseEnter={hoverOn}
-            onMouseLeave={e => { if (!reminders?.enabled) hoverOff(e); }}
-          >
-            🔔
+          <button className="nav-tool" onClick={() => setRemindOpen(true)} data-active={!!reminders?.enabled} title={reminders?.enabled ? `Daily reminder at ${reminders.time}` : 'Daily reminder — off'} aria-label="Daily reminder">
+            <NavIcon name="bell" />
           </button>
-
-          <button
-            onClick={() => setDataOpen(true)}
-            title="Export / Import data"
-            style={iconBtnStyle()}
-            onMouseEnter={hoverOn}
-            onMouseLeave={hoverOff}
-          >
-            ⇅
+          <button className="nav-tool" onClick={() => setDataOpen(true)} title="Export / Import data" aria-label="Export / Import data">
+            <NavIcon name="data" />
           </button>
-
-          {isElectron && (
-            <button
-              onClick={() => setSyncOpen(true)}
-              title="Sync to Notion"
-              style={iconBtnStyle()}
-              onMouseEnter={hoverOn}
-              onMouseLeave={hoverOff}
-            >
-              ↻
-            </button>
-          )}
+          {isElectron && <button className="nav-tool" onClick={() => setSyncOpen(true)} title="Sync to Notion" aria-label="Sync to Notion"><NavIcon name="sync" /></button>}
         </div>
       </nav>
+      <header className="water-cover" style={{ backgroundImage: `url("${scene}")` }}>
+        <div className="water-cover-content">
+          <h1>{heading.title}</h1>
+          <p>{heading.subtitle}</p>
+        </div>
+      </header>
 
       <Suspense fallback={null}>
         {syncOpen   && <NotionSyncModal onClose={() => setSyncOpen(false)} />}
@@ -214,4 +109,15 @@ export default function NavBar() {
       </Suspense>
     </>
   );
+}
+
+function NavIcon({ name }: { name: 'sun' | 'moon' | 'bell' | 'data' | 'sync' }) {
+  const paths = {
+    sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></>,
+    moon: <path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10Z" />,
+    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-2 7-2 9h16c0-2-2-2-2-9M10 21h4" /></>,
+    data: <><path d="M8 3v12m-4-4 4 4 4-4M16 21V9m-4 4 4-4 4 4" /></>,
+    sync: <><path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 14 6M4 12a8 8 0 0 0 14 6" /></>,
+  };
+  return <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }

@@ -31,7 +31,7 @@ function assetManifest(): Plugin {
     // this way it does not depend on the bundler's asset-emitting hooks.
     writeBundle(options, bundle) {
       const files = Object.keys(bundle)
-        .filter(name => name.endsWith('.js') || name.endsWith('.css'))
+        .filter(name => /\.(js|css|webp|png|svg|woff2)$/.test(name))
         // Relative, like every other URL the worker handles: the app is served
         // from a /Milestone/ subpath on Pages and from / on the desktop bridge.
         .map(name => './' + name)
@@ -77,9 +77,8 @@ export default defineConfig({
     },
   },
   test: {
-    // The stores construct zustand `persist` middleware at import time, which
-    // reaches for localStorage — so even the pure helpers need a DOM to be
-    // importable.
+    // Store integration tests need localStorage. Domain modules are independent
+    // of persistence; isolation.test.ts verifies that importing them does no I/O.
     environment: 'jsdom',
     // The main process gets a look-in too. Only the pure pieces of it are worth
     // testing — anything that reaches for `electron` cannot run outside it — but

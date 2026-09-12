@@ -11,7 +11,8 @@
  */
 import type { Questline, Routine, System } from '../types';
 import type { VynuesProject } from '../vynuesStore';
-import { flattenSubtasks, repeats, recurrenceLabel, routineSystemIds, systemGoalIds, systemQuestIds } from '../store';
+import { flattenSubtasks, routineSystemIds, systemGoalIds, systemQuestIds } from '../domain/taskState';
+import { repeats, recurrenceLabel } from '../domain/schedule';
 import { flattenVynuesSubtasks } from '../vynuesStore';
 import { cleanQuest, ANCHOR_LABEL } from './ui';
 

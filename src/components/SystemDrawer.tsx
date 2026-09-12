@@ -21,7 +21,7 @@ import MultiSelect from './MultiSelect';
 import IconPicker from './IconPicker';
 
 /** Null id = creating. A string = editing that system. */
-export type SystemTarget = { id: string | null } | null;
+export type SystemTarget = { id: string | null; initialQuestlineId?: string } | null;
 
 /** One row of the actions list. `id` is set for actions that already exist. */
 interface DraftAction {
@@ -46,7 +46,7 @@ const freqValue = (a: DraftAction) => (a.intervalDays && a.intervalDays > 1 ? 'c
 let seq = 0;
 const nextKey = () => `draft-${++seq}`;
 
-function Panel({ id, onClose }: { id: string | null; onClose: () => void }) {
+function Panel({ id, onClose, initialQuestlineId }: { id: string | null; onClose: () => void; initialQuestlineId?: string }) {
   const systems    = useQuestStore(s => s.systems);
   const questlines = useQuestStore(s => s.questlines);
   const routines   = useQuestStore(s => s.routines);
@@ -73,7 +73,7 @@ function Panel({ id, onClose }: { id: string | null; onClose: () => void }) {
    */
   const [served, setServed] = useState<string[]>(existing
     ? [...systemGoalIds(existing).map(id => `ql:${id}`), ...systemQuestIds(existing).map(id => `q:${id}`)]
-    : []);
+    : initialQuestlineId ? [`ql:${initialQuestlineId}`] : []);
 
   const serveOptions = questlines.filter(q => !q.hidden).flatMap(ql => [
     { id: `ql:${ql.id}`, label: ql.title },
@@ -319,7 +319,7 @@ export default function SystemDrawer({ target, onClose }: { target: SystemTarget
             </div>
 
             {/* Keyed so the fields reset between one system and the next. */}
-            <Panel key={target.id ?? 'new'} id={target.id} onClose={onClose} />
+            <Panel key={target.id ?? `new-${target.initialQuestlineId ?? ''}`} id={target.id} initialQuestlineId={target.initialQuestlineId} onClose={onClose} />
           </motion.div>
         </>
       )}

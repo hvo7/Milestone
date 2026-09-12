@@ -15,7 +15,8 @@
  * (lib/webBackup.ts). Same format, same window, same restore UI — the web copies
  * are simply weaker, since clearing site data takes them along with the stores.
  */
-import { QUEST_STORE_KEY, useQuestStore } from '../store';
+import { QUEST_STORE_KEY } from '../uiStore';
+import { useQuestStore } from '../store';
 import { VYNUES_STORE_KEY, useVynuesStore } from '../vynuesStore';
 import { APP_VERSION } from '../buildInfo';
 import * as webBackup from './webBackup';

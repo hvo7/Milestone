@@ -11,10 +11,9 @@
  * one of these about the *next* day by passing a different pair.
  */
 import type { Action, Questline, Routine } from '../types';
-import {
-  alwaysOnToday, dateKey, dueOnDay, engagedOnDay, isGeneralTask, isMultiDayCycle, isQuestComplete,
-  logicalDateKey, logicalDayStart, onToday, repeats, skipActive,
-} from '../store';
+import { alwaysOnToday, dateKey, dueOnDay, isMultiDayCycle, logicalDateKey, logicalDayStart, onToday, repeats, skipActive } from '../domain/schedule';
+import { engagedOnDay, isGeneralTask } from '../domain/taskState';
+import { isQuestComplete } from '../domain/taskState';
 
 // The rule lives in the store, beside the other schedule predicates; re-exported
 // here so callers that think in terms of "the Today page" can reach it too.

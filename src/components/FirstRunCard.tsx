@@ -36,10 +36,10 @@ export default function FirstRunCard({ onCreate }: { onCreate?: () => void }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="parchment glass-card"
-      style={{ borderRadius: 16, padding: '22px 24px', marginBottom: 24 }}
+      className="parchment welcome-card"
+      style={{ borderRadius: 8, padding: '22px 24px', marginBottom: 24 }}
     >
-      <h2 style={{ margin: 0, fontSize: 15, fontWeight: 600, color: 'var(--page-text)' }}>
+      <h2 style={{ margin: 0, fontFamily: 'var(--font-display)', fontSize: 25, fontWeight: 500, color: 'var(--page-text)' }}>
         Welcome to Milestone
       </h2>
       <p style={{ margin: '8px 0 0', fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.6 }}>

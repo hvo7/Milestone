@@ -14,7 +14,9 @@
  * readable from the main process, so the decision has to be made here and only the
  * *display* handed across the bridge.
  */
-import { useQuestStore, useUIStore, dateKey, logicalDayStart } from '../store';
+import { useQuestStore } from '../store';
+import { useUIStore } from '../uiStore';
+import { dateKey, logicalDayStart } from '../domain/schedule';
 import { useVynuesStore } from '../vynuesStore';
 import { dueSummary } from './today';
 

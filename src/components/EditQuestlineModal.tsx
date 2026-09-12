@@ -26,6 +26,7 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
   const [color, setColor]             = useState<GuildColor>(questline.color);
   const [sequential, setSequential]   = useState(questline.sequential ?? false);
   const [recurring, setRecurring]     = useState<RecurringType | null>(questline.recurring ?? null);
+  const [targetDate, setTargetDate]   = useState(questline.targetDate ?? '');
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -35,7 +36,12 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
 
   const handleSave = () => {
     if (!title.trim()) return;
-    updateQuestline(questline.id, { title: title.trim(), description: description.trim(), icon, color, sequential, recurring });
+    updateQuestline(questline.id, {
+      title: title.trim(), description: description.trim(), icon, color, sequential, recurring,
+      // Empty means "no target", which is a real answer and must clear a previous
+      // one rather than leaving it stuck.
+      targetDate: targetDate || null,
+    });
     onClose();
   };
 
@@ -67,6 +73,33 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
             <div>
               <Label>Color</Label>
               <ColorPicker value={color} onChange={setColor} />
+            </div>
+
+            {/* Target date — optional, and the app never fills it in. See the
+                note on `Questline.targetDate`: with it set, the Momentum panel
+                can say whether the rate you're running gets you there; without
+                it, it says nothing rather than inventing a deadline. */}
+            <div>
+              <Label>Target date <span style={{ fontWeight: 500, textTransform: 'none', letterSpacing: 0 }}>· optional</span></Label>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                <input
+                  type="date"
+                  className="rune-input"
+                  value={targetDate}
+                  onChange={e => setTargetDate(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                {targetDate && (
+                  <button className="btn-ghost" onClick={() => setTargetDate('')} style={{ fontSize: 12, padding: '6px 12px' }}>
+                    Clear
+                  </button>
+                )}
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-dim)' }}>
+                {targetDate
+                  ? 'Momentum will compare your recent pace against this date.'
+                  : 'No date: a goal without a deadline is still a goal.'}
+              </p>
             </div>
 
             {/* Quest order */}

@@ -43,7 +43,9 @@
  * finer granularity until it updates.
  */
 import { create } from 'zustand';
-import { QUEST_STORE_KEY, UI_STORE_KEY, useQuestStore, useUIStore } from '../store';
+import { QUEST_STORE_KEY, UI_STORE_KEY } from '../uiStore';
+import { useQuestStore } from '../store';
+import { useUIStore } from '../uiStore';
 import { VYNUES_STORE_KEY, useVynuesStore } from '../vynuesStore';
 import { APP_VERSION } from '../buildInfo';
 import { withoutHistory, clearHistory } from './history';
@@ -156,6 +158,13 @@ let config: SyncConfig | null = null;
 let applying = false;
 let writeTimer: ReturnType<typeof setTimeout> | null = null;
 let pullChain: Promise<void> = Promise.resolve();
+
+function enqueue(work: () => Promise<void>) {
+  pullChain = pullChain.then(work).catch(err => {
+    setStatus({ error: err instanceof Error ? err.message : String(err) });
+  });
+  return pullChain;
+}
 
 /**
  * Where documents are exchanged.
@@ -348,7 +357,7 @@ function scheduleWrite() {
   // device has it before you've finished picking it up. Now that a write is
   // pushed rather than waited for, this delay *is* the latency between the two
   // screens, so it is worth keeping honest.
-  writeTimer = setTimeout(() => { writeTimer = null; void publish(true); }, 700);
+  writeTimer = setTimeout(() => { writeTimer = null; void enqueue(() => publish(true)); }, 700);
 }
 
 // ── Pull ──────────────────────────────────────────────────────────────────────
@@ -376,6 +385,7 @@ interface SlotPlan {
  */
 async function adoptSlots(plans: SlotPlan[], conflicted: SlotPlan[]) {
   const api = bridge();
+  const before = JSON.stringify(snapshot());
 
   if (conflicted.length && api) {
     // Some slot on this machine is about to be replaced by a version that isn't
@@ -390,6 +400,10 @@ async function adoptSlots(plans: SlotPlan[], conflicted: SlotPlan[]) {
         : `Both computers had edited ${names} since the last sync, so “${from}” (the more recent) was used. This computer's version could NOT be backed up: ${res.error}`,
     });
   }
+
+  // A user can keep editing while an asynchronous conflict backup is written.
+  // Reconcile again with that edit's clock instead of replacing it unseen.
+  if (JSON.stringify(snapshot()) !== before) { void pull(); return; }
 
   const incoming: Partial<Record<Slot, string>> = {};
   for (const plan of plans) {
@@ -424,6 +438,17 @@ async function pullOnce() {
   const res = await api.readPeers();
   if (!res.ok) { setStatus({ error: res.error ?? 'Could not read the sync folder.' }); return; }
 
+  // Account for edits made offline, during the debounce, or while the network
+  // read was in flight, before deciding whether a peer supersedes this device.
+  const previous = loadMeta().published;
+  const current = snapshot();
+  if (writeTimer || (Object.keys(previous).length > 0 && SLOT_NAMES.some(slot => current[slot] !== previous[slot]))) {
+    if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
+    await publish(true);
+    // Publishing can itself take time; another local edit needs its own turn.
+    if (JSON.stringify(snapshot()) !== JSON.stringify(current)) { void pull(); return; }
+  }
+
   const peers = (res.peers ?? []) as SyncDoc[];
   setStatus({
     error: null,
@@ -454,10 +479,7 @@ async function pullOnce() {
 /** Serialised so a burst of watcher events can't run two reconciliations over
  *  the same stores at once. */
 function pull() {
-  pullChain = pullChain.then(pullOnce).catch(err => {
-    setStatus({ error: err instanceof Error ? err.message : String(err) });
-  });
-  return pullChain;
+  return enqueue(pullOnce);
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -587,5 +609,5 @@ export async function peekFolder(folder: string): Promise<{ deviceName: string; 
  */
 export function noteExternalWrite() {
   if (!config?.enabled) return;
-  void publish(true);
+  void enqueue(() => publish(true));
 }
