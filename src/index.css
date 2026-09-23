@@ -986,3 +986,8 @@ select.rune-input option:disabled { color: var(--text-dim); }
 @media (max-width: 480px) {
   .side-drawer { width: 100% !important; border-left: 0 !important; }
 }
+
+/* User-created space tabs can grow beyond the viewport. */
+.app-tabs { min-width: 0; overflow-x: auto; justify-content: flex-start; }
+.app-tabs .nav-link { flex-shrink: 0; white-space: nowrap; }
+.app-brand, .nav-tools { flex-shrink: 0; }

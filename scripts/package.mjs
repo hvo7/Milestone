@@ -22,7 +22,7 @@ try {
   await cp(path.join(root, 'dist'), path.join(source, 'dist'), { recursive: true });
   await mkdir(path.join(source, 'electron'));
   for (const file of await readdir(path.join(root, 'electron'))) {
-    if (file.endsWith('.cjs') && !file.includes('.test.')) {
+    if (file.endsWith('.cjs') && !file.includes('.test.') && !file.startsWith('testing')) {
       await copyFile(path.join(root, 'electron', file), path.join(source, 'electron', file));
     }
   }

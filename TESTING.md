@@ -1,0 +1,19 @@
+# Milestone Testing
+
+Run `npm run testing` (or double-click `Open Testing.cmd`) to build and open a separate testing window.
+
+The amber TESTING banner identifies this environment. Build output goes to `dist-testing`, not `dist` or `release`. Its Electron profile, cookies, local storage and cache live under `.testing`. The window has no production desktop bridge, updater, cloud/phone sync, or network access. Closing it quits only the testing app.
+
+On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
+
+## Batch 001 — approved for v3.3.0 on 2026-09-23
+
+- Separate testing environment and launch shortcut.
+- Illustrated icons for questlines, individual quests, and systems. Theme follows the title; each record has stable color variation. Custom uploaded artwork is preserved.
+- Earlier unshipped workspace changes are also present for review, including Today filtering and the 2:00 AM reset.
+
+The user explicitly approved shipping this batch. Icons are enabled in the production build for v3.3.0. Future batches still require separate approval.
+
+## Shipping
+
+Collect features here, review them in the testing window, and wait for explicit user approval of the batch. Only then enable approved feature flags in the release build, validate, bump the version and publish. Publishing workflows are manual-only; do not dispatch them before approval. Do not copy test task data into production.

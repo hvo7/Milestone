@@ -1,4 +1,4 @@
-const { migrateLegacyProfile, createAppWindow, registerIpcHandlers } = require('./desktop.cjs');
+const { migrateLegacyProfile, createAppWindow, registerIpcHandlers, claimProfile } = require('./desktop.cjs');
 const { app, BrowserWindow, shell, ipcMain } = require('electron');
 const path = require('path');
 const notion = require('./notion.cjs');
@@ -20,6 +20,10 @@ app.setName('Milestone');
 // this the reminder arrives labelled "electron.app.Milestone" — or, on some
 // setups, doesn't arrive at all.
 if (process.platform === 'win32') app.setAppUserModelId('Milestone');
+
+// Opening the shortcut again must reveal the current window, not start another
+// renderer that can publish stale in-memory data under the same device id.
+if (!claimProfile(app, () => { void app.whenReady().then(showMainWindow); })) return;
 
 migrateLegacyProfile(path.join(app.getPath('appData'), 'rpg-quest-tracker'), app.getPath('userData'));
 

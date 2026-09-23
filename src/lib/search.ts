@@ -79,10 +79,11 @@ export interface SearchSources {
   /** Optional so existing callers (and tests) don't have to supply it. */
   systems?: System[];
   projects: VynuesProject[];
+  spaces?: import("../types").Space[];
 }
 
 /** Every searchable thing in the app, flattened into one candidate list. */
-function candidates({ questlines, routines, systems, projects }: SearchSources): Omit<SearchResult, 'score'>[] {
+function candidates({ questlines, routines, systems, projects, spaces }: SearchSources): Omit<SearchResult, 'score'>[] {
   const out: Omit<SearchResult, 'score'>[] = [];
 
   for (const sys of systems ?? []) {
@@ -139,14 +140,17 @@ function candidates({ questlines, routines, systems, projects }: SearchSources):
   }
 
   for (const p of projects) {
-    out.push({ id: p.id, kind: 'project', title: p.name, context: 'Vynues', path: '/vynues', hint: `${p.tasks.length} tasks` });
+    const space = spaces?.find(s => s.id === (p.spaceId ?? 'vynues'));
+    const spaceName = space?.name ?? (p.spaceId ? 'Projects' : 'Vynues');
+    const path = space?.archived ? '/all' : `/spaces/${p.spaceId ?? 'vynues'}?section=projects`;
+    out.push({ id: p.id, kind: 'project', title: p.name, context: spaceName, path, hint: `${p.tasks.length} tasks` });
     for (const t of p.tasks) {
       out.push({
-        id: t.id, kind: 'vynues-task', title: t.title, context: `Vynues · ${p.name}`, path: '/vynues',
+        id: t.id, kind: 'vynues-task', title: t.title, context: `${spaceName} · ${p.name}`, path,
         hint: t.done ? 'done' : repeats(t) ? recurrenceLabel(t) : undefined,
       });
       for (const st of flattenVynuesSubtasks(t.subtasks)) {
-        out.push({ id: st.id, kind: 'step', title: st.title, context: `${p.name} · ${t.title}`, path: '/vynues', hint: st.done ? 'done' : undefined });
+        out.push({ id: st.id, kind: 'step', title: st.title, context: `${p.name} · ${t.title}`, path, hint: st.done ? 'done' : undefined });
       }
     }
   }

@@ -41,7 +41,7 @@ export default function RoutineTaskRow({ routine: r, onEdit, onRemove }: {
         sourceLine={<><RecurrenceBadge recurring={r.recurring} intervalDays={r.intervalDays} monthlyRule={r.monthlyRule} />{r.dueDate && !r.completed && <DueLabel dueDate={r.dueDate} todayKey={today} />}</>}
         tag={r.anchor ? { label: ANCHOR_LABEL, color: 'var(--accent)' } : undefined}
         onToggle={() => toggle(r.id)} onRename={title => rename(r.id, title)} onEdit={onEdit}
-        target={r.target} progress={r.progress} step={r.step} unit={r.unit} onIncrement={r.target != null ? delta => increment(r.id, delta) : undefined} strip={strip}
+        target={r.target} progress={r.progress} step={r.step} unit={r.unit} onIncrement={r.target != null ? delta => increment(r.id, delta) : undefined} sessionGoal={sessionMode(r)} strip={strip}
         subtasks={routineSubNodes(r.subtasks, false)} subHandlers={{ onAdd: (title, parent) => addStep(r.id, title, parent), onToggle: id => toggleStep(r.id, id), onRename: (id, title) => renameStep(r.id, id, title), onDelete: id => deleteStep(r.id, id) }}
       />
       <div className="practice-task-tools">

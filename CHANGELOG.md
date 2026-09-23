@@ -7,6 +7,19 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.0 — 2026-09-23
+
+- Illustrated icons for questlines, individual quests and systems, matched to their titles. Uploaded pictures are preserved.
+- Systems navigation includes only questlines with linked systems.
+- Completed habits move below active habits. Skipped tasks are hidden until Show skipped is enabled. Explicit due dates appear only on their assigned day.
+- Days reset at 2:00 AM in the computer's local time zone, refresh automatically, and can be refreshed with the top-right button.
+- Separate Testing window with its own profile and backup copy, disabled sync and updates, and a visible testing banner. Future production batches require explicit approval.
+- Includes the current workspace's space tabs, questline ordering and desktop single-instance improvements.
+
+## 3.2.3 — 2026-09-12
+
+Opening Milestone again now reveals the existing app instead of starting another process against the same data profile. This prevents competing desktop instances from publishing different in-memory copies under the same sync identity.
+
 ## 3.2.2 — 2026-09-12
 
 Phone layouts now use a compact questline selector on Systems and Quests. Habit titles, counters, weekly sessions, and action buttons stack and wrap to fit smaller screens. System editor fields use full-width task names, drawers fill narrow screens, and touch controls are larger. Desktop layouts and saved data are unchanged.

@@ -1,3 +1,4 @@
+import SpacePicker from './SpacePicker';
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useVynuesStore } from '../vynuesStore';
@@ -13,6 +14,7 @@ const COLORS: { key: ProjectColor; var: string }[] = [
 
 interface Props {
   open: boolean;
+  spaceId?: string;
   /** Pass a project to edit it; omit for a new one. */
   project?: VynuesProject;
   onClose: () => void;
@@ -20,11 +22,12 @@ interface Props {
 
 /** Right-hand slide-in panel for creating or editing a Vynues project — matches the
  *  Today / Quests task drawers so every "add" surface feels the same. */
-export default function VynuesProjectModal({ open, project, onClose }: Props) {
+export default function VynuesProjectModal({ open, project, onClose, spaceId: initialSpaceId = 'vynues' }: Props) {
   const addProject    = useVynuesStore(s => s.addProject);
   const updateProject = useVynuesStore(s => s.updateProject);
   const editing = !!project;
 
+  const [spaceId, setSpaceId] = useState(initialSpaceId);
   const [name,  setName]  = useState('');
   const [desc,  setDesc]  = useState('');
   const [color, setColor] = useState<ProjectColor>('sapphire');
@@ -39,6 +42,7 @@ export default function VynuesProjectModal({ open, project, onClose }: Props) {
   // the project's values when editing.
   useEffect(() => {
     if (!open) return;
+    setSpaceId(project?.spaceId ?? (project ? 'vynues' : initialSpaceId));
     setName(project?.name ?? '');
     setDesc(project?.description ?? '');
     setColor(project?.color ?? 'sapphire');
@@ -47,13 +51,13 @@ export default function VynuesProjectModal({ open, project, onClose }: Props) {
     document.addEventListener('keydown', onKey);
     return () => { clearTimeout(t); document.removeEventListener('keydown', onKey); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, project?.id]);
+  }, [open, project?.id, initialSpaceId]);
 
   function submit() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    if (editing) updateProject(project!.id, { name: trimmed, description: desc.trim(), color });
-    else         addProject(trimmed, desc.trim(), color);
+    if (editing) updateProject(project!.id, { spaceId, name: trimmed, description: desc.trim(), color });
+    else         addProject(trimmed, desc.trim(), color, spaceId);
     onClose();
   }
 
@@ -97,6 +101,7 @@ export default function VynuesProjectModal({ open, project, onClose }: Props) {
             </div>
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '22px', display: 'flex', flexDirection: 'column', gap: 18 }}>
+              <SpacePicker value={spaceId} onChange={setSpaceId} personal={false} />
               <div>
                 <label style={labelStyle}>Project name</label>
                 <input

@@ -3,8 +3,7 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: [main]
+  # Publish a feature batch only after explicit user approval.
   # Lets you publish without pushing, from the Actions tab.
   workflow_dispatch:
 

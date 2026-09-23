@@ -1,4 +1,4 @@
-import { useEffect, Suspense } from 'react';
+import { useEffect, useReducer, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useQuestStore, useUIStore } from './store';
 import { useVynuesStore } from './vynuesStore';
@@ -11,6 +11,7 @@ import RouteBoundary from './components/RouteBoundary';
 import { startReminders } from './lib/reminders';
 import { startHistory, installUndoHotkeys, withoutHistory } from './lib/history';
 import { lazyChunk } from './lib/lazyChunk';
+import { startDayClock } from './lib/dayClock';
 
 // Today is the landing route, so it ships in the main bundle — splitting it would
 // only add a flash on launch. The other tabs are pulled in the first time they're
@@ -26,7 +27,7 @@ const AllPage       = lazyChunk(() => import('./pages/AllPage'));
 const SystemsPage   = lazyChunk(() => import('./pages/SystemsPage'));
 const QuestsPage    = lazyChunk(() => import('./pages/QuestsPage'));
 const QuestlinePage = lazyChunk(() => import('./pages/QuestlinePage'));
-const VynuesPage    = lazyChunk(() => import('./pages/VynuesPage'));
+const SpacePage = lazyChunk(() => import('./pages/SpacePage'));
 
 // Hash routing everywhere. Electron serves the built app over file://, which
 // requires it — and the web build is hosted on GitHub Pages, a static file server
@@ -58,6 +59,7 @@ function RouteFallback() {
 }
 
 function AppRoutes() {
+  const [, refreshClock] = useReducer((version: number) => version + 1, 0);
   const checkAndResetRecurring = useQuestStore(s => s.checkAndResetRecurring);
   const checkAndResetVynues    = useVynuesStore(s => s.checkAndReset);
   const theme = useUIStore(s => s.theme);
@@ -76,15 +78,15 @@ function AppRoutes() {
   useEffect(() => {
     // Outside the history: a day turning over is not something you did, and
     // Ctrl+Z stepping back through a rollover would take the day with it.
-    const run = () => withoutHistory(() => { checkAndResetRecurring(); checkAndResetVynues(); });
-    run();
-    const interval = setInterval(run, 60_000);
-    return () => clearInterval(interval);
+    return startDayClock(() => {
+      withoutHistory(() => { checkAndResetRecurring(); checkAndResetVynues(); });
+      refreshClock();
+    });
   }, [checkAndResetRecurring, checkAndResetVynues]);
 
   // Reminders own their own timer (see lib/reminders.ts) and the call is
   // idempotent, so StrictMode's double-mount in development can't double-nudge.
-  useEffect(() => { startReminders(); }, []);
+  useEffect(() => { if (import.meta.env.MODE !== 'testing') startReminders(); }, []);
 
   return (
     // The boundary sits outside Suspense so it catches the chunk that never
@@ -100,7 +102,8 @@ function AppRoutes() {
           <Route path="/systems"       element={<SystemsPage />} />
           <Route path="/quests"        element={<QuestsPage />} />
           <Route path="/questline/:id" element={<QuestlinePage />} />
-          <Route path="/vynues"        element={<VynuesPage />} />
+          <Route path="/vynues" element={<Navigate to="/spaces/vynues" replace />} />
+          <Route path="/spaces/:spaceId" element={<SpacePage />} />
           <Route path="/tracked"       element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>

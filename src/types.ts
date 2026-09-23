@@ -112,6 +112,7 @@ export interface Quest {
  * taking them with it.
  */
 export interface System {
+  spaceId?: string;
   id: string;
   title: string;
   description?: string;
@@ -141,6 +142,7 @@ export interface System {
 }
 
 export interface Questline {
+  spaceId?: string;
   id: string;
   title: string;
   description: string;
@@ -291,3 +293,5 @@ export interface Routine {
   /** Optional checklist breakdown of this task. */
   subtasks?: Subtask[];
 }
+
+export interface Space { id: string; name: string; archived?: boolean; }

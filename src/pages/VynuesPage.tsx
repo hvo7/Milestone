@@ -7,6 +7,7 @@ import type { EditTarget } from '../components/TaskEditDrawer';
 import SubtaskTree from '../components/SubtaskTree';
 import IconButton from '../components/IconButton';
 import { lazyChunk } from '../lib/lazyChunk';
+import { nextDailyReset } from '../domain/schedule';
 
 // Opened on demand, so it stays out of the page's own chunk.
 const TaskEditDrawer = lazyChunk(() => import('../components/TaskEditDrawer'));
@@ -62,16 +63,13 @@ function projectPriorityWeight(p: VynuesProject): number {
   return openTasks(p).reduce((max, t) => Math.max(max, PRIORITY_META[t.priority].weight), 0);
 }
 
-/** End of the current logical day — the next 5am boundary. */
-function nextReset5am(): number {
-  const r = new Date();
-  if (r.getHours() >= 5) r.setDate(r.getDate() + 1);
-  r.setHours(5, 0, 0, 0);
-  return r.getTime();
+/** End of the current logical day in the device's local time zone. */
+function nextLocalReset(): number {
+  return nextDailyReset().getTime();
 }
 
 function taskEffectiveDue(t: VynuesTask): number {
-  if (t.recurring === 'daily')   return nextReset5am();
+  if (t.recurring === 'daily')   return nextLocalReset();
   if (t.recurring === 'weekly')  return Date.now() + 7 * 86_400_000;
   if (t.recurring === 'monthly') return Date.now() + 30 * 86_400_000;
   if (t.dueDate) return new Date(t.dueDate).getTime();
@@ -92,7 +90,7 @@ function matchesDue(p: VynuesProject, filter: DueFilter): boolean {
   const soonest = projectSoonestDue(p);
   if (soonest === Infinity) return false;
   if (filter === 'overdue') return soonest < Date.now();
-  if (filter === 'today')   return soonest <= nextReset5am();
+  if (filter === 'today')   return soonest <= nextLocalReset();
   return soonest <= Date.now() + 7 * 86_400_000;
 }
 
@@ -120,7 +118,7 @@ function sortProjects(list: VynuesProject[], sort: ProjectSort): VynuesProject[]
 function computeStats(projects: VynuesProject[]) {
   const allTasks = projects.flatMap(p => p.tasks);
   const now = Date.now();
-  const dayEnd = nextReset5am();
+  const dayEnd = nextLocalReset();
   return {
     open:     allTasks.filter(t => !t.done).length,
     dueToday: allTasks.filter(t => !t.done && !t.recurring && t.dueDate && new Date(t.dueDate).getTime() <= dayEnd && new Date(t.dueDate).getTime() >= now).length,
@@ -131,8 +129,9 @@ function computeStats(projects: VynuesProject[]) {
 
 // ── Page ────────────────────────────────────────────────────────────────────
 
-export default function VynuesPage() {
-  const projects      = useVynuesStore(s => s.projects);
+export default function VynuesPage({ spaceId = 'vynues', embedded = false }: { spaceId?: string; embedded?: boolean }) {
+  const allProjects = useVynuesStore(s => s.projects);
+  const projects = useMemo(() => allProjects.filter(p => (p.spaceId ?? 'vynues') === spaceId), [allProjects, spaceId]);
   const deleteProject = useVynuesStore(s => s.deleteProject);
 
   const [selectedId, setSelectedId]   = useState<string | null>(projects[0]?.id ?? null);
@@ -186,7 +185,7 @@ export default function VynuesPage() {
   return (
     <>
       <div className="page-shell" style={{ paddingBottom: 60 }}>
-        <NavBar />
+        {!embedded && <NavBar />}
 
         <div style={{ maxWidth: 1180, margin: '0 auto', padding: '28px 20px' }}>
 
@@ -321,12 +320,14 @@ export default function VynuesPage() {
       </div>
 
       <VynuesProjectModal
+        spaceId={spaceId}
         open={adding || !!editing}
         project={editing ?? undefined}
         onClose={() => { setAdding(false); setEditing(null); }}
       />
 
       <VynuesTaskCreateDrawer
+        spaceId={spaceId}
         open={drawerOpen}
         target={target}
         onClose={() => setDrawerOpen(false)}
@@ -450,7 +451,7 @@ function bucketOf(t: VynuesTask): Bucket {
   if (!t.dueDate) return 'someday';
   const due = new Date(t.dueDate).getTime();
   if (due < Date.now()) return 'overdue';
-  if (due <= nextReset5am()) return 'today';
+  if (due <= nextLocalReset()) return 'today';
   return 'upcoming';
 }
 
@@ -813,13 +814,13 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
           color: 'var(--accent)', fontSize: 20, fontWeight: 700,
         }}
       >
-        V
+        ＋
       </motion.div>
       <h2 style={{ margin: '0 0 6px', fontSize: 16, fontWeight: 600, color: 'var(--page-text)' }}>
         No projects yet
       </h2>
       <p style={{ margin: '0 0 18px', fontSize: 13, color: 'var(--text-dim)', lineHeight: 1.6 }}>
-        Create your first Vynues project to start tracking<br />the tasks you need to get done.
+        Create your first project to start tracking<br />the tasks you need to get done.
       </p>
       <button className="btn-gold" onClick={onAdd}>+ New Project</button>
     </div>

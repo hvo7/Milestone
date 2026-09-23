@@ -16,12 +16,13 @@ import { useQuestStore, systemGoalIds, systemQuestIds, routineSystemIds } from '
 import { cleanQuest } from '../lib/ui';
 import { systemRoutines } from '../lib/systems';
 import type { RecurringType } from '../types';
+import SpacePicker from './SpacePicker';
 import Field from './Field';
 import MultiSelect from './MultiSelect';
 import IconPicker from './IconPicker';
 
 /** Null id = creating. A string = editing that system. */
-export type SystemTarget = { id: string | null; initialQuestlineId?: string } | null;
+export type SystemTarget = { id: string | null; initialQuestlineId?: string; spaceId?: string } | null;
 
 /** One row of the actions list. `id` is set for actions that already exist. */
 interface DraftAction {
@@ -46,7 +47,7 @@ const freqValue = (a: DraftAction) => (a.intervalDays && a.intervalDays > 1 ? 'c
 let seq = 0;
 const nextKey = () => `draft-${++seq}`;
 
-function Panel({ id, onClose, initialQuestlineId }: { id: string | null; onClose: () => void; initialQuestlineId?: string }) {
+function Panel({ id, onClose, initialQuestlineId, spaceId: initialSpaceId }: { id: string | null; onClose: () => void; initialQuestlineId?: string; spaceId?: string }) {
   const systems    = useQuestStore(s => s.systems);
   const questlines = useQuestStore(s => s.questlines);
   const routines   = useQuestStore(s => s.routines);
@@ -61,6 +62,7 @@ function Panel({ id, onClose, initialQuestlineId }: { id: string | null; onClose
   const existing = id ? systems.find(s => s.id === id) : undefined;
   const members  = existing ? systemRoutines(routines, existing.id) : [];
 
+  const [spaceId, setSpaceId] = useState(existing?.spaceId ?? initialSpaceId ?? questlines.find(q => q.id === initialQuestlineId)?.spaceId ?? '');
   const [title, setTitle] = useState(existing?.title ?? '');
   /**
    * What this system serves, as one list.
@@ -111,9 +113,10 @@ function Panel({ id, onClose, initialQuestlineId }: { id: string | null; onClose
     let sysId: string;
     if (existing) {
       sysId = existing.id;
-      updateSystem(existing.id, { title, questlineIds: idsOf('ql:'), questIds: idsOf('q:'), icon });
+      updateSystem(existing.id, { spaceId: spaceId || undefined, title, questlineIds: idsOf('ql:'), questIds: idsOf('q:'), icon });
     } else {
       sysId = addSystem(title || 'New system', {
+        spaceId: spaceId || undefined,
         questlineIds: idsOf('ql:'), questIds: idsOf('q:'), icon: icon || undefined,
       });
     }
@@ -146,6 +149,7 @@ function Panel({ id, onClose, initialQuestlineId }: { id: string | null; onClose
     <>
       <div style={{ flex: 1, overflowY: 'auto', padding: '22px', display: 'flex', flexDirection: 'column', gap: 22 }}>
 
+        <SpacePicker value={spaceId} onChange={setSpaceId} />
         <Field label="System">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <input
@@ -319,7 +323,7 @@ export default function SystemDrawer({ target, onClose }: { target: SystemTarget
             </div>
 
             {/* Keyed so the fields reset between one system and the next. */}
-            <Panel key={target.id ?? `new-${target.initialQuestlineId ?? ''}`} id={target.id} initialQuestlineId={target.initialQuestlineId} onClose={onClose} />
+            <Panel key={target.id ?? `new-${target.initialQuestlineId ?? ''}`} id={target.id} spaceId={target.spaceId} initialQuestlineId={target.initialQuestlineId} onClose={onClose} />
           </motion.div>
         </>
       )}

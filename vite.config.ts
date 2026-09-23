@@ -52,7 +52,7 @@ function assetManifest(): Plugin {
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
 const buildDate = new Date().toISOString()
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react(), tailwindcss(), assetManifest()],
   base: './',
   define: {
@@ -60,9 +60,10 @@ export default defineConfig({
     __BUILD_DATE__:  JSON.stringify(buildDate),
     // `vite dev` never produces a packaged build, so mark it plainly rather than
     // letting a dev session masquerade as a release.
-    __BUILD_MODE__:  JSON.stringify(process.env.NODE_ENV === 'production' ? 'release' : 'dev'),
+    __BUILD_MODE__:  JSON.stringify(mode === 'testing' ? 'testing' : process.env.NODE_ENV === 'production' ? 'release' : 'dev'),
   },
   build: {
+    outDir: mode === 'testing' ? 'dist-testing' : 'dist',
     rollupOptions: {
       output: {
         // Split the big third-party dependencies out of the app chunk. They only
@@ -86,4 +87,4 @@ export default defineConfig({
     // very much is (electron/semver.test.mjs).
     include: ['src/**/*.test.ts', 'electron/**/*.test.mjs'],
   },
-})
+}))

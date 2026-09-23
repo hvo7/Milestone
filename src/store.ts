@@ -73,7 +73,10 @@ const autoPins = (s: Pick<Schedule, 'recurring' | 'intervalDays' | 'monthlyRule'
 
 // ── Store ─────────────────────────────────────────────────────────────────────
 
+export const DEFAULT_SPACES: import("./types").Space[] = [{ id: "vynues", name: "Vynues" }];
+
 interface QuestData {
+  spaces?: import("./types").Space[];
   questlines: Questline[];
   routines: Routine[];
   /** The processes you're running, as opposed to the outcomes you're chasing.
@@ -119,14 +122,17 @@ interface QuestData {
   deleteAction:       (qlId: string, qId: string, aId: string) => void;
 
   toggleQuestlineHidden: (qlId: string) => void;
-  addQuestline:       (title: string, desc: string, icon: string, color: GuildColor) => void;
-  updateQuestline:    (qlId: string, updates: Partial<Pick<Questline,'title'|'description'|'icon'|'color'|'sequential'|'recurring'|'targetDate'>>) => void;
+  addSpace: (name: string) => string | null;
+  updateSpace: (id: string, updates: { name?: string; archived?: boolean }) => void;
+  addQuestline:       (title: string, desc: string, icon: string, color: GuildColor, spaceId?: string) => void;
+  updateQuestline:    (qlId: string, updates: Partial<Pick<Questline,'title'|'description'|'icon'|'color'|'sequential'|'recurring'|'targetDate'|'spaceId'>>) => void;
   addQuest:           (qlId: string, title: string, desc: string, recurring: RecurringType | null, dueDate: string | null, monthlyRule?: MonthlyRule | null, completionMode?: Quest['completionMode']) => void;
   updateQuestTitle:   (qlId: string, qId: string, title: string) => void;
   updateQuest:        (qlId: string, qId: string, updates: Partial<Pick<Quest,'title'|'description'|'recurring'|'dueDate'|'intervalDays'|'monthlyRule'|'completionMode'>>) => void;
   moveQuest:          (fromQlId: string, toQlId: string, qId: string) => void;
   deleteQuestline:    (qlId: string) => void;
   deleteQuest:        (qlId: string, qId: string) => void;
+  reorderQuestlines:  (orderedIds: string[]) => void;
   reorderQuests:      (qlId: string, orderedIds: string[]) => void;
 
   // Routines
@@ -220,6 +226,26 @@ export const useQuestStore = create<QuestData>()(
       // first launch look like someone else's half-finished goals, and on the
       // public web build that is the first thing a stranger sees. The Today and
       // Quests pages offer to load them instead — see loadSampleData.
+      spaces: DEFAULT_SPACES,
+      addSpace: (name) => {
+        const title = name.trim();
+        if (!title) return null;
+        const id = `space-${uid()}`;
+        let added = false;
+        set(s => {
+          const spaces = s.spaces ?? DEFAULT_SPACES;
+          if (spaces.some(x => x.name.toLocaleLowerCase() === title.toLocaleLowerCase())) return {};
+          added = true;
+          return { spaces: [...spaces, { id, name: title }] };
+        });
+        return added ? id : null;
+      },
+      updateSpace: (id, updates) => set(s => {
+        const spaces = s.spaces ?? DEFAULT_SPACES;
+        const name = updates.name?.trim();
+        if (updates.name !== undefined && (!name || spaces.some(x => x.id !== id && x.name.toLocaleLowerCase() === name.toLocaleLowerCase()))) return {};
+        return { spaces: spaces.map(x => x.id === id ? { ...x, ...updates, ...(name ? { name } : {}) } : x) };
+      }),
       questlines: [],
       routines: [],
       systems: [],
@@ -369,8 +395,8 @@ export const useQuestStore = create<QuestData>()(
       toggleQuestlineHidden: (qlId) =>
         set(s => ({ questlines: mapById(s.questlines, qlId, ql => ({ ...ql, hidden: !ql.hidden })) })),
 
-      addQuestline: (title, desc, icon, color) =>
-        set(s => ({ questlines: [...s.questlines, { id: `ql-${uid()}`, title, description: desc, icon, color, quests: [], sequential: false, createdAt: new Date().toISOString() }] })),
+      addQuestline: (title, desc, icon, color, spaceId) =>
+        set(s => ({ questlines: [...s.questlines, { id: `ql-${uid()}`, title, description: desc, icon, color, spaceId, quests: [], sequential: false, createdAt: new Date().toISOString() }] })),
 
       updateQuestline: (qlId, updates) =>
         set(s => ({
@@ -507,6 +533,17 @@ export const useQuestStore = create<QuestData>()(
               : sys)),
           };
         }),
+
+      reorderQuestlines: orderedIds => set(s => {
+        const byId = new Map(s.questlines.map(ql => [ql.id, ql]));
+        const ids = [...new Set(orderedIds)].filter(id => byId.has(id));
+        const included = new Set(ids);
+        let index = 0;
+        // A filtered sidebar only moves the rows it shows. Hidden or omitted
+        // questlines stay in their slots, with all nested content intact.
+        const questlines = s.questlines.map(ql => included.has(ql.id) ? byId.get(ids[index++])! : ql);
+        return questlines.every((ql, i) => ql === s.questlines[i]) ? {} : { questlines };
+      }),
 
       reorderQuests: (qlId, orderedIds) =>
         set(s => ({
@@ -903,6 +940,7 @@ export const useQuestStore = create<QuestData>()(
           systems: [...s.systems, {
             id,
             title: title.trim() || 'New system',
+            spaceId: opts?.spaceId,
             description: text(opts?.description),
             icon: opts?.icon || undefined,
             questlineIds: opts?.questlineIds ?? [],
@@ -919,6 +957,7 @@ export const useQuestStore = create<QuestData>()(
           systems: s.systems.map(sys => {
             if (sys.id !== sId) return sys;
             const next: System = { ...sys };
+            if ('spaceId' in u) next.spaceId = u.spaceId || undefined;
             // Each field is only touched when the caller sent it, so a drawer
             // that edits one thing can't blank the rest.
             if (u.title !== undefined && u.title.trim()) next.title = u.title.trim();
@@ -963,7 +1002,12 @@ export const useQuestStore = create<QuestData>()(
           // exists, and naming it inside a system types it out again. That is a
           // request for this habit to be part of this system — which is now a
           // thing one task can be — so it joins rather than being re-created.
-          const existing = s.routines.find(r => !r.hidden && sameTitle(r.title, title));
+          const spaceId = s.systems.find(sys => sys.id === systemId)?.spaceId;
+          const existing = s.routines.find(r => !r.hidden && sameTitle(r.title, title) && (
+            routineSystemIds(r).length
+              ? routineSystemIds(r).some(id => s.systems.some(sys => sys.id === id && sys.spaceId === spaceId))
+              : !spaceId
+          ));
           if (existing) {
             return {
               routines: mapById(s.routines, existing.id, r =>

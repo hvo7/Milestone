@@ -25,12 +25,14 @@ export interface VynuesDrawerTarget {
  * buttons pass), but the picker stays editable so a task can be re-homed before it's
  * created. Opened from the page header with no project, it just asks which one.
  */
-export default function VynuesTaskCreateDrawer({ open, onClose, target }: {
+export default function VynuesTaskCreateDrawer({ open, onClose, target, spaceId }: {
   open: boolean;
+  spaceId?: string;
   onClose: () => void;
   target: VynuesDrawerTarget;
 }) {
-  const projects   = useVynuesStore(s => s.projects);
+  const allProjects = useVynuesStore(s => s.projects);
+  const projects = useMemo(() => spaceId ? allProjects.filter(p => (p.spaceId ?? 'vynues') === spaceId) : allProjects, [allProjects, spaceId]);
   const addTask    = useVynuesStore(s => s.addTask);
   const addSubtask = useVynuesStore(s => s.addSubtask);
 

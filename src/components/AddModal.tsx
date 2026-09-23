@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import type { GuildColor, RecurringType } from '../types';
 import { useQuestStore } from '../store';
+import SpacePicker from './SpacePicker';
 import IconPicker from './IconPicker';
 import ColorPicker from './ColorPicker';
 import ModalShell from './ModalShell';
 
 type Mode =
-  | { type: 'questline' }
+  | { type: 'questline'; spaceId?: string }
   | { type: 'quest'; questlineId: string }
   | { type: 'action'; questlineId: string; questId: string }
   | { type: 'routine'; recurring: 'daily' | 'weekly'; questlineId?: string };
@@ -22,6 +23,7 @@ const QUEST_RECUR: { value: RecurringType | null; label: string }[] = [
 
 export default function AddModal({ mode, onClose }: Props) {
   const { addQuestline, addQuest, addAction, addRoutine } = useQuestStore();
+  const [spaceId, setSpaceId] = useState(mode.type === 'questline' ? mode.spaceId ?? '' : '');
   const [title, setTitle]             = useState('');
   const [description, setDescription] = useState('');
   const [icon, setIcon]               = useState('');
@@ -45,7 +47,7 @@ export default function AddModal({ mode, onClose }: Props) {
   const handleSubmit = () => {
     if (!title.trim()) return;
     if (mode.type === 'questline') {
-      addQuestline(title.trim(), description.trim(), icon, color);
+      addQuestline(title.trim(), description.trim(), icon, color, spaceId || undefined);
     } else if (mode.type === 'quest') {
       addQuest(mode.questlineId, title.trim(), description.trim(), recurring, dueDate || null);
     } else if (mode.type === 'action') {
@@ -64,6 +66,7 @@ export default function AddModal({ mode, onClose }: Props) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+            {mode.type === 'questline' && <SpacePicker value={spaceId} onChange={setSpaceId} />}
             {/* Title */}
             <div>
               <Label>{mode.type === 'action' ? 'Task' : 'Title'}</Label>

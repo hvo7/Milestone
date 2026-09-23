@@ -9,6 +9,7 @@ import ProgressBar from './ProgressBar';
 import ActionItem from './ActionItem';
 import AddModal from './AddModal';
 import QuestDoneToggle from './QuestDoneToggle';
+import QuestArtwork from './QuestArtwork';
 import { categoryColor, cleanQuest } from '../lib/ui';
 
 interface Props { quest: Quest; questline: Questline; }
@@ -120,6 +121,7 @@ export default function QuestCard({ quest, questline }: Props) {
               the toggle sits this one out rather than repeating it. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
             {!locked && <QuestDoneToggle questlineId={questline.id} quest={quest} />}
+            <QuestArtwork title={quest.title} id={quest.id} context={questline.title} />
             {editingTitle ? (
               <input
                 ref={titleInputRef}

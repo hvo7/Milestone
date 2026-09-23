@@ -1,6 +1,13 @@
 const fs = require('fs');
 const path = require('path');
 
+/** Only one process may own this profile's stores and sync identity. */
+function claimProfile(app, showWindow) {
+  if (!app.requestSingleInstanceLock()) { app.quit(); return false; }
+  app.on('second-instance', showWindow);
+  return true;
+}
+
 /** Optional connection provisioned in the user's private sync folder. */
 function readSharedRelay(config) {
   if (!config.enabled || !config.folder) return undefined;
@@ -250,4 +257,4 @@ ipcMain.handle('tray:update', (_event, state) => tray.update(state));
 
 }
 
-module.exports = { createAppWindow, profileHasQuestData, migrateLegacyProfile, registerIpcHandlers, readSharedRelay };
+module.exports = { createAppWindow, profileHasQuestData, migrateLegacyProfile, registerIpcHandlers, readSharedRelay, claimProfile };

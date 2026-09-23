@@ -151,6 +151,10 @@ export interface TaskRowProps {
   step?: number;
   unit?: string;
   onIncrement?: (delta: number) => void;
+  /** This counter counts *days*, not taps ("gym 3× a week") — see `sessionMode`.
+   *  The rail's tick then means "I did it today" rather than "fill the cycle to
+   *  3/3", which is the one-visit-per-day rule the mode exists to hold. */
+  sessionGoal?: boolean;
   /** The day strip / checkpoint ladder drawn under the row, when the task is one
    *  of the shapes that needs it. */
   strip?: RowStrip;
@@ -262,7 +266,7 @@ function TagMenu({ label, color, menu }: { label: string; color: string; menu: S
 export default function TaskRow({
   title, completed, todayDone = false, skipped, onSkip, streak, accentHex, sourceLine, tag, systemMenu, onToggle, onDelete, onRename, onEdit, drag,
   subtasks, subHandlers,
-  target, progress, step, unit, onIncrement, strip, readOnly = false, compact = false,
+  target, progress, step, unit, onIncrement, sessionGoal = false, strip, readOnly = false, compact = false,
 }: TaskRowProps) {
   const [hovered, setHovered] = useState(false);
   const [addingSub, setAddingSub] = useState(false);
@@ -358,26 +362,45 @@ export default function TaskRow({
         : `${progress ?? 0}/${target}${unit ? ` ${unit}` : ''}`)
     : undefined;
 
+  // The rail's tick, for the rows that aren't a plain checkbox.
+  //
+  // A quantity counter ("64 oz") ticks through the normal toggle, which fills it
+  // to target and empties it again. A session goal counts days, so the tick means
+  // today's session — the same path the ＋ button takes, so three gym visits still
+  // can't be tapped out of one afternoon. It reads as checked once today is logged
+  // even though the weekly goal is still open, which is what the row already says
+  // in words. Clicking it at 3/3 on a day you didn't log is a no-op: the days are
+  // the strip's to edit, exactly as − already behaves there.
+  const sessionTick = compact && sessionGoal && !!onIncrement;
+  const tickChecked = completed || (sessionTick && !!todayDone);
+  const tickToggle = sessionTick
+    ? () => onIncrement!(tickChecked ? -(step ?? 1) : (step ?? 1))
+    : onToggle;
+  const tickTitle = readOnly
+    ? 'Come back tomorrow to check this off'
+    : sessionTick
+      ? "Log today's session"
+      : isCounter
+        ? `Done — fills to ${target}${unit ? ` ${unit}` : ''}`
+        : subCount.total > 0 ? 'Completes every step too' : undefined;
+
   const compactContent = (
     <>
       <div className="task-compact-head" style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-        {isCounter ? (
-          // A counter has no single "done" tick to offer here — its control is the
-          // line below. The gutter stays, so every title starts in the same column
-          // and the rail reads as one list.
-          <span aria-hidden="true" style={{ width: 19, flexShrink: 0 }} />
-        ) : (
-          <input
-            type="checkbox"
-            className="rune-check"
-            checked={completed}
-            onChange={onToggle}
-            disabled={readOnly}
-            aria-label={title}
-            title={readOnly ? 'Come back tomorrow to check this off' : subCount.total > 0 ? 'Completes every step too' : undefined}
-            style={{ flexShrink: 0, marginTop: 1, ...(readOnly ? { cursor: 'default', opacity: 0.6 } : {}) }}
-          />
-        )}
+        {/* Every row in the rail gets the tick, counters included — see the tick
+            block above for what it means on each shape. The control on the line
+            below is how you log part of a goal; this is the one click that closes
+            it out, which "drink 64 oz" had no way to do at all. */}
+        <input
+          type="checkbox"
+          className="rune-check"
+          checked={tickChecked}
+          onChange={tickToggle}
+          disabled={readOnly}
+          aria-label={title}
+          title={tickTitle}
+          style={{ flexShrink: 0, marginTop: 1, ...(readOnly ? { cursor: 'default', opacity: 0.6 } : {}) }}
+        />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           {editing ? (

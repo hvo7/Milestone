@@ -7,7 +7,7 @@
  * modal would reach the overlay and close it.
  */
 import { motion, AnimatePresence } from 'framer-motion';
-import type { CSSProperties, ReactNode } from 'react';
+import { useRef, type CSSProperties, type ReactNode } from 'react';
 
 interface Props {
   onClose: () => void;
@@ -30,13 +30,24 @@ export default function ModalShell({
   spring = { stiffness: 380, damping: 32 },
   from = { scale: 0.96, y: 12 },
 }: Props) {
+  const startedOnBackdrop = useRef(false);
   const hidden = { opacity: 0, ...from };
   return (
     <AnimatePresence>
       <motion.div
         className="modal-overlay"
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-        onClick={onClose}
+        onPointerDown={e => {
+          startedOnBackdrop.current = e.target === e.currentTarget;
+        }}
+        onPointerCancel={() => { startedOnBackdrop.current = false; }}
+        onClick={e => {
+          // A text-selection drag can start in the card and end outside it.
+          // Only a gesture that starts and ends on the backdrop dismisses it.
+          const dismiss = startedOnBackdrop.current && e.target === e.currentTarget;
+          startedOnBackdrop.current = false;
+          if (dismiss) onClose();
+        }}
         style={overlayStyle}
       >
         <motion.div

@@ -16,7 +16,7 @@ import IconButton from './IconButton';
 import ActionItem from './ActionItem';
 import AddModal from './AddModal';
 import EditQuestlineModal from './EditQuestlineModal';
-import QuestIcon from './QuestIcon';
+import QuestArtwork from './QuestArtwork';
 import PinButton from './PinButton';
 import QuestDoneToggle from './QuestDoneToggle';
 import { categoryColor, cleanQuest } from '../lib/ui';
@@ -140,6 +140,7 @@ function CompactQuestRow({ questline, quest, locked, subdued, drag, registerRow,
         }}
       >
         <QuestDoneToggle questlineId={questline.id} quest={quest} locked={locked} small />
+        <QuestArtwork title={quest.title} id={quest.id} context={questline.title} />
         <span className="quest-mobile-title" style={{
           flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0,
           color: complete ? 'var(--text-dim)' : 'var(--text-parchment)',
@@ -285,7 +286,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
     return (
       <div className="parchment" style={{ borderRadius: 12, overflow: 'hidden', opacity: 0.4, borderTop: `2px solid ${categoryColor(questline.color)}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 22px' }}>
-          <QuestIcon icon={questline.icon} size={22} />
+          <QuestArtwork title={questline.title} id={questline.id} icon={questline.icon} size={22} />
           <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, flex: 1, color: 'var(--text-dim)', textDecoration: 'line-through' }}>
             {questline.title}
           </h2>
@@ -309,7 +310,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
           onClick={detail ? undefined : onToggle}
           style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '18px 22px', cursor: detail ? 'default' : 'pointer', flexWrap: 'wrap' }}
         >
-          <QuestIcon icon={questline.icon} size={28} style={{ flexShrink: 0 }} />
+          <QuestArtwork title={questline.title} id={questline.id} icon={questline.icon} size={28} style={{ flexShrink: 0 }} />
 
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 style={{
@@ -426,6 +427,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                           {!isHiddenInEdit && (
                             <QuestDoneToggle questlineId={questline.id} quest={quest} small />
                           )}
+                          <QuestArtwork title={quest.title} id={quest.id} context={questline.title} />
 
                           <span style={{
                             flex: 1, fontSize: 13, fontWeight: 500,
@@ -478,6 +480,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                       <div style={{ background: 'var(--input-bg)', border: '1px solid var(--card-border)', borderRadius: 10, padding: '16px 18px', marginBottom: 14 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
                           <QuestDoneToggle questlineId={questline.id} quest={activeQuest} />
+                          <QuestArtwork title={activeQuest.title} id={activeQuest.id} context={questline.title} />
                           <h3 className="quest-mobile-title" style={{
                             margin: 0, fontSize: 14, fontWeight: 600, flex: 1, minWidth: 0,
                             color: isQuestComplete(activeQuest) ? 'var(--text-dim)' : categoryColor(questline.color),

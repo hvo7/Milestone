@@ -1,11 +1,17 @@
 import { useState, Suspense } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuestStore, useUIStore } from '../store';
+import SpacesModal from './SpacesModal';
+import { DEFAULT_SPACES } from '../store';
 import { useVynuesStore } from '../vynuesStore';
 import { VERSION_LABEL, buildSummary } from '../buildInfo';
 import { lazyChunk } from '../lib/lazyChunk';
+import { REFRESH_DAY_EVENT } from '../lib/dayClock';
 import pondCover from '../assets/pond.webp';
 import bridgeCover from '../assets/bridge.webp';
+import riversideCover from '../assets/quests-riverside.png';
+import lilyPondCover from '../assets/systems-lily-pond.png';
+import waterGardenCover from '../assets/systems-water-garden.png';
 
 // The nav bar is on every page, but these two panels open rarely — and the Data
 // panel drags in the whole sync/backup surface. Loaded when actually opened.
@@ -16,7 +22,9 @@ const RemindersModal = lazyChunk(() => import('./RemindersModal'));
 const isElectron = !!window.electronAPI;
 
 export default function NavBar({ cover }: { cover?: { title: string; subtitle: string } } = {}) {
-  const { pathname } = useLocation();
+  const spaces = useQuestStore(s => s.spaces ?? DEFAULT_SPACES);
+  const [spacesOpen, setSpacesOpen] = useState(false);
+  const { pathname, key: visitKey } = useLocation();
   const routines     = useQuestStore(s => s.routines);
   const questlines   = useQuestStore(s => s.questlines);
   const projects     = useVynuesStore(s => s.projects);
@@ -35,22 +43,23 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
       )
     ).length;
 
-  // Open tasks across active Vynues projects.
-  const vynuesOpen = projects
-    .filter(p => p.status === 'active')
-    .reduce((n, p) => n + p.tasks.filter(t => !t.done).length, 0);
-
   const tabs = [
     { path: '/',        label: 'Today',   badge: dailyRemaining },
     // Systems sits before Quests deliberately: the process is the thing you act
     // on, the goal is the thing you hope for.
     { path: '/systems', label: 'Systems', badge: 0 },
     { path: '/quests', label: 'Quests', badge: 0 },
-    { path: '/vynues', label: 'Vynues', badge: vynuesOpen },
+    ...spaces.filter(s => !s.archived).map(s => ({ path: `/spaces/${s.id}`, label: s.name, badge: projects.filter(p => (p.spaceId ?? 'vynues') === s.id && p.status === 'active').reduce((n, p) => n + p.tasks.filter(t => !t.done).length, 0) })),
     { path: '/all',    label: 'All',    badge: 0 },
   ];
 
-  const scene = pathname === '/' || pathname === '/systems' || pathname === '/all' ? pondCover : bridgeCover;
+  // Stable throughout a visit (including edits and recurring task updates),
+  // with both approved Systems scenes available on subsequent visits.
+  const systemsScene = [...visitKey].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 2 === 0
+    ? lilyPondCover : waterGardenCover;
+  const scene = pathname === '/systems' ? systemsScene
+    : pathname === '/quests' || pathname.startsWith('/questline/') ? riversideCover
+    : pathname === '/' || pathname === '/all' ? pondCover : bridgeCover;
   const heading = cover ?? ({
     '/': { title: 'Today', subtitle: 'Small steps, brighter days.' },
     '/systems': { title: 'Systems', subtitle: 'A little progress, consistently.' },
@@ -61,6 +70,10 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
 
   return (
     <>
+      {import.meta.env.MODE === 'testing' && <div data-testing-banner style={{ background: '#edc16f', color: '#372b16', padding: '9px 18px', display: 'flex', gap: 14, justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 12, borderRadius: 10, marginBottom: 12 }}>
+        <strong>TESTING · Batch 001 · Quest artwork</strong>
+        <span>Separate data · Sync off · Batch 001 approved for release</span>
+      </div>}
       <nav className="app-nav" aria-label="Main navigation">
         <Link to="/" className="app-brand" aria-label="Milestone home">
           <span className="brand-mark" aria-hidden="true">
@@ -73,7 +86,7 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
         </Link>
         <div className="app-tabs">
           {tabs.map(tab => {
-            const active = tab.path === '/' ? pathname === '/' : (pathname.startsWith(tab.path) || (tab.path === '/quests' && pathname.startsWith('/questline/')));
+            const active = tab.path === '/' ? pathname === '/' : ((pathname === tab.path || pathname.startsWith(tab.path + '/')) || (tab.path === '/quests' && pathname.startsWith('/questline/')));
             return (
               <Link key={tab.path} to={tab.path} className="nav-link" aria-current={active ? 'page' : undefined}>
                 {tab.label}
@@ -83,6 +96,11 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
           })}
         </div>
         <div className="nav-tools">
+          <button type="button" className="nav-tool" onClick={() => window.dispatchEvent(new Event(REFRESH_DAY_EVENT))}
+            title="Refresh tasks — new day starts at 2:00 AM local time" aria-label="Refresh tasks">
+            <NavIcon name="sync" />
+          </button>
+          <button className="nav-tool" onClick={() => setSpacesOpen(true)} title="Add or manage space tabs" aria-label="Add or manage space tabs">＋</button>
           <button className="nav-tool" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
             <NavIcon name={theme === 'dark' ? 'sun' : 'moon'} />
           </button>
@@ -103,6 +121,7 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
       </header>
 
       <Suspense fallback={null}>
+        {spacesOpen && <SpacesModal onClose={() => setSpacesOpen(false)} />}
         {syncOpen   && <NotionSyncModal onClose={() => setSyncOpen(false)} />}
         {dataOpen   && <DataModal       onClose={() => setDataOpen(false)} />}
         {remindOpen && <RemindersModal  onClose={() => setRemindOpen(false)} />}

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { GuildColor, Questline, RecurringType } from '../types';
 import { useQuestStore } from '../store';
+import SpacePicker from './SpacePicker';
 import IconPicker from './IconPicker';
 import ColorPicker from './ColorPicker';
 import ModalShell from './ModalShell';
@@ -20,6 +21,7 @@ function Label({ children }: { children: React.ReactNode }) {
 
 export default function EditQuestlineModal({ questline, onClose }: Props) {
   const updateQuestline = useQuestStore(s => s.updateQuestline);
+  const [spaceId, setSpaceId] = useState(questline.spaceId ?? '');
   const [title, setTitle]             = useState(questline.title);
   const [description, setDescription] = useState(questline.description);
   const [icon, setIcon]               = useState(questline.icon);
@@ -37,7 +39,7 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
   const handleSave = () => {
     if (!title.trim()) return;
     updateQuestline(questline.id, {
-      title: title.trim(), description: description.trim(), icon, color, sequential, recurring,
+      spaceId: spaceId || undefined, title: title.trim(), description: description.trim(), icon, color, sequential, recurring,
       // Empty means "no target", which is a real answer and must clear a previous
       // one rather than leaving it stuck.
       targetDate: targetDate || null,
@@ -51,6 +53,7 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
+            <SpacePicker value={spaceId} onChange={setSpaceId} />
             {/* Title */}
             <div>
               <Label>Title</Label>

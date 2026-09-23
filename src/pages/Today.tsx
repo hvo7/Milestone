@@ -12,11 +12,11 @@ import { useState, Suspense } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import type { Routine, Schedule, Action, Questline, System } from '../types';
 import {
-  useQuestStore, logicalDateKey, logicalDayStart, dateKey, dueOnDay, periodExpired, skipActive,
+  useQuestStore, logicalDateKey, logicalDayStart, dateKey, periodExpired, skipActive,
   isMultiDayCycle, isGoalRoutine, engagedOnDay, subtaskStats, repeats, isQuestComplete, questProgress, DAY_RESET_HOUR,
   sessionMode, cycleDayKeys, routineSystemIds,
 } from '../store';
-import { showsOnDay, vynuesShowsOnDay } from '../lib/today';
+import { showsOnDay, vynuesShowsOnDay, actionShowsOnDay, questShowsOnDay, dueDateMatchesDay, activeTasksFirst } from '../lib/today';
 import { useVynuesStore, vynuesCategoryKey } from '../vynuesStore';
 import { RecurrenceBadge } from '../recurrence';
 import NavBar from '../components/NavBar';
@@ -104,6 +104,8 @@ interface TodoItem {
   step?: number;
   unit?: string;
   onIncrement?: (delta: number) => void;
+  /** This counter counts days rather than taps — see `sessionMode`. */
+  sessionGoal?: boolean;
   /** Day strip / checkpoint ladder drawn under this row, where it applies. */
   strip?: RowStrip;
   subtasks?: SubNode[];
@@ -158,6 +160,7 @@ export default function Today() {
 
   const [filter, setFilter] = useState('all');
   const [kind, setKind] = useState<RowKind | 'all'>('all');
+  const [showSkipped, setShowSkipped] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerCategory, setDrawerCategory] = useState('');
   const [drawerSystem, setDrawerSystem] = useState('');
@@ -195,6 +198,7 @@ export default function Today() {
     target: r.target,
     progress: r.target != null && willReset(r) ? 0 : r.progress,
     step: r.step, unit: r.unit,
+    sessionGoal: sessionMode(r),
     onIncrement: r.target != null ? (d: number) => incrementRoutine(r.id, d) : undefined,
   });
 
@@ -277,11 +281,10 @@ export default function Today() {
     return ql ? questlineCategory(ql) : GENERAL_CATEGORY;
   };
 
-  // Quests pinned as a whole surface on Today as one item each (their actions ride
-  // along as check-off steps). A pinned quest always shows while pinned.
+  // Due or undated pinned quests surface as one item with their action steps.
   const pinnedQuests = questlines.flatMap(ql =>
     ql.quests
-      .filter(q => !q.hidden && q.trackedToday)
+      .filter(q => questShowsOnDay(q, viewKey))
       .map(quest => ({ quest, ql }))
   );
 
@@ -289,15 +292,10 @@ export default function Today() {
     ql.quests.flatMap(q =>
       // A quest pinned as a unit owns its actions on Today (they show nested under
       // it), so they must not also appear as standalone rows.
-      q.trackedToday && !q.hidden
+      q.hidden || !dueDateMatchesDay(q, viewKey) || questShowsOnDay(q, viewKey)
         ? []
         : q.actions
-            .filter(a => {
-              if (a.hidden) return false;
-              if (!repeats(a)) return !!a.trackedToday;
-              if (a.recurring === 'daily' && !a.intervalDays && !a.monthlyRule) return true;
-              return !!a.trackedToday || dueOnDay(a, viewStart);
-            })
+            .filter(a => actionShowsOnDay(a, viewStart))
             .map(a => ({ action: a, quest: q, ql, pinned: !repeats(a) }))
     )
   );
@@ -444,18 +442,19 @@ export default function Today() {
 
   // The Systems / Quests split is applied before everything else: the chips, the
   // counts and the list all describe the half you're looking at.
-  const kindItems = kind === 'all' ? todoItems : todoItems.filter(it => it.category.kind === kind);
+  const shownItems = todoItems.filter(it => showSkipped || !it.skipped);
+  const kindItems = kind === 'all' ? shownItems : shownItems.filter(it => it.category.kind === kind);
   const kindCounts = {
-    all: todoItems.length,
-    system: todoItems.filter(it => it.category.kind === 'system').length,
-    quest: todoItems.filter(it => it.category.kind === 'quest').length,
+    all: shownItems.length,
+    system: shownItems.filter(it => it.category.kind === 'system').length,
+    quest: shownItems.filter(it => it.category.kind === 'quest').length,
   };
 
   const chips = [...kindItems
     .reduce((acc, it) => {
       const c = acc.get(it.category.key) ?? { category: it.category, open: 0, total: 0 };
       c.total += 1;
-      if (!settledOf(it)) c.open += 1;
+      if (!settledOf(it) && !it.skipped) c.open += 1;
       acc.set(it.category.key, c);
       return acc;
     }, new Map<string, { category: Category; open: number; total: number }>())
@@ -534,6 +533,7 @@ export default function Today() {
       step={it.step}
       unit={it.unit}
       onIncrement={it.onIncrement}
+      sessionGoal={it.sessionGoal}
       strip={it.strip}
       readOnly={preview}
       subtasks={it.subtasks}
@@ -544,7 +544,9 @@ export default function Today() {
   // The anchor section, built through the same row builder as the list — so its
   // tasks keep their streaks, skips, counters, steps and edit drawer rather than
   // becoming a checkbox with a name beside it.
-  const anchorItems = anchorRoutines.map(routineItem);
+  const allAnchorItems = anchorRoutines.map(routineItem);
+  const anchorItems = activeTasksFirst(allAnchorItems.filter(it => showSkipped || !it.skipped));
+  const skippedCount = todoItems.filter(it => it.skipped).length + allAnchorItems.filter(it => it.skipped).length;
   const anchorDone = anchorItems.filter(settledOf).length;
   const done  = todoDone.length + anchorDone;
   const total = visible.filter(it => !it.skipped).length + anchorItems.filter(it => !it.skipped).length;
@@ -585,7 +587,7 @@ export default function Today() {
                 <span>{ANCHOR_ICON}</span>
                 <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{ANCHOR_LABEL}</span>
                 <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: 'var(--page-text-dim)', fontVariantNumeric: 'tabular-nums' }}>
-                  {anchorDone}/{anchorRoutines.length}
+                  {anchorDone}/{allAnchorItems.filter(it => !it.skipped).length}
                 </span>
               </h2>
               {/* The same row as the list below — no tag, because the box it sits
@@ -612,6 +614,7 @@ export default function Today() {
                     step={it.step}
                     unit={it.unit}
                     onIncrement={it.onIncrement}
+                    sessionGoal={it.sessionGoal}
                     strip={it.strip}
                     readOnly={preview}
                     subtasks={it.subtasks}
@@ -682,8 +685,8 @@ export default function Today() {
           <div className="chip-row" style={{ alignItems: 'center' }}>
             <Chip
               label="All"
-              open={todoItems.filter(it => !settledOf(it)).length}
-              total={todoItems.length}
+              open={shownItems.filter(it => !settledOf(it) && !it.skipped).length}
+              total={shownItems.length}
               active={kind === 'all' && (filter === 'all' || !activeExists)}
               onClick={() => { setKind('all'); setFilter('all'); }}
             />
@@ -701,6 +704,10 @@ export default function Today() {
                 </button>
               )
             ))}
+            <button type="button" className="chip" data-active={showSkipped} aria-pressed={showSkipped}
+              onClick={() => setShowSkipped(!showSkipped)}>
+              {showSkipped ? 'Hide skipped' : 'Show skipped'}{skippedCount > 0 ? ` · ${skippedCount}` : ''}
+            </button>
             {chips.length > 1 && (
               <span style={{ minWidth: 170, marginLeft: 'auto' }}>
                 <MenuSelect
@@ -763,6 +770,7 @@ export default function Today() {
                     step={it.step}
                     unit={it.unit}
                     onIncrement={it.onIncrement}
+                    sessionGoal={it.sessionGoal}
                     strip={it.strip}
                     readOnly={preview}
                   />
@@ -781,7 +789,7 @@ export default function Today() {
             </p>
           )}
 
-          {todoItems.length > 0 && todoOpen.length === 0 && (
+          {shownItems.length > 0 && todoOpen.length === 0 && (
             <motion.p
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}

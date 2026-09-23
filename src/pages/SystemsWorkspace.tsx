@@ -2,14 +2,14 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useQuestStore, systemGoalIds, systemQuestIds, repeats } from '../store';
 import { orderedSystems, systemHealth, systemRoutines } from '../lib/systems';
-import { hasVisibleSystem, isUnlinkedSystem, questlineHref, readQuestlineSelection, routineServesQuestline, selectionParams, systemServesQuestline } from '../lib/questlineNavigation';
+import { isUnlinkedSystem, questlineHref, readQuestlineSelection, selectionParams, systemServesQuestline } from '../lib/questlineNavigation';
 import { cleanQuest } from '../lib/ui';
 import type { System } from '../types';
 import type { SystemTarget } from '../components/SystemDrawer';
 import type { EditTarget } from '../components/TaskEditDrawer';
 import NavBar from '../components/NavBar';
 import QuestlineSidebar from '../components/QuestlineSidebar';
-import QuestIcon from '../components/QuestIcon';
+import QuestArtwork from '../components/QuestArtwork';
 import RoutineTaskRow from '../components/RoutineTaskRow';
 import { lazyChunk } from '../lib/lazyChunk';
 import '../components/questlineWorkspace.css';
@@ -18,7 +18,7 @@ const SystemDrawer = lazyChunk(() => import('../components/SystemDrawer'));
 const TaskEditDrawer = lazyChunk(() => import('../components/TaskEditDrawer'));
 const TaskCreateDrawer = lazyChunk(() => import('../components/TaskCreateDrawer'));
 
-function SystemCard({ system, onEdit, onEditTask, onAddTask, focused }: {
+export function SystemCard({ system, onEdit, onEditTask, onAddTask, focused }: {
   system: System; onEdit: () => void; onEditTask: (id: string) => void; onAddTask: () => void; focused: boolean;
 }) {
   const routines = useQuestStore(s => s.routines);
@@ -34,7 +34,7 @@ function SystemCard({ system, onEdit, onEditTask, onAddTask, focused }: {
   return (
     <section ref={panel} className="parchment questline-section" aria-label={system.title}>
       <div className="questline-section-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}><QuestIcon icon={system.icon || '⚙️'} size={20} /><h2 style={{ margin: 0, overflowWrap: 'anywhere' }}>{system.title}</h2></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}><QuestArtwork title={system.title} id={system.id} icon={system.icon || '⚙️'} size={20} /><h2 style={{ margin: 0, overflowWrap: 'anywhere' }}>{system.title}</h2></div>
         <button type="button" className="btn-ghost" onClick={onEdit} aria-label={`Edit system ${system.title}`}>Edit system</button>
       </div>
       {system.description && <p>{system.description}</p>}
@@ -56,20 +56,15 @@ function SystemCard({ system, onEdit, onEditTask, onAddTask, focused }: {
 export default function SystemsWorkspace() {
   const systems = useQuestStore(s => s.systems);
   const questlines = useQuestStore(s => s.questlines);
-  const routines = useQuestStore(s => s.routines);
   const [params, setParams] = useSearchParams();
   const [target, setTarget] = useState<SystemTarget>(null);
   const [taskTarget, setTaskTarget] = useState<EditTarget | null>(null);
   const [newTask, setNewTask] = useState<{ system: string } | null>(null);
-  const visibleQuestlines = questlines.filter(q => !q.hidden);
+  const visibleQuestlines = questlines.filter(q => !q.hidden && systems.some(sys => !sys.hidden && systemServesQuestline(sys, q)));
   const selection = readQuestlineSelection(params, visibleQuestlines, true);
   const selected = selection.kind === 'questline' ? visibleQuestlines.find(q => q.id === selection.id) : undefined;
   const all = orderedSystems(systems);
   const list = all.filter(sys => selected ? systemServesQuestline(sys, selected) : selection.kind === 'general' ? isUnlinkedSystem(sys) : true);
-  // Use all visible memberships, not the filtered list: switching goals must not
-  // pretend a habit has lost its system. Hidden/orphaned memberships stay accessible.
-  const loose = routines.filter(r => !r.hidden && repeats(r) && !hasVisibleSystem(r, systems))
-    .filter(r => selected ? routineServesQuestline(r, selected) : selection.kind === 'general' ? !r.questlineId && !r.questId : true);
   return (
     <div className="page-shell" style={{ paddingBottom: 80 }}>
       <NavBar />
@@ -86,9 +81,6 @@ export default function SystemsWorkspace() {
           {!list.length && <section className="parchment questline-section"><h2>{selected ? 'No supporting systems yet' : 'No systems here yet'}</h2>
             <p>{selected ? 'Create a system here, or link an existing one through Edit system in All systems.' : 'Create a system when a group of habits belongs together.'}</p>
             {selection.kind !== 'all' && <button type="button" className="btn-ghost" onClick={() => setParams(selectionParams({ kind: 'all' }))}>View all systems</button>}
-          </section>}
-          {loose.length > 0 && <section className="parchment questline-section"><h2>Habits without an active system</h2><p>These tasks are still yours. Edit a task to link it to a system.</p>
-            {loose.map(r => <RoutineTaskRow key={r.id} routine={r} onEdit={() => setTaskTarget({ kind: 'routine', id: r.id })} />)}
           </section>}
           {selection.kind === 'general' && <Link className="btn-ghost" to="/quests?view=general">General tasks & commitments →</Link>}
         </div>

@@ -73,6 +73,7 @@ export interface VynuesTask {
 }
 
 export interface VynuesProject {
+  spaceId?: string;
   id: string;
   name: string;
   description: string;
@@ -163,8 +164,8 @@ interface VynuesState {
   /** Clears `done` on recurring tasks whose cycle has rolled over (5am boundary). */
   checkAndReset: () => void;
 
-  addProject:    (name: string, description: string, color: ProjectColor) => void;
-  updateProject: (id: string, updates: Partial<Pick<VynuesProject, 'name' | 'description' | 'color' | 'status'>>) => void;
+  addProject:    (name: string, description: string, color: ProjectColor, spaceId?: string) => void;
+  updateProject: (id: string, updates: Partial<Pick<VynuesProject, 'name' | 'description' | 'color' | 'status' | 'spaceId'>>) => void;
   deleteProject: (id: string) => void;
 
   addTask:    (projectId: string, title: string, priority?: TaskPriority, dueDate?: string | null, recurring?: TaskRecurrence, intervalDays?: number, notes?: string, tracked?: boolean, subtasks?: string[], monthlyRule?: MonthlyRule | null) => void;
@@ -224,11 +225,11 @@ export const useVynuesStore = create<VynuesState>()(
           return changed ? { projects } : s;
         }),
 
-      addProject: (name, description, color) =>
+      addProject: (name, description, color, spaceId = 'vynues') =>
         set(s => ({
           projects: [
             ...s.projects,
-            { id: `p-${uid()}`, name, description, color, status: 'active', tasks: [], createdAt: new Date().toISOString() },
+            { id: `p-${uid()}`, name, description, color, spaceId, status: 'active', tasks: [], createdAt: new Date().toISOString() },
           ],
         })),
 

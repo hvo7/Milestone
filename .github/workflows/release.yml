@@ -19,8 +19,7 @@
 name: Release the desktop build
 
 on:
-  push:
-    branches: [main]
+  # Publish a feature batch only after explicit user approval.
   # For re-cutting a release whose build failed, without an empty version bump.
   workflow_dispatch:
 

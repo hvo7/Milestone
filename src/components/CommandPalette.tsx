@@ -51,6 +51,7 @@ export default function CommandPalette() {
   const questlines = useQuestStore(s => s.questlines);
   const routines = useQuestStore(s => s.routines);
   const systems = useQuestStore(s => s.systems);
+  const spaces = useQuestStore(s => s.spaces);
   const projects = useVynuesStore(s => s.projects);
 
   // Opening and closing reset the query here rather than in an effect watching
@@ -64,8 +65,8 @@ export default function CommandPalette() {
   // Flattening every task in the app on each keystroke is wasted work on a large
   // store; the sources only change when something is edited.
   const results = useMemo(
-    () => (open ? search({ questlines, routines, systems, projects }, query) : []),
-    [open, query, questlines, routines, systems, projects],
+    () => (open ? search({ questlines, routines, systems, projects, spaces }, query) : []),
+    [open, query, questlines, routines, systems, projects, spaces],
   );
 
   // Clamped at read time rather than reset from an effect: a shrinking list must
@@ -198,7 +199,7 @@ export default function CommandPalette() {
 
               {!query.trim() && (
                 <p style={{ margin: 0, padding: '18px 16px', fontSize: 12.5, color: 'var(--text-dim)', textAlign: 'center', lineHeight: 1.6 }}>
-                  Type to search everything — questlines, quests, tasks, Vynues, and nested steps.
+                  Type to search everything — questlines, quests, tasks, projects, and nested steps.
                   <br />
                   <span style={{ opacity: 0.75 }}>↑ ↓ to move · ↵ to open</span>
                 </p>

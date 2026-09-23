@@ -2,6 +2,7 @@ export {};
 
 declare global {
   interface Window {
+    milestoneTesting?: { seed: { quest?: string; vynues?: string; exportedAt?: string } };
     electronAPI?: {
       platform: string;
       notion: {

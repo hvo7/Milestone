@@ -28,23 +28,24 @@ const routine = (over: Partial<Routine> = {}): Routine => ({
 beforeEach(() => { vi.useFakeTimers(); });
 afterEach(() => { vi.useRealTimers(); });
 
-// ── Logical day (the 5am rollover) ───────────────────────────────────────────
+// ── Logical day (the 2am rollover) ───────────────────────────────────────────
 
 describe('logical day', () => {
   it('counts the small hours as the previous day', () => {
-    // 2am on the 10th is still "the 9th" — work done after midnight belongs to
+    // 1am on the 10th is still "the 9th" — work done after midnight belongs to
     // the day that just ended, not the one starting.
-    vi.setSystemTime(localTime(2026, AUG, 10, 2));
+    vi.setSystemTime(localTime(2026, AUG, 10, 1));
     expect(logicalDateKey()).toBe('2026-08-09');
   });
 
   it('rolls over at the reset hour', () => {
-    vi.setSystemTime(localTime(2026, AUG, 10, DAY_RESET_HOUR, 1));
+    expect(DAY_RESET_HOUR).toBe(2);
+    vi.setSystemTime(localTime(2026, AUG, 10, DAY_RESET_HOUR, 0));
     expect(logicalDateKey()).toBe('2026-08-10');
   });
 
   it('starts the logical day at midnight of that day', () => {
-    vi.setSystemTime(localTime(2026, AUG, 10, 2));
+    vi.setSystemTime(localTime(2026, AUG, 10, 1));
     const start = logicalDayStart();
     expect(dateKey(start)).toBe('2026-08-09');
     expect(start.getHours()).toBe(0);
@@ -61,9 +62,9 @@ describe('periodExpired', () => {
 
   it('expires a daily task on the next logical day', () => {
     const lastResetAt = localTime(2026, AUG, 9, 12).toISOString();
-    vi.setSystemTime(localTime(2026, AUG, 10, 2));   // still logically the 9th
+    vi.setSystemTime(localTime(2026, AUG, 10, 1, 59));   // still logically the 9th
     expect(periodExpired({ recurring: 'daily', lastResetAt })).toBe(false);
-    vi.setSystemTime(localTime(2026, AUG, 10, 6));   // now the 10th
+    vi.setSystemTime(localTime(2026, AUG, 10, 2));   // now the 10th
     expect(periodExpired({ recurring: 'daily', lastResetAt })).toBe(true);
   });
 

@@ -113,7 +113,7 @@ describe('search', () => {
     expect(byKind.quest).toBe('/questline/ql7');
     expect(byKind.action).toBe('/questline/ql7');
     expect(byKind.routine).toBe('/all');
-    expect(byKind.project).toBe('/vynues');
+    expect(byKind.project).toBe('/spaces/vynues?section=projects');
   });
 
   it('is case- and whitespace-insensitive', () => {

@@ -20,7 +20,7 @@ export const BUILD_DATE = __BUILD_DATE__;
 export const BUILD_MODE = __BUILD_MODE__;
 
 /** Short display version, e.g. "v1.1.0" (or "v1.1.0-dev" in a dev server). */
-export const VERSION_LABEL = `v${APP_VERSION}${BUILD_MODE === 'dev' ? '-dev' : ''}`;
+export const VERSION_LABEL = `v${APP_VERSION}${BUILD_MODE === 'testing' ? '-testing' : BUILD_MODE === 'dev' ? '-dev' : ''}`;
 
 /** Local, human-readable build time — "Jul 19, 2026, 4:21 PM". */
 export function buildDateLabel(): string {

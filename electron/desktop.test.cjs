@@ -1,7 +1,21 @@
-const { createAppWindow, registerIpcHandlers, readSharedRelay } = require('./desktop.cjs');
+const { createAppWindow, registerIpcHandlers, readSharedRelay, claimProfile } = require('./desktop.cjs');
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { EventEmitter } = require('node:events');
+
+test('a duplicate launch exits before opening the profile; the owner reveals its window', () => {
+  const app = new EventEmitter();
+  let quits = 0, shows = 0;
+  app.quit = () => quits++;
+  app.requestSingleInstanceLock = () => false;
+  assert.equal(claimProfile(app, () => shows++), false);
+  assert.equal(quits, 1);
+  assert.equal(app.listenerCount('second-instance'), 0);
+  app.requestSingleInstanceLock = () => true;
+  assert.equal(claimProfile(app, () => shows++), true);
+  app.emit('second-instance');
+  assert.equal(shows, 1);
+});
 
 test('relay provisioning requires an enabled private folder and valid HTTPS connection', t => {
   const fs = require('node:fs');

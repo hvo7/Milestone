@@ -431,6 +431,7 @@ export const withSystems = (r: Routine, ids: string[]): Routine =>
  *  A system is its name, its actions, and the goal it serves — the actions live
  *  on the routines themselves, so this is the rest. */
 export interface SystemFields {
+  spaceId?: string;
   description?: string;
   icon?: string;
   /** The goals this system serves. An empty array detaches them all — a system

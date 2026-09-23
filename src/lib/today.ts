@@ -10,7 +10,7 @@
  * key and that day's midnight — so the Today tab's tomorrow preview can ask every
  * one of these about the *next* day by passing a different pair.
  */
-import type { Action, Questline, Routine } from '../types';
+import type { Action, Quest, Questline, Routine } from '../types';
 import { alwaysOnToday, dateKey, dueOnDay, isMultiDayCycle, logicalDateKey, logicalDayStart, onToday, repeats, skipActive } from '../domain/schedule';
 import { engagedOnDay, isGeneralTask } from '../domain/taskState';
 import { isQuestComplete } from '../domain/taskState';
@@ -30,19 +30,13 @@ import type { VynuesProject, VynuesTask } from '../vynuesStore';
  *   complete, linger only through the day they were finished.
  * - Other weekly / monthly / interval tasks surface on the day their period ends
  *   (or when pinned) — that list is for work due *that day*.
- * - A one-off attached to a questline or a system surfaces from its due date on;
- *   a completed one lingers only through its completion day.
- * - A one-off General task doesn't surface at all until it's pinned. That bucket
- *   is a list you work *from*, not a schedule: the create drawer defaults its due
- *   date to today, so "due today" said nothing about whether you meant to do it
- *   today. The pin already reported them as off Today (`onToday`) while the day's
- *   list showed them anyway — now the two agree, and the pin is what decides.
+ * - An explicit due date must match the viewed day, even when pinned.
+ * - Undated General one-offs surface only when pinned; linked tasks keep their place.
+ * - Completed one-offs linger only through their completion day.
  */
 export function showsOnDay(r: Routine, dayKey: string, dayStart: Date): boolean {
+  if (!dueDateMatchesDay(r, dayKey) || r.offToday) return false;
   if (repeats(r)) {
-    // An explicit unpin beats every default below. Without this the pin on a
-    // daily habit, an anchor or a goal had nothing it could change.
-    if (r.offToday) return false;
     const fixed = alwaysOnToday(r);
     if (fixed === 'daily') return true;
     // Anchors and goals linger through their completion day, then drop.
@@ -52,25 +46,37 @@ export function showsOnDay(r: Routine, dayKey: string, dayStart: Date): boolean 
     }
     return !!r.trackedToday || dueOnDay(r, dayStart);
   }
-  const general = isGeneralTask(r);
-  if (general && !onToday(r)) return false;
-  // Pinned General tasks ignore the due date — the pin *is* the decision, and a
-  // date that defaults to today can't also be one.
-  if (!general && r.dueDate && r.dueDate > dayKey) return false;
+  if (!r.dueDate && isGeneralTask(r) && !onToday(r)) return false;
   if (r.completed) return !!r.completedAt && logicalDateKey(new Date(r.completedAt)) === dayKey;
   return true;
 }
 
 /** The Vynues equivalent of `showsOnDay`. */
 export function vynuesShowsOnDay(t: VynuesTask, dayKey: string, dayStart: Date): boolean {
+  if (!dueDateMatchesDay(t, dayKey)) return false;
   if (repeats(t)) {
     if (t.recurring === 'daily' && !t.intervalDays && !t.monthlyRule) return true;
     return !!t.tracked || dueOnDay(t, dayStart);
   }
-  const due = t.tracked || (!!t.dueDate && t.dueDate.slice(0, 10) <= dayKey);
+  const due = t.tracked || !!t.dueDate;
   if (!due) return false;
   if (t.done) return !!t.completedAt && logicalDateKey(new Date(t.completedAt)) === dayKey;
   return true;
+}
+
+/** Explicit dates never spill into another day's list, even through a pin. */
+export function dueDateMatchesDay(task: { dueDate?: string | null }, dayKey: string): boolean {
+  return !task.dueDate || task.dueDate.slice(0, 10) === dayKey;
+}
+
+export function questShowsOnDay(q: Quest, dayKey: string): boolean {
+  return !q.hidden && dueDateMatchesDay(q, dayKey) && (!!q.trackedToday || !!q.dueDate);
+}
+
+/** Stable grouping keeps the user's order within active and settled tasks. */
+export function activeTasksFirst<T extends { completed: boolean; todayDone?: boolean; skipped?: boolean }>(items: T[]): T[] {
+  const settled = (item: T) => !!(item.completed || item.todayDone || item.skipped);
+  return [...items].sort((a, b) => Number(settled(a)) - Number(settled(b)));
 }
 
 /** Is this quest action on the day's list? Mirrors the quest branch of the page's
@@ -130,10 +136,10 @@ export function dueSummary(
 
   for (const ql of quest.questlines) {
     for (const q of ql.quests) {
-      if (q.hidden) continue;
+      if (q.hidden || !dueDateMatchesDay(q, dayKey)) continue;
       // A quest pinned as a unit owns its actions on Today, so it counts as one
       // row and they don't count at all — exactly as the page renders it.
-      if (q.trackedToday) { count(isQuestComplete(q), q.title); continue; }
+      if (questShowsOnDay(q, dayKey)) { count(isQuestComplete(q), q.title); continue; }
       for (const a of q.actions) {
         if (actionShowsOnDay(a, dayStart)) count(a.completed, a.title);
       }

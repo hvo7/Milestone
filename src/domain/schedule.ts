@@ -73,22 +73,23 @@ export function getDueDateInfo(dueDate: string): DueDateInfo {
 const MONTHLY_MS = 30 * 86_400_000;
 
 /** Daily/weekly cycles roll over at this local hour instead of midnight, so
- *  late-night work (after 12am but before 5am) still counts toward the day that
+ *  late-night work (after 12am but before 2am) still counts toward the day that
  *  just ended rather than triggering an early reset. */
-export const DAY_RESET_HOUR = 5;
+export const DAY_RESET_HOUR = 2;
 
 /** Midnight of the *logical* day an instant belongs to. Times before
  *  DAY_RESET_HOUR count as the previous calendar day. */
 export function logicalDayStart(d: Date = new Date()): Date {
-  const x = new Date(d.getTime() - DAY_RESET_HOUR * 3_600_000);
+  const x = new Date(d);
+  if (x.getHours() < DAY_RESET_HOUR) x.setDate(x.getDate() - 1);
   x.setHours(0, 0, 0, 0);
   return x;
 }
 
 /** The next daily rollover instant — DAY_RESET_HOUR on the morning that ends
  *  the current logical day. */
-function nextDailyReset(): Date {
-  const d = logicalDayStart();
+export function nextDailyReset(ref: Date = new Date()): Date {
+  const d = logicalDayStart(ref);
   d.setDate(d.getDate() + 1);
   d.setHours(DAY_RESET_HOUR, 0, 0, 0);
   return d;
@@ -135,7 +136,7 @@ export function periodExpired(s: Schedule, at: Date = new Date()): boolean {
 
 /** Is a recurring cadence actually *due* on the logical day starting at `dayStart`
  *  (i.e. its current period ends within that day)? Daily is due every day; weekly
- *  on the last day of the logical week (Saturday, since weeks reset Sunday 5am);
+ *  on the last day of the logical week (Saturday, since weeks reset Sunday 2am);
  *  monthly and custom intervals on the final day of their cycle. Today only
  *  surfaces recurring work that is due (or manually pinned) — everything else
  *  waits in the All tab until its day comes. */
@@ -152,7 +153,7 @@ export function dueOnDay(s: Schedule, dayStart: Date): boolean {
   if (recurring === 'weekly') return dayStart.getDay() === 6;
   if (recurring === 'monthly') {
     if (!lastResetAt) return false;
-    // Due once the 30-day mark lands before this logical day's 5am rollover.
+    // Due once the 30-day mark lands before this logical day's 2am rollover.
     return new Date(lastResetAt).getTime() + MONTHLY_MS < dayStart.getTime() + 86_400_000 + DAY_RESET_HOUR * 3_600_000;
   }
   return false;
@@ -162,7 +163,7 @@ export function dueOnDay(s: Schedule, dayStart: Date): boolean {
  * Is this routine's skip still in force?
  *
  * A skip excuses exactly the *day* it was made — every task, every cadence. It
- * lapses at the next 5am rollover and the task simply comes back. (Skips used to
+ * lapses at the next 2am rollover and the task simply comes back. (Skips used to
  * excuse a repeating task's whole cycle, which meant skipping Monday's session of a
  * weekly "gym 3×" goal silently wrote off the entire week. Now Tuesday it's back.)
  * The streak stays protected across the cycle via `skippedInCycle`, which
@@ -275,7 +276,7 @@ export const MAX_STRIP_DAYS = 14;
  * The logical days making up this task's current cycle, ascending — the row the
  * session strip draws. Null when the cycle is too long to render as pips.
  *
- * Weeks are anchored to the logical week (Sunday 5am), matching the reset, so the
+ * Weeks are anchored to the logical week (Sunday 2am), matching the reset, so the
  * strip's last pip really is the day the cycle turns over. Intervals run from
  * their own `lastResetAt` instead, since that is what their reset measures from.
  */
@@ -303,7 +304,7 @@ export function dateKey(d: Date = new Date()): string {
   return `${y}-${m}-${day}`;
 }
 
-/** Completion-log key for an instant, bucketed by logical (5am-rollover) day. */
+/** Completion-log key for an instant, bucketed by logical (2am-rollover) day. */
 export function logicalDateKey(d: Date = new Date()): string {
   return dateKey(logicalDayStart(d));
 }
