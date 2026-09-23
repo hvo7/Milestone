@@ -1,4 +1,4 @@
-# Redeploys the relay whenever the app changes.
+# Redeploys the relay for an explicitly approved feature batch.
 #
 # The relay serves its own copy of the built app (see the Dockerfile), so without
 # this it would go on handing phones whatever build was current when it was last
@@ -16,8 +16,7 @@
 name: Deploy the relay
 
 on:
-  push:
-    branches: [main]
+  # Like web and desktop releases, deployment requires an approved manual run.
   workflow_dispatch:
 
 concurrency:

@@ -118,5 +118,6 @@ jobs:
           version="${{ steps.gate.outputs.version }}"
           gh release create "v$version" \
             "${{ steps.zip.outputs.asset }}" \
+            --target "${{ github.sha }}" \
             --title "Milestone v$version" \
             --notes-file notes.md
