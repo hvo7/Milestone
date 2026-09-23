@@ -91,7 +91,7 @@ export default function QuestlineSidebar({ questlines, systems, selection, onSel
               if (e.key === 'ArrowDown' && index < questlines.length - 1) { e.preventDefault(); move(ql.id, questlines[index + 1].id, true); }
             }}>⠿</button>}
           <button type="button" className="questline-nav-item" aria-pressed={selection.kind === 'questline' && selection.id === ql.id} onClick={() => onSelect({ kind: 'questline', id: ql.id })}>
-            <QuestArtwork title={ql.title} id={ql.id} icon={ql.icon} size={18} />
+            <QuestArtwork kind="questline" title={ql.title} id={ql.id} icon={ql.icon} size={18} />
             <span className="questline-nav-copy"><span>{ql.title}</span><small>{ql.hidden ? 'Hidden · edit to restore' : mode === 'quests' ? `${progress.done} / ${progress.total} quests complete` : `${count} supporting system${count === 1 ? '' : 's'}`}</small></span>
           </button>
           {editing && <div className="questline-order-arrows">

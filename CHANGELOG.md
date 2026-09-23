@@ -7,6 +7,11 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.1 — 2026-09-23
+
+- Removed icons from individual quests, keeping artwork on questlines.
+- Replaced the Read 5 Books and Get Fit questline pictures with matching illustrated icons in the sidebar and heading.
+
 ## 3.3.0 — 2026-09-23
 
 - Illustrated icons for questlines, individual quests and systems, matched to their titles. Uploaded pictures are preserved.

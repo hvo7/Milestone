@@ -6,6 +6,12 @@ The amber TESTING banner identifies this environment. Build output goes to `dist
 
 On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
 
+## Batch 002 — approved for v3.3.1 on 2026-09-23
+
+- Remove artwork from individual quests in every quest row and card; keep questline artwork.
+- Override the Read 5 Books and Get Fit questline pictures with the matching illustrated book and fitness icons, in both the sidebar and heading.
+- The user approved these revisions for production with a patch-only version bump to v3.3.1.
+
 ## Batch 001 — approved for v3.3.0 on 2026-09-23
 
 - Separate testing environment and launch shortcut.
