@@ -7,6 +7,10 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.2
+
+- Keep skipped and completed tasks visible at the bottom of Fixing my chud life. The main Today list's Show skipped filter no longer hides tasks in this panel.
+
 ## 3.3.1 — 2026-09-23
 
 - Removed icons from individual quests, keeping artwork on questlines.

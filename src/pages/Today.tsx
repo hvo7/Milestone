@@ -545,8 +545,10 @@ export default function Today() {
   // tasks keep their streaks, skips, counters, steps and edit drawer rather than
   // becoming a checkbox with a name beside it.
   const allAnchorItems = anchorRoutines.map(routineItem);
-  const anchorItems = activeTasksFirst(allAnchorItems.filter(it => showSkipped || !it.skipped));
-  const skippedCount = todoItems.filter(it => it.skipped).length + allAnchorItems.filter(it => it.skipped).length;
+  // Batch 003: the spotlight keeps its settled habits visible at the bottom.
+  // The main list's skipped filter should not hide these dedicated rail rows.
+  const anchorItems = activeTasksFirst(allAnchorItems);
+  const skippedCount = todoItems.filter(it => it.skipped).length;
   const anchorDone = anchorItems.filter(settledOf).length;
   const done  = todoDone.length + anchorDone;
   const total = visible.filter(it => !it.skipped).length + anchorItems.filter(it => !it.skipped).length;

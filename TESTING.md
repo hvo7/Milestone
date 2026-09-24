@@ -6,6 +6,12 @@ The amber TESTING banner identifies this environment. Build output goes to `dist
 
 On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
 
+## Batch 003 — approved for v3.3.2
+
+- Keep skipped and completed habits visible below active habits in Fixing my chud life.
+- Show skipped controls only the main Today list; the habit panel always shows its skipped tasks.
+- The user approved shipping only this habit-panel feature as v3.3.2.
+
 ## Batch 002 — approved for v3.3.1 on 2026-09-23
 
 - Remove artwork from individual quests in every quest row and card; keep questline artwork.
