@@ -2,6 +2,7 @@ import { useState, Suspense } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuestStore, useUIStore } from '../store';
 import SpacesModal from './SpacesModal';
+import ModalShell from './ModalShell';
 import { DEFAULT_SPACES } from '../store';
 import { useVynuesStore } from '../vynuesStore';
 import { VERSION_LABEL, buildSummary } from '../buildInfo';
@@ -34,6 +35,7 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   const [syncOpen,  setSyncOpen]  = useState(false);
   const [dataOpen,  setDataOpen]  = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const dailyRemaining =
     routines.filter(r => r.recurring === 'daily' && !r.completed && !r.hidden).length +
@@ -71,8 +73,8 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   return (
     <>
       {import.meta.env.MODE === 'testing' && <div data-testing-banner style={{ background: '#edc16f', color: '#372b16', padding: '9px 18px', display: 'flex', gap: 14, justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 12, borderRadius: 10, marginBottom: 12 }}>
-        <strong>TESTING · Batch 003 · Keep habits visible</strong>
-        <span>Separate data · Sync off · Batch 003 approved for release</span>
+        <strong>TESTING · Batch 004 · Consistent controls &amp; Notion</strong>
+        <span>Separate data · Sync off · Batch 004 approved for release</span>
       </div>}
       <nav className="app-nav" aria-label="Main navigation">
         <Link to="/" className="app-brand" aria-label="Milestone home">
@@ -96,21 +98,14 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
           })}
         </div>
         <div className="nav-tools">
+          <button type="button" className="nav-tool" onClick={() => setSpacesOpen(true)} title="Add or manage space tabs" aria-label="Add new tab">＋</button>
           <button type="button" className="nav-tool" onClick={() => window.dispatchEvent(new Event(REFRESH_DAY_EVENT))}
-            title="Refresh tasks — new day starts at 2:00 AM local time" aria-label="Refresh tasks">
-            <NavIcon name="sync" />
+            title="Reload tasks — new day starts at 2:00 AM local time" aria-label="Reload tasks">
+            <NavIcon name="reload" />
           </button>
-          <button className="nav-tool" onClick={() => setSpacesOpen(true)} title="Add or manage space tabs" aria-label="Add or manage space tabs">＋</button>
-          <button className="nav-tool" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'} aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
-            <NavIcon name={theme === 'dark' ? 'sun' : 'moon'} />
+          <button type="button" className="nav-tool" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings" aria-haspopup="dialog">
+            <NavIcon name="settings" />
           </button>
-          <button className="nav-tool" onClick={() => setRemindOpen(true)} data-active={!!reminders?.enabled} title={reminders?.enabled ? `Daily reminder at ${reminders.time}` : 'Daily reminder — off'} aria-label="Daily reminder">
-            <NavIcon name="bell" />
-          </button>
-          <button className="nav-tool" onClick={() => setDataOpen(true)} title="Export / Import data" aria-label="Export / Import data">
-            <NavIcon name="data" />
-          </button>
-          {isElectron && <button className="nav-tool" onClick={() => setSyncOpen(true)} title="Sync to Notion" aria-label="Sync to Notion"><NavIcon name="sync" /></button>}
         </div>
       </nav>
       <header className="water-cover" style={{ backgroundImage: `url("${scene}")` }}>
@@ -121,6 +116,18 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
       </header>
 
       <Suspense fallback={null}>
+        {settingsOpen && <ModalShell onClose={() => setSettingsOpen(false)}>
+          <section role="dialog" aria-modal="true" aria-labelledby="settings-heading" onKeyDown={e => { if (e.key === 'Escape') setSettingsOpen(false); }}>
+            <h2 id="settings-heading" style={{ marginTop: 0 }}>Settings</h2>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <button type="button" autoFocus className="btn-ghost" onClick={toggleTheme}>Appearance · {theme === 'dark' ? 'Dark' : 'Light'} — switch theme</button>
+              <button type="button" className="btn-ghost" onClick={() => { setSettingsOpen(false); setRemindOpen(true); }}>Notifications · {reminders?.enabled ? reminders.time : 'Off'}</button>
+              <button type="button" className="btn-ghost" onClick={() => { setSettingsOpen(false); setDataOpen(true); }}>Data, backups, sync &amp; updates</button>
+              <button type="button" className="btn-ghost" disabled={!isElectron} onClick={() => { setSettingsOpen(false); setSyncOpen(true); }}>Notion import / export{!isElectron && ' · Desktop only'}</button>
+              <button type="button" className="btn-ghost" onClick={() => setSettingsOpen(false)}>Close</button>
+            </div>
+          </section>
+        </ModalShell>}
         {spacesOpen && <SpacesModal onClose={() => setSpacesOpen(false)} />}
         {syncOpen   && <NotionSyncModal onClose={() => setSyncOpen(false)} />}
         {dataOpen   && <DataModal       onClose={() => setDataOpen(false)} />}
@@ -130,13 +137,10 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   );
 }
 
-function NavIcon({ name }: { name: 'sun' | 'moon' | 'bell' | 'data' | 'sync' }) {
+function NavIcon({ name }: { name: 'reload' | 'settings' }) {
   const paths = {
-    sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5" /></>,
-    moon: <path d="M20 14A8 8 0 0 1 10 4a8 8 0 1 0 10 10Z" />,
-    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-2 7-2 9h16c0-2-2-2-2-9M10 21h4" /></>,
-    data: <><path d="M8 3v12m-4-4 4 4 4-4M16 21V9m-4 4 4-4 4 4" /></>,
-    sync: <><path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 14 6M4 12a8 8 0 0 0 14 6" /></>,
+    reload: <path d="M20 4v6h-6M20 10a8 8 0 1 0-1 7" />,
+    settings: <><circle cx="12" cy="12" r="3" /><path d="m10 3-1 3-2 1-3-1-2 4 2 2v2l-2 2 2 4 3-1 2 1 1 3h4l1-3 2-1 3 1 2-4-2-2v-2l2-2-2-4-3 1-2-1-1-3Z" transform="translate(0 -1) scale(1 .95)" /></>,
   };
   return <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }

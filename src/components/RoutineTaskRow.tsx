@@ -5,6 +5,7 @@ import { RecurrenceBadge } from '../recurrence';
 import TaskRow, { type RowStrip } from './today/TaskRow';
 import { DueLabel } from './today/labels';
 import { usePhoneLayout } from '../lib/usePhoneLayout';
+import PinButton from './PinButton';
 
 /** Same completion, counters, sessions and nested steps as Today; no copied data. */
 export default function RoutineTaskRow({ routine: r, onEdit, onRemove }: {
@@ -45,7 +46,7 @@ export default function RoutineTaskRow({ routine: r, onEdit, onRemove }: {
         subtasks={routineSubNodes(r.subtasks, false)} subHandlers={{ onAdd: (title, parent) => addStep(r.id, title, parent), onToggle: id => toggleStep(r.id, id), onRename: (id, title) => renameStep(r.id, id, title), onDelete: id => deleteStep(r.id, id) }}
       />
       <div className="practice-task-tools">
-        <button type="button" className="btn-ghost" aria-pressed={pinned} onClick={() => pin(r.id)}>{pinned ? 'On Today' : 'Add to Today'}</button>
+        <PinButton state={pinned ? 'all' : 'none'} onClick={() => pin(r.id)} title={pinned ? 'Remove from Today' : 'Pin to Today'} />
         <button type="button" className="btn-ghost" onClick={onEdit} aria-label={`Edit ${r.title}`}>Edit</button>
         {onRemove && <button type="button" className="btn-ghost" onClick={onRemove} aria-label={`Unlink ${r.title} from this system`}>Unlink</button>}
       </div>

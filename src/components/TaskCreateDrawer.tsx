@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useQuestStore, dateKey } from '../store';
+import { useQuestStore } from '../store';
 import { useVynuesStore, vynuesCategoryKey, vynuesProjectId } from '../vynuesStore';
 import { RepeatPicker, type RepeatValue } from '../recurrence';
 import { MenuSelect } from '../vynuesUi';
@@ -28,7 +28,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
   const [questlineId, setQuestlineId] = useState('');   // '' = General, ANCHOR_CATEGORY = anchor habits
   const [questId, setQuestId]         = useState('');    // '' = whole questline
   const [repeat, setRepeat]           = useState<RepeatValue>({ recurring: null });
-  const [dueDate, setDueDate]         = useState('');    // one-time tasks default to today
+  const [dueDate, setDueDate]         = useState('');    // dates are optional
   const [anchorRepeat, setAnchorRepeat] = useState<'daily' | 'weekly'>('daily');
   // Which systems this task is part of, if any — a habit can be several. These are
   // independent of the category above: the system is the process it belongs to,
@@ -50,7 +50,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
   // Reset the form each time the drawer opens, and focus the title.
   useEffect(() => {
     if (!open) return;
-    setTitle(''); setDescription(''); setQuestlineId(initialCategory); setQuestId(''); setRepeat({ recurring: initialSystem ? 'daily' : null }); setDueDate(dateKey()); setAnchorRepeat('daily'); setSystemIds(initialSystem ? [initialSystem] : []);
+    setTitle(''); setDescription(''); setQuestlineId(initialCategory); setQuestId(''); setRepeat({ recurring: initialSystem ? 'daily' : null }); setDueDate(''); setAnchorRepeat('daily'); setSystemIds(initialSystem ? [initialSystem] : []);
     setCounterOn(false); setTarget('3'); setStep('1'); setUnit('');
     const t = setTimeout(() => titleRef.current?.focus(), 80);
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseRef.current(); };

@@ -1,10 +1,13 @@
 import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { RecurringType, MonthlyRule } from '../types';
-import { useQuestStore, recurrenceLabel, isArchivedRoutine, isGeneralTask, logicalDateKey, logicalDayStart } from '../store';
+import { useQuestStore, recurrenceLabel, isArchivedRoutine, onToday, logicalDateKey, logicalDayStart } from '../store';
 import { useVynuesStore } from '../vynuesStore';
 import { RepeatPicker, RecurrenceBadge, type RepeatValue } from '../recurrence';
 import NavBar from '../components/NavBar';
+import PinButton from '../components/PinButton';
+import { actionOnToday } from '../domain/schedule';
+import { vynuesOnToday } from '../vynuesStore';
 import { categoryColor, cleanQuest, ANCHOR_LABEL, ANCHOR_ICON } from '../lib/ui';
 import { duplicateGroups } from '../lib/duplicates';
 
@@ -221,18 +224,7 @@ function AllRow({ task }: { task: AllTask }) {
               {task.onToggleTracked && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--page-text-dim)' }}>Today</span>
-                  <button
-                    onClick={task.onToggleTracked}
-                    title="General tasks and non-daily cadences stay off Today until you put them there — pin one to work on it today"
-                    style={{
-                      background: task.tracked ? 'var(--accent-soft)' : 'none',
-                      border: `1px solid ${task.tracked ? 'var(--accent-border)' : 'var(--card-border)'}`,
-                      borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600, padding: '6px 12px',
-                      color: task.tracked ? 'var(--accent)' : 'var(--text-dim)', transition: 'all 0.15s',
-                    }}
-                  >
-                    {task.tracked ? '📌 Pinned ✓' : 'Pin to Today'}
-                  </button>
+                  <PinButton state={task.tracked ? 'all' : 'none'} onClick={task.onToggleTracked} title={task.tracked ? 'Remove from Today' : 'Pin to Today'} />
                 </div>
               )}
               <button
@@ -354,11 +346,8 @@ export default function AllPage() {
     // The Today pin only matters for what Today doesn't auto-show: non-daily
     // cadences, and General one-offs, which wait to be pinned rather than
     // arriving on a due date the create drawer filled in with today.
-    tracked: r.trackedToday,
-    onToggleTracked: (r.recurring && r.recurring !== 'daily') || r.intervalDays
-      || (!r.recurring && !r.intervalDays && !r.monthlyRule && isGeneralTask(r))
-      ? () => toggleRoutineTracked(r.id)
-      : undefined,
+    tracked: onToday(r),
+    onToggleTracked: () => toggleRoutineTracked(r.id),
     onToggle: () => toggleRoutine(r.id),
     onRename: t => updateRoutineTitle(r.id, t),
     onDelete: () => deleteRoutine(r.id),
@@ -394,6 +383,8 @@ export default function AllPage() {
           id: a.id, title: a.title, done: a.completed,
           recurring: a.recurring ?? null, intervalDays: a.intervalDays, monthlyRule: a.monthlyRule, repeatOnly: false,
           meta: cleanQuest(q.title),
+          tracked: actionOnToday(a),
+          onToggleTracked: () => useQuestStore.getState().toggleTracked(ql.id, q.id, a.id),
           onToggle: () => toggleAction(ql.id, q.id, a.id),
           onRename: (t: string) => updateActionTitle(ql.id, q.id, a.id, t),
           onDelete: () => deleteAction(ql.id, q.id, a.id),
@@ -412,6 +403,10 @@ export default function AllPage() {
     tasks: p.tasks.map(t => ({
       id: t.id, title: t.title, done: t.done, streak: t.streak,
       recurring: t.recurring ?? null, intervalDays: t.intervalDays, monthlyRule: t.monthlyRule, repeatOnly: false,
+      tracked: vynuesOnToday(t),
+      onToggleTracked: () => useVynuesStore.getState().toggleTaskTracked(p.id, t.id),
+      dueDate: t.dueDate,
+      onSetDueDate: (dueDate: string | null) => updateTask(p.id, t.id, { dueDate }),
       onToggle: () => toggleTask(p.id, t.id),
       onRename: (title: string) => updateTask(p.id, t.id, { title }),
       onDelete: () => deleteTask(p.id, t.id),

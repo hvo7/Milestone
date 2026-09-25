@@ -53,7 +53,7 @@ export function showsOnDay(r: Routine, dayKey: string, dayStart: Date): boolean 
 
 /** The Vynues equivalent of `showsOnDay`. */
 export function vynuesShowsOnDay(t: VynuesTask, dayKey: string, dayStart: Date): boolean {
-  if (!dueDateMatchesDay(t, dayKey)) return false;
+  if (t.offToday || !dueDateMatchesDay(t, dayKey)) return false;
   if (repeats(t)) {
     if (t.recurring === 'daily' && !t.intervalDays && !t.monthlyRule) return true;
     return !!t.tracked || dueOnDay(t, dayStart);
@@ -70,7 +70,7 @@ export function dueDateMatchesDay(task: { dueDate?: string | null }, dayKey: str
 }
 
 export function questShowsOnDay(q: Quest, dayKey: string): boolean {
-  return !q.hidden && dueDateMatchesDay(q, dayKey) && (!!q.trackedToday || !!q.dueDate);
+  return !q.hidden && !q.offToday && dueDateMatchesDay(q, dayKey) && (!!q.trackedToday || !!q.dueDate);
 }
 
 /** Stable grouping keeps the user's order within active and settled tasks. */
@@ -82,7 +82,7 @@ export function activeTasksFirst<T extends { completed: boolean; todayDone?: boo
 /** Is this quest action on the day's list? Mirrors the quest branch of the page's
  *  own derivation — pinned one-offs, dailies always, everything else when due. */
 export function actionShowsOnDay(a: Action, dayStart: Date): boolean {
-  if (a.hidden) return false;
+  if (a.hidden || a.offToday) return false;
   if (!repeats(a)) return !!a.trackedToday;
   if (a.recurring === 'daily' && !a.intervalDays && !a.monthlyRule) return true;
   return !!a.trackedToday || dueOnDay(a, dayStart);

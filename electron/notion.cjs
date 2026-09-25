@@ -13,6 +13,7 @@
 const { app, safeStorage } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { richText, questComplete, recurrence, detailSchema, taskSchema, taskDetails } = require('./notion-model.cjs');
 
 const NOTION_API = 'https://api.notion.com/v1';
 const NOTION_VER = '2022-06-28';
@@ -79,14 +80,24 @@ function saveIdMap(m) { fs.writeFileSync(idMapFile(), JSON.stringify(m, null, 2)
 
 // ── HTTP ──────────────────────────────────────────────────────────────────────
 
-async function notion(method, endpoint, apiKey, body) {
+async function notion(method, endpoint, apiKey, body, attempt = 0) {
   const res = await fetch(`${NOTION_API}${endpoint}`, {
     method,
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Notion-Version': NOTION_VER, 'Content-Type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(60000),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.message || `Notion ${res.status}`);
+  if (!res.ok) {
+    const retryable = ([429, 529].includes(res.status) && data.additional_data?.rate_limit_reason !== 'public_api_request_blocked')
+      || (['GET', 'DELETE'].includes(method) && [500, 502, 503, 504].includes(res.status));
+    if (retryable && attempt < 3) {
+      const seconds = Number(res.headers.get('retry-after') ?? 2 ** attempt);
+      await wait((Number.isFinite(seconds) ? Math.max(0, seconds) : 2 ** attempt) * 1000 + 100);
+      return notion(method, endpoint, apiKey, body, attempt + 1);
+    }
+    throw new Error(data.message || `Notion ${res.status}`);
+  }
   return data;
 }
 
@@ -165,9 +176,8 @@ async function createRoutinesDB(parentPageId, apiKey) {
 
 // ── Block helpers ─────────────────────────────────────────────────────────────
 
-const para  = (text, ann = {}) => ({ type: 'paragraph',  paragraph:  { rich_text: [{ type: 'text', text: { content: text }, annotations: ann }] } });
-const todo  = (text, checked)  => ({ type: 'to_do',      to_do:      { rich_text: [{ type: 'text', text: { content: text } }], checked } });
-const divider = ()             => ({ type: 'divider',    divider: {} });
+const para = (text, ann = {}) => ({ type: 'paragraph', paragraph: { rich_text: richText(text).map(t => ({ ...t, annotations: ann })) } });
+const todo = (text, checked) => ({ type: 'to_do', to_do: { rich_text: richText(text), checked: !!checked } });
 
 function questActionBlocks(quest) {
   const blocks = [];
@@ -176,11 +186,11 @@ function questActionBlocks(quest) {
   const actions = quest.actions.filter(a => !a.hidden);
   if (actions.length) {
     actions.forEach(a => {
-      const label = a.recurring ? `${a.title}  (${a.recurring})` : a.title;
+      const label = `${a.title}  (${recurrence(a)})`;
       blocks.push(todo(label, a.completed));
     });
   } else {
-    blocks.push(para('No deeds recorded yet.', { italic: true, color: 'gray' }));
+    blocks.push(para('No subtasks. Complete this quest using the Status column.', { italic: true, color: 'gray' }));
   }
   return blocks;
 }
@@ -207,21 +217,39 @@ async function appendBlocks(pageId, blocks, apiKey) {
   }
 }
 
+// Only replace our explicitly owned snapshot, never the user's page notes.
+// Legacy page bodies have no ownership marker: preserve them on first upgrade.
+async function syncQuestContent(pageId, questId, blocks, idMap, apiKey) {
+  idMap.contentBlocks ??= {};
+  let section = idMap.contentBlocks[questId];
+  if (!section) {
+    const result = await notion('PATCH', `/blocks/${pageId}/children`, apiKey, {
+      children: [{ type: 'toggle', toggle: { rich_text: richText('Milestone steps · export snapshot (replaced on push)') } }],
+    });
+    section = result.results[0].id;
+    idMap.contentBlocks[questId] = section;
+    saveIdMap(idMap);
+  } else {
+    await clearPage(section, apiKey);
+  }
+  await appendBlocks(section, blocks, apiKey);
+}
+
 // ── Status helpers ────────────────────────────────────────────────────────────
 
 function qlStatus(ql) {
   const vis = ql.quests.filter(q => !q.hidden);
   if (!vis.length) return 'Active';
-  const done = vis.filter(q => { const a = q.actions.filter(x => !x.hidden); return a.length > 0 && a.every(x => x.completed); }).length;
+  const done = vis.filter(questComplete).length;
   if (done === vis.length) return 'Complete';
   if (done > 0) return 'In Progress';
   return 'Active';
 }
 
 function questStatus(quest) {
+  if (questComplete(quest)) return 'Complete';
   const vis = quest.actions.filter(a => !a.hidden);
   if (!vis.length) return 'Not Started';
-  if (vis.every(a => a.completed)) return 'Complete';
   if (vis.some(a => a.completed)) return 'In Progress';
   return 'Not Started';
 }
@@ -241,6 +269,10 @@ async function syncToNotion(questlines, routines, config) {
   const { apiKey, parentPageId } = config;
   const log = [];
   let idMap = loadIdMap();
+  if (idMap.parentPageId && idMap.parentPageId !== parentPageId) {
+    throw new Error('This export is linked to a different Notion page. Restore the original page ID before syncing; no existing pages were changed.');
+  }
+  idMap.parentPageId = parentPageId;
   const now = new Date().toISOString();
 
   // ── 0. Migrate from old single-database format ────────────────────────────
@@ -277,11 +309,18 @@ async function syncToNotion(questlines, routines, config) {
     // Rename legacy "Routines" database to "Tasks" if it still has the old title
     try {
       await notion('PATCH', `/databases/${idMap.routinesDbId}`, apiKey, {
-        title: [{ type: 'text', text: { content: 'Tasks' } }],
+      title: [{ type: 'text', text: { content: 'Tasks' } }],
         icon: { type: 'emoji', emoji: '✅' },
       });
     } catch {}
   }
+
+  // Add readable detail columns to existing databases without replacing them.
+  await notion('PATCH', `/databases/${idMap.questsDbId}`, apiKey, { properties: detailSchema,
+    description: richText('Quests belong to questlines. Status is imported back into Milestone. Steps are an export snapshot; edit steps in Milestone.') });
+  await notion('PATCH', `/databases/${idMap.routinesDbId}`, apiKey, { properties: taskSchema,
+    description: richText('Standalone and system tasks. Done is imported back into Milestone. Due is optional; Schedule describes repeats; Progress shows counters.') });
+  saveIdMap(idMap);
 
   // ── 2. Sync questlines ────────────────────────────────────────────────────
   log.push('Syncing questlines...');
@@ -289,11 +328,11 @@ async function syncToNotion(questlines, routines, config) {
 
   for (const ql of questlines.filter(ql => !ql.hidden)) {
     const vis  = ql.quests.filter(q => !q.hidden);
-    const done = vis.filter(q => { const a = q.actions.filter(x => !x.hidden); return a.length > 0 && a.every(x => x.completed); }).length;
+    const done = vis.filter(questComplete).length;
 
     const props = {
-      'Name':        { title: [{ text: { content: `${ql.icon}  ${ql.title}` } }] },
-      'Direction':   { rich_text: [{ text: { content: ql.description || '' } }] },
+      'Name':        { title: richText(ql.title) },
+      'Direction':   { rich_text: richText(ql.description) },
       'Status':      { select: { name: qlStatus(ql) } },
       'Progress':    { rich_text: [{ text: { content: `${done} / ${vis.length} quests` } }] },
       'Streak':      { number: ql.streak ?? 0 },
@@ -302,15 +341,8 @@ async function syncToNotion(questlines, routines, config) {
 
     const existing = idMap.questlines?.[ql.id];
     if (existing) {
-      try {
         await notion('PATCH', `/pages/${existing}`, apiKey, { properties: props, archived: false });
         log.push(`  Updated questline: ${ql.title}`);
-      } catch {
-        const page = await notion('POST', '/pages', apiKey, { parent: { database_id: idMap.questlinesDbId }, properties: props });
-        idMap.questlines[ql.id] = page.id;
-        saveIdMap(idMap);
-        log.push(`  Recreated questline: ${ql.title}`);
-      }
     } else {
       const page = await notion('POST', '/pages', apiKey, { parent: { database_id: idMap.questlinesDbId }, properties: props });
       if (!idMap.questlines) idMap.questlines = {};
@@ -324,7 +356,7 @@ async function syncToNotion(questlines, routines, config) {
   // Archive removed questlines
   for (const [qlId, pageId] of Object.entries(idMap.questlines || {})) {
     if (!activeQlIds.has(qlId)) {
-      try { await notion('PATCH', `/pages/${pageId}`, apiKey, { archived: true }); } catch {}
+      await notion('PATCH', `/pages/${pageId}`, apiKey, { archived: true });
       delete idMap.questlines[qlId];
       saveIdMap(idMap);
       await wait(340);
@@ -347,10 +379,12 @@ async function syncToNotion(questlines, routines, config) {
       const total = acts.length;
 
       const props = {
-        'Name':        { title: [{ text: { content: stripRoman(quest.title) } }] },
+        'Name':        { title: richText(stripRoman(quest.title)) },
+        'Milestone ID': { rich_text: richText(quest.id) },
+        'Schedule': { rich_text: richText(recurrence(quest)) },
         'Questline':   { relation: [{ id: qlPageId }] },
         'Due':         quest.dueDate ? { date: { start: quest.dueDate } } : { date: null },
-        'Progress':    { rich_text: [{ text: { content: `${done} / ${total} actions` } }] },
+        'Progress':    { rich_text: richText(total ? `${done} / ${total} steps${quest.completionMode === 'manual' ? ' · separate completion' : ''}` : questComplete(quest) ? 'Done' : 'Not done') },
         'Status':      { select: { name: questStatus(quest) } },
         'Recurring':   { select: { name: quest.recurring ? cap(quest.recurring) : 'Once' } },
         'Streak':      { number: quest.streak ?? 0 },
@@ -361,21 +395,14 @@ async function syncToNotion(questlines, routines, config) {
       const existing = idMap.quests?.[quest.id];
 
       if (existing) {
-        try {
           await notion('PATCH', `/pages/${existing}`, apiKey, { properties: props, archived: false });
-          await clearPage(existing, apiKey);
-          await appendBlocks(existing, blocks, apiKey);
-        } catch {
-          const page = await notion('POST', '/pages', apiKey, { parent: { database_id: idMap.questsDbId }, properties: props, children: blocks });
-          idMap.quests[quest.id] = page.id;
-          saveIdMap(idMap);
-        }
       } else {
-        const page = await notion('POST', '/pages', apiKey, { parent: { database_id: idMap.questsDbId }, properties: props, children: blocks });
+        const page = await notion('POST', '/pages', apiKey, { parent: { database_id: idMap.questsDbId }, properties: props });
         if (!idMap.quests) idMap.quests = {};
         idMap.quests[quest.id] = page.id;
         saveIdMap(idMap);
       }
+      await syncQuestContent(idMap.quests[quest.id], quest.id, blocks, idMap, apiKey);
       await wait(350);
     }
   }
@@ -383,8 +410,9 @@ async function syncToNotion(questlines, routines, config) {
   // Archive removed quests
   for (const [qId, pageId] of Object.entries(idMap.quests || {})) {
     if (!activeQIds.has(qId)) {
-      try { await notion('PATCH', `/pages/${pageId}`, apiKey, { archived: true }); } catch {}
+      await notion('PATCH', `/pages/${pageId}`, apiKey, { archived: true });
       delete idMap.quests[qId];
+      if (idMap.contentBlocks) delete idMap.contentBlocks[qId];
       saveIdMap(idMap);
       await wait(340);
     }
@@ -392,14 +420,15 @@ async function syncToNotion(questlines, routines, config) {
 
   // ── 4. Sync routines ──────────────────────────────────────────────────────
   const visRoutines = routines.filter(r => !r.hidden);
-  if (visRoutines.length) {
+  {
     log.push('Syncing tasks...');
     const activeRIds = new Set(visRoutines.map(r => r.id));
 
     for (const r of visRoutines) {
       const props = {
-        'Name':        { title: [{ text: { content: r.title } }] },
-        'Type':        { select: { name: cap(r.recurring) } },
+        ...taskDetails(r, questlines),
+        'Name':        { title: richText(r.title) },
+        'Type':        { select: { name: r.recurring ? cap(r.recurring) : 'Once' } },
         'Done':        { checkbox: r.completed },
         'Streak':      { number: r.streak ?? 0 },
         'Last Synced': { date: { start: now } },
@@ -407,12 +436,7 @@ async function syncToNotion(questlines, routines, config) {
 
       const existing = idMap.routines?.[r.id];
       if (existing) {
-        try { await notion('PATCH', `/pages/${existing}`, apiKey, { properties: props, archived: false }); }
-        catch {
-          const page = await notion('POST', '/pages', apiKey, { parent: { database_id: idMap.routinesDbId }, properties: props });
-          idMap.routines[r.id] = page.id;
-          saveIdMap(idMap);
-        }
+        await notion('PATCH', `/pages/${existing}`, apiKey, { properties: props, archived: false });
       } else {
         const page = await notion('POST', '/pages', apiKey, { parent: { database_id: idMap.routinesDbId }, properties: props });
         if (!idMap.routines) idMap.routines = {};
@@ -425,7 +449,7 @@ async function syncToNotion(questlines, routines, config) {
     // Archive removed routines
     for (const [rId, pageId] of Object.entries(idMap.routines || {})) {
       if (!activeRIds.has(rId)) {
-        try { await notion('PATCH', `/pages/${pageId}`, apiKey, { archived: true }); } catch {}
+        await notion('PATCH', `/pages/${pageId}`, apiKey, { archived: true });
         delete idMap.routines[rId];
         saveIdMap(idMap);
         await wait(340);
@@ -462,9 +486,10 @@ async function pullFromNotion(config) {
     for (const [routineId, pageId] of routineEntries) {
       try {
         const page = await notion('GET', `/pages/${pageId}`, apiKey);
-        const done = page.properties?.Done?.checkbox ?? false;
-        taskUpdates.push({ id: routineId, completed: done });
-      } catch {}
+        const done = page.properties?.Done?.checkbox;
+        if (page.archived || page.in_trash || typeof done !== 'boolean') log.push(`Skipped unavailable or invalid task: ${routineId}`);
+        else taskUpdates.push({ id: routineId, completed: done });
+      } catch (e) { throw new Error(`Could not read task ${routineId}: ${e.message}. No local changes applied.`); }
       await wait(340);
     }
     log.push(`  ${taskUpdates.length} task statuses read.`);
@@ -478,6 +503,7 @@ async function pullFromNotion(config) {
     for (const [questId, pageId] of questEntries) {
       try {
         const page = await notion('GET', `/pages/${pageId}`, apiKey);
+        if (page.archived || page.in_trash) { log.push(`Skipped archived quest: ${questId}`); continue; }
         const status = page.properties?.Status?.select?.name ?? null;
         if (status === 'Complete') {
           questUpdates.push({ questId, complete: true });
@@ -487,7 +513,7 @@ async function pullFromNotion(config) {
           changed++;
         }
         // "In Progress" → leave app state alone
-      } catch {}
+      } catch (e) { throw new Error(`Could not read quest ${questId}: ${e.message}. No local changes applied.`); }
       await wait(340);
     }
     log.push(`  ${changed} quest statuses updated.`);
@@ -497,4 +523,12 @@ async function pullFromNotion(config) {
   return { ok: true, log, taskUpdates, questUpdates };
 }
 
-module.exports = { loadConfig, saveConfig, testConnection, syncToNotion, pullFromNotion };
+let syncing = false;
+function exclusive(operation) {
+  return async (...args) => {
+    if (syncing) throw new Error('A Notion transfer is already running. Wait for it to finish.');
+    syncing = true;
+    try { return await operation(...args); } finally { syncing = false; }
+  };
+}
+module.exports = { loadConfig, saveConfig, testConnection, syncToNotion: exclusive(syncToNotion), pullFromNotion: exclusive(pullFromNotion) };

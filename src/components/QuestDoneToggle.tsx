@@ -18,6 +18,7 @@ interface Props {
  * clear, all of them.
  */
 function toggleTitle(quest: Quest, complete: boolean): string {
+  if (quest.completionMode === 'manual') return complete ? 'Mark quest not done (keep step progress)' : 'Mark quest done (keep step progress)';
   const n = quest.actions.filter(a => !a.hidden).length;
   if (n === 0) return complete ? 'Mark this quest not done' : 'Mark this quest done';
   const tasks = `${n} task${n === 1 ? '' : 's'}`;
@@ -46,16 +47,6 @@ export default function QuestDoneToggle({ questlineId, quest, locked = false, sm
         🔒
       </span>
     );
-  }
-
-  if (quest.completionMode === 'manual') {
-    return <button type="button" className="btn-ghost" style={{ fontSize: small ? 11 : 12, padding: '5px 8px', flexShrink: 0 }}
-      aria-label={`${complete ? 'Undo achievement of' : 'Mark achieved:'} ${quest.title}`}
-      aria-pressed={complete}
-      title="Confirms the outcome; preparation steps keep their own completion history"
-      onClick={e => { e.stopPropagation(); setQuestComplete(questlineId, quest.id, !complete); }}>
-      {complete ? '✓ Achieved' : small ? 'Achieve' : 'Mark achieved'}
-    </button>;
   }
 
   return (

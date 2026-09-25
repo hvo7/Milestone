@@ -19,6 +19,8 @@ import EditQuestlineModal from './EditQuestlineModal';
 import QuestArtwork from './QuestArtwork';
 import PinButton from './PinButton';
 import QuestDoneToggle from './QuestDoneToggle';
+import { questShowsOnDay } from '../lib/today';
+import { logicalDateKey } from '../domain/schedule';
 import { categoryColor, cleanQuest } from '../lib/ui';
 import { questlineMomentum, movedLabel, etaLabel, momentumHex, STATE_LABEL } from '../lib/momentum';
 import { useHoldToReorder, type HoldReorder, type RowHandlers } from '../lib/useHoldToReorder';
@@ -26,7 +28,7 @@ import { useHoldToReorder, type HoldReorder, type RowHandlers } from '../lib/use
 /** Tooltip for the quest-level pin. Pinning puts the quest on the Today list as a
  *  single item, with its tasks (if any) as check-off steps beneath it. */
 function questPinTitle(quest: Quest): string {
-  if (quest.trackedToday) return 'Pinned to Today — click to unpin';
+  if (questShowsOnDay(quest, logicalDateKey())) return 'Pinned to Today — click to unpin';
   const n = quest.actions.filter(a => !a.hidden).length;
   return n > 0
     ? `Pin this quest to Today (with its ${n} task${n === 1 ? '' : 's'})`
@@ -104,7 +106,7 @@ function CompactQuestRow({ questline, quest, locked, subdued, drag, registerRow,
   const complete = isQuestComplete(quest);
   const { done: ad, total: at } = questProgress(quest);
   const actions = quest.actions.filter(a => !a.hidden);
-  const pinned = !!quest.trackedToday;
+  const pinned = questShowsOnDay(quest, logicalDateKey());
   const canExpand = true;
 
   return (
@@ -453,7 +455,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                                   now shows, one control to its left. */}
                               <button className="btn-ghost" onClick={() => setAddingQuestTo(quest)} style={{ fontSize: 11, padding: '3px 8px' }}>+ Task</button>
                               <PinButton
-                                state={quest.trackedToday ? 'all' : 'none'}
+                                state={questShowsOnDay(quest, logicalDateKey()) ? 'all' : 'none'}
                                 hovered
                                 onClick={() => toggleQuestTracked(questline.id, quest.id)}
                                 title={questPinTitle(quest)}
@@ -490,7 +492,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                           </h3>
                           {/* Pin the whole quest to Today as a single tracked item. */}
                           <PinButton
-                            state={activeQuest.trackedToday ? 'all' : 'none'}
+                            state={questShowsOnDay(activeQuest, logicalDateKey()) ? 'all' : 'none'}
                             hovered
                             label="Pin"
                             onClick={() => toggleQuestTracked(questline.id, activeQuest.id)}

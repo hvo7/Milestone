@@ -1,6 +1,8 @@
 import { useMemo, useState, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NavBar from '../components/NavBar';
+import PinButton from '../components/PinButton';
+import { vynuesOnToday } from '../vynuesStore';
 import VynuesProjectModal from '../components/VynuesProjectModal';
 import VynuesTaskCreateDrawer, { type VynuesDrawerTarget } from '../components/VynuesTaskCreateDrawer';
 import type { EditTarget } from '../components/TaskEditDrawer';
@@ -617,7 +619,7 @@ function TaskRow({ projectId, task, accent, onEditTask }: {
   const renameSubtask = useVynuesStore(s => s.renameSubtask);
   const deleteSubtask = useVynuesStore(s => s.deleteSubtask);
 
-  const canTrack = task.recurring !== 'daily' && task.recurring !== 'weekly';
+  const pinned = vynuesOnToday(task);
 
   const [editing, setEditing]   = useState(false);
   const [draft, setDraft]       = useState(task.title);
@@ -726,21 +728,7 @@ function TaskRow({ projectId, task, accent, onEditTask }: {
         </span>
       )}
 
-      {canTrack && (
-        <button
-          onClick={() => toggleTracked(projectId, task.id)}
-          title={task.tracked ? 'Tracked in Today — click to remove' : 'Track in Today'}
-          style={{
-            background: 'transparent', border: 'none', cursor: 'pointer',
-            fontSize: 12, lineHeight: 1, padding: '0 2px',
-            filter: task.tracked ? 'none' : 'grayscale(1)',
-            opacity: task.tracked ? 1 : (hover ? 0.7 : 0),
-            transition: 'opacity 0.15s',
-          }}
-        >
-          📌
-        </button>
-      )}
+      <PinButton state={pinned ? 'all' : 'none'} hovered={hover} onClick={() => toggleTracked(projectId, task.id)} title={pinned ? 'Remove from Today' : 'Pin to Today'} />
 
       {/* Break the task down — inline, right here, any depth. */}
       <IconButton

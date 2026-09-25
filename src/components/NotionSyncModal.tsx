@@ -21,7 +21,7 @@ export default function NotionSyncModal({ onClose }: Props) {
   const questlines          = useQuestStore(s => s.questlines);
   const routines            = useQuestStore(s => s.routines);
   const setRoutineCompleted = useQuestStore(s => s.setRoutineCompleted);
-  const setAllActionsComplete = useQuestStore(s => s.setAllActionsComplete);
+  const setQuestComplete = useQuestStore(s => s.setQuestComplete);
 
   const [apiKey,      setApiKey]      = useState('');
   const [pageUrl,     setPageUrl]     = useState('');
@@ -36,18 +36,19 @@ export default function NotionSyncModal({ onClose }: Props) {
   const [pullSummary, setPullSummary] = useState('');
 
   const [errorMsg,    setErrorMsg]    = useState('');
+  const busy = pushStatus === 'pushing' || pushStatus === 'testing' || pullStatus === 'pulling';
 
   useEffect(() => {
     window.electronAPI?.notion.loadConfig().then(cfg => {
       if (cfg) { setApiKey(cfg.apiKey); setPageUrl(cfg.parentPageId); }
-    });
+    }).catch(() => setErrorMsg('Could not load Notion settings.'));
   }, []);
 
   useEffect(() => {
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const h = (e: KeyboardEvent) => { if (e.key === 'Escape' && !busy) onClose(); };
     window.addEventListener('keydown', h);
     return () => window.removeEventListener('keydown', h);
-  }, [onClose]);
+  }, [onClose, busy]);
 
   async function handleTest() {
     if (!apiKey.trim()) return;
@@ -88,7 +89,7 @@ export default function NotionSyncModal({ onClose }: Props) {
     let questCount = 0;
     for (const u of res.questUpdates ?? []) {
       const ql = questlines.find(ql => ql.quests.some(q => q.id === u.questId));
-      if (ql) { setAllActionsComplete(ql.id, u.questId, u.complete); questCount++; }
+      if (ql) { setQuestComplete(ql.id, u.questId, u.complete); questCount++; }
     }
 
     setPullLog(res.log ?? []);
@@ -96,14 +97,21 @@ export default function NotionSyncModal({ onClose }: Props) {
     setPullStatus('done');
   }
 
-  const canPush = apiKey.trim() && pageUrl.trim() && pushStatus !== 'pushing' && pushStatus !== 'testing';
-  const canPull = !!apiKey.trim() && pullStatus !== 'pulling';
+  const canPush = apiKey.trim() && pageUrl.trim() && !busy;
+  const canPull = !!apiKey.trim() && !busy;
+  async function runRequest(action: () => Promise<void>) {
+    try { await action(); }
+    catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Notion request failed. Please retry.');
+      setPushStatus('error'); setPullStatus('error');
+    }
+  }
 
   return (
     // Taller than the others and scrolls with the page, so it top-aligns rather
     // than centring a panel that can outgrow the viewport.
     <ModalShell
-      onClose={onClose}
+      onClose={() => { if (!busy) onClose(); }}
       maxWidth={580}
       spring={{ stiffness: 320, damping: 30 }}
       from={{ scale: 0.92, y: 20 }}
@@ -131,6 +139,7 @@ export default function NotionSyncModal({ onClose }: Props) {
                     type={showKey ? 'text' : 'password'}
                     placeholder="secret_..."
                     value={apiKey}
+                    disabled={busy}
                     onChange={e => { setApiKey(e.target.value); setTestResult(''); setPushStatus('idle'); }}
                     style={{ paddingRight: 44, fontFamily: 'monospace', fontSize: 13 }}
                   />
@@ -138,7 +147,7 @@ export default function NotionSyncModal({ onClose }: Props) {
                     {showKey ? '🙈' : '👁'}
                   </button>
                 </div>
-                <button onClick={handleTest} disabled={!apiKey.trim() || pushStatus === 'testing'} style={{ marginTop: 8, background: 'none', border: '1px solid var(--card-border)', borderRadius: 8, color: 'var(--text-dim)', fontFamily: 'inherit', fontSize: 12, fontWeight: 500, padding: '5px 14px', cursor: apiKey.trim() ? 'pointer' : 'not-allowed', opacity: apiKey.trim() ? 1 : 0.4, transition: 'all 0.2s' }}>
+                <button onClick={() => void runRequest(handleTest)} disabled={!apiKey.trim() || busy} style={{ marginTop: 8, background: 'none', border: '1px solid var(--card-border)', borderRadius: 8, color: 'var(--text-dim)', fontFamily: 'inherit', fontSize: 12, fontWeight: 500, padding: '5px 14px', cursor: apiKey.trim() ? 'pointer' : 'not-allowed', opacity: apiKey.trim() ? 1 : 0.4, transition: 'all 0.2s' }}>
                   {pushStatus === 'testing' ? 'Testing…' : 'Test Connection'}
                 </button>
                 {testResult && <p style={{ margin: '6px 0 0', fontSize: 12, color: '#6ee7b7' }}>✓ {testResult}</p>}
@@ -150,6 +159,7 @@ export default function NotionSyncModal({ onClose }: Props) {
                   className="rune-input"
                   placeholder="https://notion.so/... or paste page ID"
                   value={pageUrl}
+                  disabled={busy}
                   onChange={e => { setPageUrl(e.target.value); setPushStatus('idle'); }}
                   style={{ fontFamily: 'monospace', fontSize: 12 }}
                 />
@@ -161,6 +171,20 @@ export default function NotionSyncModal({ onClose }: Props) {
             </div>
 
             {/* Push / Pull panels */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 12, lineHeight: 1.6 }}>
+                <caption style={{ textAlign: 'left', fontWeight: 600, marginBottom: 8 }}>What transfers</caption>
+                <thead><tr><th scope="col">Table</th><th scope="col">Export to Notion</th><th scope="col">Import to Milestone</th></tr></thead>
+                <tbody>
+                  {[
+                    ['Questlines', 'Name, description, status, progress', 'No changes'],
+                    ['Quests', 'Questline link, due date, schedule, status, steps snapshot', 'Complete / Not Started status'],
+                    ['Tasks', 'Category, description, due date, schedule, counters, skipped date', 'Done checkbox'],
+                  ].map(row => <tr key={row[0]}>{row.map((cell, i) => <td key={i} style={{ padding: '10px 8px', verticalAlign: 'top', borderTop: '1px solid var(--card-border)' }}>{cell}</td>)}</tr>)}
+                </tbody>
+              </table>
+              <p style={{ fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.6 }}>Import updates previously exported items only; it does not import new Notion rows, titles, dates, or step edits. Export replaces the labeled Milestone snapshot, preserving notes outside it. Older exported page content is retained. Hidden/deleted items are archived on export.</p>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
 
               {/* ── Push ── */}
@@ -171,7 +195,7 @@ export default function NotionSyncModal({ onClose }: Props) {
                 <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5 }}>
                   Send your current quests and tasks to Notion.
                 </p>
-                <button className="btn-gold" style={{ width: '100%', opacity: canPush ? 1 : 0.45, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} disabled={!canPush} onClick={handlePush}>
+                <button className="btn-gold" style={{ width: '100%', opacity: canPush ? 1 : 0.45, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} disabled={!canPush} onClick={() => void runRequest(handlePush)}>
                   {pushStatus === 'pushing' ? <><Spinner /> Pushing…</> : '↑ Push Now'}
                 </button>
 
@@ -194,7 +218,7 @@ export default function NotionSyncModal({ onClose }: Props) {
                 <p style={{ margin: '0 0 12px', fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5 }}>
                   Read back task done-status and quest completion from Notion.
                 </p>
-                <button className="btn-gold" style={{ width: '100%', opacity: canPull ? 1 : 0.45, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} disabled={!canPull} onClick={handlePull}>
+                <button className="btn-gold" style={{ width: '100%', opacity: canPull ? 1 : 0.45, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7 }} disabled={!canPull} onClick={() => void runRequest(handlePull)}>
                   {pullStatus === 'pulling' ? <><Spinner /> Pulling…</> : '↓ Pull Now'}
                 </button>
 
@@ -211,13 +235,13 @@ export default function NotionSyncModal({ onClose }: Props) {
             </div>
 
             {/* Error */}
-            {(pushStatus === 'error' || pullStatus === 'error') && errorMsg && (
+            {errorMsg && (
               <div style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6, padding: '10px 14px' }}>
                 <p style={{ margin: 0, fontSize: 12, color: '#f87171' }}>✗ {errorMsg}</p>
               </div>
             )}
 
-            <button className="btn-ghost" onClick={onClose}>Close</button>
+            <button className="btn-ghost" disabled={busy} onClick={onClose}>Close</button>
           </div>
     </ModalShell>
   );

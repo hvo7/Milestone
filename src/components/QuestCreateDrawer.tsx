@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { Quest } from '../types';
-import { useQuestStore, dateKey } from '../store';
+import { useQuestStore } from '../store';
 import { cleanQuest } from '../lib/ui';
 import { MenuSelect } from '../vynuesUi';
 import { RepeatPicker, type RepeatValue } from '../recurrence';
@@ -46,7 +46,7 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
   const [questlineId, setQuestlineId] = useState('');
   const [repeat, setRepeat]           = useState<RepeatValue>({ recurring: null });
   const [dueDate, setDueDate]         = useState('');
-  const [manualCompletion, setManualCompletion] = useState(true);
+  const [manualCompletion, setManualCompletion] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
 
   // Keep the latest onClose in a ref so it doesn't drive the prefill effect. The quest
@@ -68,13 +68,13 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
       setQuestlineId(editing.questlineId);
       setManualCompletion(q.completionMode === 'manual');
     } else {
-      // One-time items default their due date to today (editable / cleared for recurring).
-      setTitle(''); setDescription(''); setRepeat({ recurring: null }); setDueDate(dateKey());
+      // Dates are opt-in; creating a quest does not schedule it for today.
+      setTitle(''); setDescription(''); setRepeat({ recurring: null }); setDueDate('');
       // General, not the first questline: opened from the page header this has no
       // questline in mind, and filing a stray task under whichever questline
       // happens to sort first is the one guess that's always wrong.
       setQuestlineId(initialQuestlineId || GENERAL_CATEGORY);
-      setManualCompletion(true);
+      setManualCompletion(false);
     }
     const t = setTimeout(() => titleRef.current?.focus(), 80);
     return () => clearTimeout(t);
@@ -203,7 +203,7 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
                   </Field>}
 
                   {!isRepeating && (
-                    <Field label={<>Due date <span style={{ fontWeight: 400, textTransform: 'none', opacity: 0.7 }}>· defaults to today</span></>}>
+                    <Field label={<>Due date <span style={{ fontWeight: 400, textTransform: 'none', opacity: 0.7 }}>· optional</span></>}>
                       <input
                         type="date"
                         value={dueDate}

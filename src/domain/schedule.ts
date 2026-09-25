@@ -1,4 +1,4 @@
-import { type Routine, type Schedule, type MonthlyRule } from '../types';
+import { type Action, type Routine, type Schedule, type MonthlyRule } from '../types';
 import {
   occursOn, lastOccurrenceOnOrBefore, nextOccurrenceAfter, monthlyRuleLabel, monthlyRuleShort,
 } from '../lib/monthlyRule';
@@ -230,7 +230,10 @@ export function alwaysOnToday(r: Routine): FixedReason | null {
 /** Is this task on Today right now — the state every pin renders and toggles.
  *  An explicit `offToday` beats every default. */
 export const onToday = (r: Routine): boolean =>
-  !r.offToday && (alwaysOnToday(r) !== null || !!r.trackedToday);
+  !r.offToday && (alwaysOnToday(r) !== null || !!r.trackedToday || r.dueDate?.slice(0, 10) === logicalDateKey() || dueOnDay(r, logicalDayStart()));
+
+export const actionOnToday = (a: Action): boolean =>
+  !a.offToday && (!!a.trackedToday || dueOnDay(a, logicalDayStart()));
 
 /** A multi-day task you chip away at day by day — it has a counter target or a
  *  checklist. These surface on Today every day while open (that's the point),

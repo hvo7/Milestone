@@ -57,6 +57,7 @@ export interface Action {
    *  (they fall back to today, which is the old behaviour). */
   completedAt?: string;
   trackedToday?: boolean;
+  offToday?: boolean;
   hidden?: boolean;
   recurring?: RecurringType | null;
   intervalDays?: IntervalDays;
@@ -86,6 +87,7 @@ export interface Quest {
    *  its own right — you can pin it whether or not it has sub-tasks, and it shows
    *  on Today with its actions as check-off steps beneath it. */
   trackedToday?: boolean;
+  offToday?: boolean;
   /** Completion for a quest that has no sub-tasks. When a quest has actions its
    *  completion is derived from them (all done = quest done); this field is the
    *  fallback for the action-less case, so such a quest can still be checked off

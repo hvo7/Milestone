@@ -6,8 +6,7 @@ export type PinState = 'none' | 'some' | 'all';
 /**
  * 📌 toggle that puts a task — or every task in a quest — on the Today list.
  *
- * Stays visible while pinned so it can always be undone, and fades in on hover
- * otherwise, so a quest full of unpinned tasks doesn't read as a wall of pins.
+ * Lit while pinned; subdued but visible otherwise, including on touch screens.
  */
 export default function PinButton({
   state, onClick, title, disabled = false, hovered = false, size = 12, label,
@@ -25,6 +24,9 @@ export default function PinButton({
   const on = state !== 'none';
   return (
     <button
+      type="button"
+      aria-label={title}
+      aria-pressed={on}
       onClick={e => { e.stopPropagation(); if (!disabled) onClick(e); }}
       title={title}
       disabled={disabled}
@@ -36,9 +38,8 @@ export default function PinButton({
         cursor: disabled ? 'default' : 'pointer',
         fontFamily: 'inherit', fontSize: size, fontWeight: 600, lineHeight: 1.5,
         color: on ? 'var(--accent)' : 'var(--text-dim)',
-        // Pinned stays lit; unpinned only appears on hover, and a disabled pin
-        // (a quest with no tasks yet) never advertises itself.
-        opacity: disabled ? 0.25 : on ? 1 : hovered ? 0.75 : 0,
+        // An unpinned item still needs a discoverable control without hovering.
+        opacity: disabled ? 0.25 : on ? 1 : hovered ? 0.75 : 0.5,
         transition: 'opacity 0.18s, color 0.18s, background 0.18s',
       }}
     >

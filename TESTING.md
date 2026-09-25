@@ -6,6 +6,14 @@ The amber TESTING banner identifies this environment. Build output goes to `dist
 
 On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
 
+## Batch 004 — approved for v3.3.3
+
+- New quests and task drawers default to no due date; new quests default to checklist completion. Existing manual completion semantics are preserved with the same circular checkbox.
+- Shared visible pin controls on system tasks, quest cards, the task library, and project tasks. Explicit unpinning suppresses dated quests and daily/project tasks from Today.
+- Only Add new tab, Reload, and Settings in the top toolbar; notifications, appearance, data/sync, and Notion live under Settings.
+- Notion exports correct standalone/manual quest status, readable schedule/date/category/counter columns, and preserves notes outside its owned snapshot. Imports validate status fields and use normal completion rules. Failed writes no longer create duplicate pages; failed reads do not apply a partial import.
+- User explicitly approved shipping this batch directly after isolated testing and packaging, with a patch version bump. No live Notion transfer is performed during validation.
+
 ## Batch 003 — approved for v3.3.2
 
 - Keep skipped and completed habits visible below active habits in Fixing my chud life.

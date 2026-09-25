@@ -9,6 +9,9 @@ import ProgressBar from './ProgressBar';
 import ActionItem from './ActionItem';
 import AddModal from './AddModal';
 import QuestDoneToggle from './QuestDoneToggle';
+import PinButton from './PinButton';
+import { questShowsOnDay } from '../lib/today';
+import { logicalDateKey } from '../domain/schedule';
 import QuestArtwork from './QuestArtwork';
 import { categoryColor, cleanQuest } from '../lib/ui';
 
@@ -19,6 +22,7 @@ const RECUR_LABEL: Record<RecurringType, string> = { daily: 'Daily', weekly: 'We
 
 export default function QuestCard({ quest, questline }: Props) {
   const deleteQuest       = useQuestStore(s => s.deleteQuest);
+  const toggleQuestTracked = useQuestStore(s => s.toggleQuestTracked);
   const setQuestRecurring = useQuestStore(s => s.setQuestRecurring);
   const setQuestDueDate   = useQuestStore(s => s.setQuestDueDate);
   const toggleQuestHidden = useQuestStore(s => s.toggleQuestHidden);
@@ -121,6 +125,7 @@ export default function QuestCard({ quest, questline }: Props) {
               the toggle sits this one out rather than repeating it. */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
             {!locked && <QuestDoneToggle questlineId={questline.id} quest={quest} />}
+            {!locked && <PinButton state={questShowsOnDay(quest, logicalDateKey()) ? 'all' : 'none'} title={questShowsOnDay(quest, logicalDateKey()) ? 'Remove from Today' : 'Pin to Today'} onClick={() => toggleQuestTracked(questline.id, quest.id)} />}
             <QuestArtwork kind="quest" title={quest.title} id={quest.id} context={questline.title} />
             {editingTitle ? (
               <input

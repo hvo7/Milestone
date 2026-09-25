@@ -5,6 +5,12 @@ import { migrateLegacyStorage } from './lib/storageMigration';
 import { flattenTree, mapNode, insertNode, removeNode } from './lib/subtree';
 import { pushUndo, insertAt, reinsert, deleteLabel } from './lib/undo';
 import type { RecurringType, MonthlyRule } from './types';
+import { dueOnDay, logicalDateKey, logicalDayStart } from './domain/schedule';
+
+export function vynuesOnToday(t: VynuesTask): boolean {
+  if (t.offToday || (t.dueDate && t.dueDate.slice(0, 10) !== logicalDateKey())) return false;
+  return !!t.tracked || !!t.dueDate || (t.recurring === 'daily' && !t.intervalDays && !t.monthlyRule) || dueOnDay(t, logicalDayStart());
+}
 
 // Also called from ./store — whichever module loads first wins, and it's idempotent.
 migrateLegacyStorage();
@@ -70,6 +76,7 @@ export interface VynuesTask {
   streak?: number;
   /** Pinned into the Today tab's "Tracked" section. */
   tracked?: boolean;
+  offToday?: boolean;
 }
 
 export interface VynuesProject {
@@ -293,7 +300,7 @@ export const useVynuesStore = create<VynuesState>()(
       toggleTaskTracked: (projectId, taskId) =>
         set(s => ({
           projects: s.projects.map(p => p.id !== projectId ? p : {
-            ...p, tasks: p.tasks.map(t => t.id !== taskId ? t : { ...t, tracked: !t.tracked }),
+            ...p, tasks: p.tasks.map(t => t.id !== taskId ? t : { ...t, tracked: !vynuesOnToday(t), offToday: vynuesOnToday(t) ? true : undefined }),
           }),
         })),
 

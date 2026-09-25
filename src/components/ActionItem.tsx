@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import type { Action, RecurringType } from '../types';
 import { useQuestStore, useUIStore } from '../store';
 import PinButton from './PinButton';
+import { actionOnToday } from '../domain/schedule';
 
 interface Props {
   action: Action;
@@ -141,10 +142,10 @@ export default function ActionItem({ action, questlineId, questId, locked, paren
             on next is exactly what you're doing while shaping a questline. */}
         {!locked && (
           <PinButton
-            state={action.trackedToday ? 'all' : 'none'}
+            state={actionOnToday(action) ? 'all' : 'none'}
             hovered={hovered}
             onClick={() => toggleTracked(questlineId, questId, action.id)}
-            title={action.trackedToday
+            title={actionOnToday(action)
               ? 'Pinned to Today — click to remove'
               : 'Pin to Today (adds it to your To Do list)'}
           />

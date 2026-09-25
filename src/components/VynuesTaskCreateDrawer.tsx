@@ -3,7 +3,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useVynuesStore, type TaskPriority } from '../vynuesStore';
 import { PrioritySegmented, PROJECT_COLOR_VAR } from '../vynuesUi';
 import { RepeatPicker, type RepeatValue } from '../recurrence';
-import { dateKey } from '../store';
 import Field from './Field';
 
 /** Where a new item should land. `projectId` null = nothing preselected (the drawer
@@ -36,7 +35,7 @@ export default function VynuesTaskCreateDrawer({ open, onClose, target, spaceId 
   const addTask    = useVynuesStore(s => s.addTask);
   const addSubtask = useVynuesStore(s => s.addSubtask);
 
-  const defaultDue = `${dateKey()}T17:00`;
+  const defaultDue = '';
   const [projectId, setProjectId] = useState<string | null>(target.projectId);
   const [title, setTitle]       = useState('');
   const [priority, setPriority] = useState<TaskPriority>('medium');

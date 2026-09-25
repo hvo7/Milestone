@@ -24,7 +24,7 @@ if (!app.requestSingleInstanceLock()) { app.quit(); } else {
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, done) => done(false));
     session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (_details, done) => done({ cancel: true }));
     win = new BrowserWindow({
-      title: 'Milestone — TESTING · Batch 003', width: 1440, height: 940,
+      title: 'Milestone — TESTING · Batch 004', width: 1440, height: 940,
       backgroundColor: '#191e25', autoHideMenuBar: true,
       webPreferences: { preload: path.join(__dirname, 'testing-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });
@@ -34,7 +34,7 @@ if (!app.requestSingleInstanceLock()) { app.quit(); } else {
     win.webContents.once('did-finish-load', () => {
       setTimeout(async () => {
         if (win.isDestroyed()) return;
-        const report = await win.webContents.executeJavaScript(`JSON.stringify({title:document.title, testing:!!document.querySelector('[data-testing-banner]'), artwork:document.querySelectorAll('[data-quest-artwork]').length, productionBridge:!!window.electronAPI, text:document.body.innerText.slice(0,500)})`);
+        const report = await win.webContents.executeJavaScript(`JSON.stringify({title:document.title, testing:!!document.querySelector('[data-testing-banner]'), toolbar:[...document.querySelectorAll('.nav-tools button')].map(b=>b.getAttribute('aria-label')), artwork:document.querySelectorAll('[data-quest-artwork]').length, productionBridge:!!window.electronAPI, text:document.body.innerText.slice(0,500)})`);
         fs.writeFileSync(path.join(testingDir, 'smoke-check.json'), report);
         const picture = await win.webContents.capturePage();
         fs.writeFileSync(path.join(testingDir, 'preview.png'), picture.toPNG());

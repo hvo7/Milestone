@@ -6,6 +6,8 @@ import { RepeatPicker, type RepeatValue } from '../recurrence';
 import { MenuSelect, PrioritySegmented, PROJECT_COLOR_VAR, toDateTimeLocalInput } from '../vynuesUi';
 import SubtaskTree from './SubtaskTree';
 import Field from './Field';
+import PinButton from './PinButton';
+import { vynuesOnToday } from '../vynuesStore';
 import MultiSelect from './MultiSelect';
 import { cleanQuest, routineSubNodes, vynuesSubNodes, ANCHOR_LABEL, ANCHOR_ICON } from '../lib/ui';
 
@@ -344,7 +346,7 @@ function VynuesEditor({ projectId, taskId, onClose }: { projectId: string; taskI
   if (!project || !task) return null;
   const accent = PROJECT_COLOR_VAR[project.color];
   const isRepeating = !!repeat.recurring || !!repeat.intervalDays || !!repeat.monthlyRule;
-  const canTrack = !!repeat.monthlyRule || (repeat.recurring !== 'daily' && repeat.recurring !== 'weekly');
+  const pinned = vynuesOnToday(task);
 
   function save() {
     if (!task) return;
@@ -407,25 +409,7 @@ function VynuesEditor({ projectId, taskId, onClose }: { projectId: string; taskI
           </Field>
         )}
 
-        {canTrack && (
-          <Field label="Today">
-            <button
-              type="button"
-              onClick={() => toggleTracked(projectId, taskId)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 8, width: 'fit-content',
-                fontFamily: 'inherit', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                padding: '8px 13px', borderRadius: 10,
-                border: task.tracked ? '1px solid var(--accent-border)' : '1px solid var(--input-border)',
-                background: task.tracked ? 'var(--accent-soft)' : 'var(--input-bg)',
-                color: task.tracked ? 'var(--accent)' : 'var(--text-dim)',
-                transition: 'all 0.15s',
-              }}
-            >
-              📌 {task.tracked ? 'Tracked in Today' : 'Track in Today'}
-            </button>
-          </Field>
-        )}
+        <Field label="Today"><PinButton state={pinned ? 'all' : 'none'} title={pinned ? 'Remove from Today' : 'Pin to Today'} onClick={() => toggleTracked(projectId, taskId)} /></Field>
 
         <Field label="Notes">
           <textarea

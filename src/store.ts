@@ -16,7 +16,7 @@ export {
   questlineProgress, questProgress,
 } from './domain/taskState';
 import {
-  skipActive, repeats, sameRule, isMultiDayCycle, onToday, sessionMode, sessionOn, logicalDateKey,
+  skipActive, repeats, sameRule, isMultiDayCycle, onToday, actionOnToday, sessionMode, sessionOn, logicalDateKey,
 } from './domain/schedule';
 export {
   recurrenceLabel, getResetDisplay, type DueDateInfo, getDueDateInfo, DAY_RESET_HOUR,
@@ -293,10 +293,13 @@ export const useQuestStore = create<QuestData>()(
         }),
 
       toggleTracked: (qlId, qId, aId) =>
-        set(s => ({ questlines: mapAction(s.questlines, qlId, qId, aId, a => ({ ...a, trackedToday: !a.trackedToday })) })),
+        set(s => ({ questlines: mapAction(s.questlines, qlId, qId, aId, a => ({ ...a, trackedToday: !actionOnToday(a), offToday: actionOnToday(a) ? true : undefined })) })),
 
       toggleQuestTracked: (qlId, qId) =>
-        set(s => ({ questlines: mapQuest(s.questlines, qlId, qId, q => ({ ...q, trackedToday: !q.trackedToday })) })),
+        set(s => ({ questlines: mapQuest(s.questlines, qlId, qId, q => {
+          const on = !q.offToday && (!!q.trackedToday || q.dueDate?.slice(0, 10) === logicalDateKey());
+          return { ...q, trackedToday: !on, offToday: on ? true : undefined };
+        }) })),
 
       // Checking a quest off Today completes its whole checklist at once (or, for an
       // action-less quest, flips its own flag). The heatmap moves by the number of
