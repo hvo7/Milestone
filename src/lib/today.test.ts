@@ -125,12 +125,12 @@ describe('showsOnDay', () => {
    * about whether you meant to do it today — and the day's list filled up with
    * car chores nobody had chosen for that day.
    */
-  it('uses the due date for General tasks even when pinned', () => {
+  it('uses the due date automatically and honors explicit General pins', () => {
     const [k, s] = day();
     expect(showsOnDay(routine({ dueDate: '2026-08-10' }), k, s)).toBe(true);
     expect(showsOnDay(routine(), k, s)).toBe(false);
     expect(showsOnDay(routine({ dueDate: '2026-08-10', trackedToday: true }), k, s)).toBe(true);
-    expect(showsOnDay(routine({ dueDate: '2026-12-25', trackedToday: true }), k, s)).toBe(false);
+    expect(showsOnDay(routine({ dueDate: '2026-12-25', trackedToday: true }), k, s)).toBe(true);
     // …and unpinning takes it straight back off.
     expect(showsOnDay(routine({ trackedToday: false, offToday: true }), k, s)).toBe(false);
   });
@@ -206,10 +206,10 @@ describe('the pin', () => {
 });
 
 describe('vynuesShowsOnDay', () => {
-  it('excludes pinned future and overdue tasks', () => {
+  it('honors explicit pins for future and overdue project tasks', () => {
     const [k, s] = day();
     for (const dueDate of ['2026-08-11T09:00', '2026-08-09T09:00']) {
-      expect(vynuesShowsOnDay(vTask({ tracked: true, dueDate }), k, s)).toBe(false);
+      expect(vynuesShowsOnDay(vTask({ tracked: true, dueDate }), k, s)).toBe(true);
     }
   });
   it('needs a due date or a pin for a one-off', () => {
@@ -285,12 +285,12 @@ describe('routineSettledOnDay', () => {
 });
 
 describe('dueSummary', () => {
-  it('excludes future quests and their actions even when pinned', () => {
+  it('counts explicitly pinned future quests once, with their nested actions', () => {
     const q = { id: 'q', title: 'Tomorrow', description: '', order: 0, trackedToday: true, dueDate: '2026-08-11',
       actions: [{ id: 'a', title: 'Step', completed: false, trackedToday: true }] };
-    expect(questShowsOnDay(q, '2026-08-10')).toBe(false);
+    expect(questShowsOnDay(q, '2026-08-10')).toBe(true);
     expect(questShowsOnDay({ ...q, trackedToday: false }, '2026-08-11')).toBe(true);
-    expect(dueSummary({ routines: [], questlines: [questline({ quests: [q] })] }, { projects: [] }).total).toBe(0);
+    expect(dueSummary({ routines: [], questlines: [questline({ quests: [q] })] }, { projects: [] }).total).toBe(1);
   });
   const questline = (over: Partial<Questline> = {}): Questline => ({
     id: 'ql', title: 'QL', description: '', icon: '', color: 'amber', quests: [], ...over,

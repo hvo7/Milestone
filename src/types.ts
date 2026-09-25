@@ -67,6 +67,7 @@ export interface Action {
 }
 
 export interface Quest {
+  offTodayOn?: string;
   id: string;
   title: string;
   description: string;
@@ -189,6 +190,7 @@ export interface Subtask {
 
 /** Recurring task — can be standalone or linked to a questline */
 export interface Routine {
+  offTodayOn?: string;
   id: string;
   title: string;
   description?: string;

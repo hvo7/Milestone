@@ -6,6 +6,13 @@ The amber TESTING banner identifies this environment. Build output goes to `dist
 
 On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
 
+## Batch 005 — approved for v3.3.4
+
+- Explicit pins show General tasks, quests, and project tasks on Today without rewriting their deadlines. Unpinned future/overdue tasks remain off Today.
+- Due-today tasks auto-pin; creating a dated General task no longer toggles that automatic pin off.
+- Recover due-today items accidentally hidden by older creation code. Deliberate unpins are date-stamped so they suppress that day, not a later deadline.
+- User explicitly approved shipping these pin fixes after isolated testing. Production data is not copied from Testing.
+
 ## Batch 004 — approved for v3.3.3
 
 - New quests and task drawers default to no due date; new quests default to checklist completion. Existing manual completion semantics are preserved with the same circular checkbox.

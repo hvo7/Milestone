@@ -24,7 +24,7 @@ if (!app.requestSingleInstanceLock()) { app.quit(); } else {
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, done) => done(false));
     session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (_details, done) => done({ cancel: true }));
     win = new BrowserWindow({
-      title: 'Milestone — TESTING · Batch 004', width: 1440, height: 940,
+      title: 'Milestone — TESTING · Batch 005', width: 1440, height: 940,
       backgroundColor: '#191e25', autoHideMenuBar: true,
       webPreferences: { preload: path.join(__dirname, 'testing-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });

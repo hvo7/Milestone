@@ -1,6 +1,6 @@
 // Imported before the stores so the first hydration reads the test copy.
 if (import.meta.env.MODE === 'testing') {
-  document.title = 'Milestone — TESTING · Batch 004';
+  document.title = 'Milestone — TESTING · Batch 005';
   const seed = window.milestoneTesting?.seed;
   if (!localStorage.getItem('milestone-testing-seeded-v2') && seed) {
     for (const [key, value] of [['milestone-v1', seed.quest], ['milestone-vynues-v1', seed.vynues]]) {

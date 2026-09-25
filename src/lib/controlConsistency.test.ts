@@ -56,7 +56,7 @@ describe('consistent task controls', () => {
     expect(questShowsOnDay(read(), '2026-09-25')).toBe(false);
     useQuestStore.getState().toggleQuestTracked('line', 'q');
     expect(questShowsOnDay(read(), '2026-09-25')).toBe(true);
-    expect(questShowsOnDay(read(), '2026-09-26')).toBe(false);
+    expect(questShowsOnDay(read(), '2026-09-26')).toBe(true);
   });
   it('honors explicit unpin for daily actions and project tasks', () => {
     expect(actionShowsOnDay({ id: 'a', title: 'A', completed: false, recurring: 'daily', offToday: true }, new Date())).toBe(false);

@@ -11,6 +11,7 @@
  * one of these about the *next* day by passing a different pair.
  */
 import type { Action, Quest, Questline, Routine } from '../types';
+import { isOffToday } from '../domain/schedule';
 import { alwaysOnToday, dateKey, dueOnDay, isMultiDayCycle, logicalDateKey, logicalDayStart, onToday, repeats, skipActive } from '../domain/schedule';
 import { engagedOnDay, isGeneralTask } from '../domain/taskState';
 import { isQuestComplete } from '../domain/taskState';
@@ -30,12 +31,12 @@ import type { VynuesProject, VynuesTask } from '../vynuesStore';
  *   complete, linger only through the day they were finished.
  * - Other weekly / monthly / interval tasks surface on the day their period ends
  *   (or when pinned) — that list is for work due *that day*.
- * - An explicit due date must match the viewed day, even when pinned.
+ * - Explicit pins override the due date; otherwise only that due day surfaces.
  * - Undated General one-offs surface only when pinned; linked tasks keep their place.
  * - Completed one-offs linger only through their completion day.
  */
 export function showsOnDay(r: Routine, dayKey: string, dayStart: Date): boolean {
-  if (!dueDateMatchesDay(r, dayKey) || r.offToday) return false;
+  if (isOffToday(r, dayKey) || (!r.trackedToday && !dueDateMatchesDay(r, dayKey))) return false;
   if (repeats(r)) {
     const fixed = alwaysOnToday(r);
     if (fixed === 'daily') return true;
@@ -53,7 +54,7 @@ export function showsOnDay(r: Routine, dayKey: string, dayStart: Date): boolean 
 
 /** The Vynues equivalent of `showsOnDay`. */
 export function vynuesShowsOnDay(t: VynuesTask, dayKey: string, dayStart: Date): boolean {
-  if (t.offToday || !dueDateMatchesDay(t, dayKey)) return false;
+  if (isOffToday(t, dayKey) || (!t.tracked && !dueDateMatchesDay(t, dayKey))) return false;
   if (repeats(t)) {
     if (t.recurring === 'daily' && !t.intervalDays && !t.monthlyRule) return true;
     return !!t.tracked || dueOnDay(t, dayStart);
@@ -64,13 +65,13 @@ export function vynuesShowsOnDay(t: VynuesTask, dayKey: string, dayStart: Date):
   return true;
 }
 
-/** Explicit dates never spill into another day's list, even through a pin. */
+/** Unpinned dates only schedule their own day. */
 export function dueDateMatchesDay(task: { dueDate?: string | null }, dayKey: string): boolean {
   return !task.dueDate || task.dueDate.slice(0, 10) === dayKey;
 }
 
 export function questShowsOnDay(q: Quest, dayKey: string): boolean {
-  return !q.hidden && !q.offToday && dueDateMatchesDay(q, dayKey) && (!!q.trackedToday || !!q.dueDate);
+  return !q.hidden && !isOffToday(q, dayKey) && (!!q.trackedToday || (!!q.dueDate && dueDateMatchesDay(q, dayKey)));
 }
 
 /** Stable grouping keeps the user's order within active and settled tasks. */
@@ -136,10 +137,11 @@ export function dueSummary(
 
   for (const ql of quest.questlines) {
     for (const q of ql.quests) {
-      if (q.hidden || !dueDateMatchesDay(q, dayKey)) continue;
+      if (q.hidden) continue;
       // A quest pinned as a unit owns its actions on Today, so it counts as one
       // row and they don't count at all — exactly as the page renders it.
       if (questShowsOnDay(q, dayKey)) { count(isQuestComplete(q), q.title); continue; }
+      if (!dueDateMatchesDay(q, dayKey)) continue;
       for (const a of q.actions) {
         if (actionShowsOnDay(a, dayStart)) count(a.completed, a.title);
       }

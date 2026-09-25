@@ -73,8 +73,8 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   return (
     <>
       {import.meta.env.MODE === 'testing' && <div data-testing-banner style={{ background: '#edc16f', color: '#372b16', padding: '9px 18px', display: 'flex', gap: 14, justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 12, borderRadius: 10, marginBottom: 12 }}>
-        <strong>TESTING · Batch 004 · Consistent controls &amp; Notion</strong>
-        <span>Separate data · Sync off · Batch 004 approved for release</span>
+        <strong>TESTING · Batch 005 · Today pin fixes</strong>
+        <span>Separate data · Sync off · Batch 005 approved for release</span>
       </div>}
       <nav className="app-nav" aria-label="Main navigation">
         <Link to="/" className="app-brand" aria-label="Milestone home">

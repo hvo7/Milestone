@@ -16,7 +16,7 @@ export {
   questlineProgress, questProgress,
 } from './domain/taskState';
 import {
-  skipActive, repeats, sameRule, isMultiDayCycle, onToday, actionOnToday, sessionMode, sessionOn, logicalDateKey,
+  skipActive, repeats, sameRule, isMultiDayCycle, onToday, actionOnToday, sessionMode, sessionOn, logicalDateKey, isOffToday,
 } from './domain/schedule';
 export {
   recurrenceLabel, getResetDisplay, type DueDateInfo, getDueDateInfo, DAY_RESET_HOUR,
@@ -297,8 +297,8 @@ export const useQuestStore = create<QuestData>()(
 
       toggleQuestTracked: (qlId, qId) =>
         set(s => ({ questlines: mapQuest(s.questlines, qlId, qId, q => {
-          const on = !q.offToday && (!!q.trackedToday || q.dueDate?.slice(0, 10) === logicalDateKey());
-          return { ...q, trackedToday: !on, offToday: on ? true : undefined };
+          const on = !isOffToday(q, logicalDateKey()) && (!!q.trackedToday || q.dueDate?.slice(0, 10) === logicalDateKey());
+          return { ...q, trackedToday: !on, offToday: on ? true : undefined, offTodayOn: on ? logicalDateKey() : undefined };
         }) })),
 
       // Checking a quest off Today completes its whole checklist at once (or, for an
@@ -899,8 +899,8 @@ export const useQuestStore = create<QuestData>()(
       toggleRoutineTracked: (rId) =>
         set(s => ({
           routines: mapById(s.routines, rId, r => (onToday(r)
-            ? { ...r, trackedToday: false, offToday: true }
-            : { ...r, trackedToday: true,  offToday: undefined })),
+            ? { ...r, trackedToday: false, offToday: true, offTodayOn: logicalDateKey() }
+            : { ...r, trackedToday: true, offToday: undefined, offTodayOn: undefined })),
         })),
 
       toggleRoutineHidden: (rId) =>

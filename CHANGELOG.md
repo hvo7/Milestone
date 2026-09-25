@@ -7,6 +7,12 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.4 — 2026-09-25
+
+- Fixed manually pinned General tasks, quests, and project tasks missing from Today when their due date differs. Pinning keeps the original due date; unpinned tasks still wait for their due day.
+- Tasks due today automatically light their pin and appear in Today. Creating a dated General task no longer toggles its automatic pin off.
+- Recover due-today tasks affected by the earlier creation bug, while respecting deliberate unpins made today.
+
 ## 3.3.2
 
 - Keep skipped and completed tasks visible at the bottom of Fixing my chud life. The main Today list's Show skipped filter no longer hides tasks in this panel.

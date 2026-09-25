@@ -230,7 +230,20 @@ export function alwaysOnToday(r: Routine): FixedReason | null {
 /** Is this task on Today right now — the state every pin renders and toggles.
  *  An explicit `offToday` beats every default. */
 export const onToday = (r: Routine): boolean =>
-  !r.offToday && (alwaysOnToday(r) !== null || !!r.trackedToday || r.dueDate?.slice(0, 10) === logicalDateKey() || dueOnDay(r, logicalDayStart()));
+  !isOffToday(r, logicalDateKey()) && (!!r.trackedToday || (matchesDueDay(r, logicalDateKey()) && (alwaysOnToday(r) !== null || !!r.dueDate || dueOnDay(r, logicalDayStart()))));
+
+/** Manual pins override dates; dates alone only schedule their own day. */
+export const matchesDueDay = (item: { dueDate?: string | null }, day: string): boolean =>
+  !item.dueDate || item.dueDate.slice(0, 10) === day;
+
+/** A deliberate unpin may suppress today's auto-pin, not a later deadline.
+ * Older builds wrote an undated offToday by mistake during task creation.
+ * Let dated items from those builds recover automatically on their due day. */
+export function isOffToday(item: { offToday?: boolean; offTodayOn?: string; dueDate?: string | null }, day: string): boolean {
+  if (!item.offToday) return false;
+  if (item.dueDate?.slice(0, 10) === day) return item.offTodayOn === day;
+  return true;
+}
 
 export const actionOnToday = (a: Action): boolean =>
   !a.offToday && (!!a.trackedToday || dueOnDay(a, logicalDayStart()));

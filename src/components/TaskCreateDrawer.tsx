@@ -100,10 +100,9 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
     }
     // Vynues tasks live in their own store and have no systems, hence the guard.
     if (newId && systemIds.length) setRoutineSystems(newId, systemIds);
-    // A General one-off no longer reaches Today on its due date alone — but this
-    // drawer only opens *from* Today, so that is plainly where it's wanted. Same
-    // reasoning as the Vynues branch above, which pins for the same reason.
-    if (newId && !repeats && !questlineId && !systemIds.length) toggleRoutineTracked(newId);
+    // Dated tasks arrive automatically on their due day. Only undated General
+    // tasks need an explicit pin; toggling a due-today task would UNPIN it.
+    if (newId && !repeats && !dueDate && !questlineId && !systemIds.length) toggleRoutineTracked(newId);
     onClose();
   }
 
