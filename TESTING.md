@@ -6,6 +6,12 @@ The amber TESTING banner identifies this environment. Build output goes to `dist
 
 On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
 
+## Batch 006 — approved same-version hotfix (3.3.4)
+
+- Unfinished due-date items remain on Today after the local 2 AM rollover, with an Overdue label and their original deadline intact.
+- Pin indicators and removal controls follow the same carry-over rule. Completed deadlines do not stay indefinitely; future deadlines remain off Today unless explicitly pinned.
+- User approved live shipping without a version bump: deploy the website and patch the local executable; no new numbered desktop release.
+
 ## Batch 005 — approved for v3.3.4
 
 - Explicit pins show General tasks, quests, and project tasks on Today without rewriting their deadlines. Unpinned future/overdue tasks remain off Today.

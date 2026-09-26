@@ -384,11 +384,11 @@ export default function Today() {
         todayDone: false,
         streak: quest.streak,
         accentHex: done ? 'var(--success)' : cat.color,
-        meta: repeats(quest)
+        meta: <>{repeats(quest)
           ? <RecurrenceBadge recurring={quest.recurring} intervalDays={quest.intervalDays} monthlyRule={quest.monthlyRule} />
           : at > 0
             ? <Caption>Quest · {ad}/{at} tasks</Caption>
-            : <Caption>Quest</Caption>,
+            : <Caption>Quest</Caption>}{quest.dueDate && !done && <> · <DueLabel dueDate={quest.dueDate} todayKey={viewKey} /></>}</>,
         subtasks: actionSubNodes(quest.actions, reset),
         subHandlers: {
           onAdd: (t: string) => addAction(ql.id, quest.id, t),

@@ -110,13 +110,13 @@ describe('showsOnDay', () => {
     expect(showsOnDay(goal, nk, ns)).toBe(false);
   });
 
-  it('shows a dated one-off only on its due date', () => {
+  it('shows a dated one-off on its due date and while unfinished overdue', () => {
     const [k, s] = day();
     // Filed under a questline: a due date is a plan, so it drives the list.
     const task = (dueDate: string) => routine({ questlineId: 'ql-1', dueDate });
     expect(showsOnDay(task('2026-08-12'), k, s)).toBe(false);
     expect(showsOnDay(task('2026-08-10'), k, s)).toBe(true);
-    expect(showsOnDay(task('2026-08-01'), k, s)).toBe(false);
+    expect(showsOnDay(task('2026-08-01'), k, s)).toBe(true);
   });
 
   /**

@@ -7,10 +7,11 @@ export const Caption = ({ color = 'var(--page-text-dim)', children }: { color?: 
 
 /** Compact due-date pill for a one-time To-Do row. */
 export function DueLabel({ dueDate, todayKey }: { dueDate: string; todayKey: string }) {
-  const overdue = dueDate < todayKey;
-  const today = dueDate === todayKey;
+  const date = dueDate.slice(0, 10);
+  const overdue = date < todayKey;
+  const today = date === todayKey;
   const text = overdue ? 'Overdue' : today ? 'Due today'
-    : `Due ${new Date(`${dueDate}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
+    : `Due ${new Date(`${date}T00:00:00`).toLocaleDateString([], { month: 'short', day: 'numeric' })}`;
   return <Caption color={overdue ? 'var(--danger)' : today ? 'var(--accent)' : 'var(--text-dim)'}>{text}</Caption>;
 }
 

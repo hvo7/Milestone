@@ -60,7 +60,7 @@ describe('Today pins and automatic deadlines', () => {
       (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
     }
   });
-  it.each([null, '2026-09-24', '2026-09-26'])('pinning a General task with due date %s renders it immediately', async dueDate => {
+  it.each([null, '2026-09-26'])('pinning a General task with due date %s renders it immediately', async dueDate => {
     useQuestStore.setState({ routines: [routine({ dueDate })] });
     expect(await renderToday()).not.toContain('General pin regression');
     useQuestStore.getState().toggleRoutineTracked('r');
@@ -89,11 +89,11 @@ describe('Today pins and automatic deadlines', () => {
   it('auto-pins quest and project deadlines without turning on a permanent manual pin', () => {
     const q = quest({ dueDate: day, offToday: true });
     expect(questShowsOnDay(q, day)).toBe(true);
-    expect(questShowsOnDay(q, '2026-09-26')).toBe(false);
+    expect(questShowsOnDay(q, '2026-09-26')).toBe(true);
     const t = { id: 't', title: 'Project', done: false, priority: 'medium' as const, createdAt: '', dueDate: day, offToday: true };
     expect(vynuesOnToday(t)).toBe(true);
     expect(vynuesShowsOnDay(t, day, logicalDayStart())).toBe(true);
-    expect(vynuesShowsOnDay(t, '2026-09-26', new Date(2026, 8, 26))).toBe(false);
+    expect(vynuesShowsOnDay(t, '2026-09-26', new Date(2026, 8, 26))).toBe(true);
   });
   it('lights future quest and project pins and shows their rows after clicking', async () => {
     const q = quest({ dueDate: '2026-09-26' });
@@ -112,5 +112,34 @@ describe('Today pins and automatic deadlines', () => {
     expect(onToday(r)).toBe(false);
     vi.setSystemTime(new Date(2026, 8, 25, 2));
     expect(onToday(r)).toBe(true);
+  });
+  it('keeps unfinished General and quest deadlines on Today labeled overdue after rollover', async () => {
+    const r = routine({ dueDate: day });
+    const q = quest({ dueDate: day });
+    useQuestStore.setState({ routines: [r], questlines: [{ id: 'line', title: 'Line', description: '', icon: '', color: '', quests: [q] }] });
+    vi.setSystemTime(new Date(2026, 8, 26, 1, 59));
+    expect(await renderToday()).not.toContain('Overdue');
+    vi.setSystemTime(new Date(2026, 8, 26, 2));
+    const text = await renderToday();
+    expect(text).toContain('General pin regression');
+    expect(text).toContain('Quest pin regression');
+    expect(text?.match(/Overdue/g)).toHaveLength(2);
+    expect(onToday(r)).toBe(true);
+    useQuestStore.getState().toggleRoutineTracked('r');
+    expect(await renderToday()).not.toContain('General pin regression');
+    useQuestStore.getState().toggleRoutineTracked('r');
+    expect(await renderToday()).toContain('General pin regression');
+  });
+  it('does not carry completed deadlines forward, but keeps today’s completed overdue tasks', () => {
+    const next = '2026-09-26';
+    const start = new Date(2026, 8, 26);
+    const doneYesterday = new Date(2026, 8, 25, 12).toISOString();
+    const doneToday = new Date(2026, 8, 26, 12).toISOString();
+    expect(showsOnDay(routine({ dueDate: day, completed: true, completedAt: doneYesterday }), next, start)).toBe(false);
+    expect(showsOnDay(routine({ dueDate: day, completed: true, completedAt: doneToday }), next, start)).toBe(true);
+    expect(questShowsOnDay(quest({ dueDate: day, actions: [{ id: 'a', title: 'Done', completed: true }] }), next)).toBe(false);
+    const t = { id: 't', title: 'T', priority: 'medium' as const, createdAt: '', dueDate: day, done: true, completedAt: doneYesterday };
+    expect(vynuesShowsOnDay(t, next, start)).toBe(false);
+    expect(vynuesShowsOnDay({ ...t, done: false }, next, start)).toBe(true);
   });
 });

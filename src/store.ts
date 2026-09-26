@@ -16,7 +16,7 @@ export {
   questlineProgress, questProgress,
 } from './domain/taskState';
 import {
-  skipActive, repeats, sameRule, isMultiDayCycle, onToday, actionOnToday, sessionMode, sessionOn, logicalDateKey, isOffToday,
+  skipActive, repeats, sameRule, isMultiDayCycle, onToday, actionOnToday, sessionMode, sessionOn, logicalDateKey, isOffToday, matchesDueDay,
 } from './domain/schedule';
 export {
   recurrenceLabel, getResetDisplay, type DueDateInfo, getDueDateInfo, DAY_RESET_HOUR,
@@ -297,7 +297,7 @@ export const useQuestStore = create<QuestData>()(
 
       toggleQuestTracked: (qlId, qId) =>
         set(s => ({ questlines: mapQuest(s.questlines, qlId, qId, q => {
-          const on = !isOffToday(q, logicalDateKey()) && (!!q.trackedToday || q.dueDate?.slice(0, 10) === logicalDateKey());
+          const on = !isOffToday(q, logicalDateKey()) && (!!q.trackedToday || (!!q.dueDate && matchesDueDay(q, logicalDateKey(), isQuestComplete(q))));
           return { ...q, trackedToday: !on, offToday: on ? true : undefined, offTodayOn: on ? logicalDateKey() : undefined };
         }) })),
 

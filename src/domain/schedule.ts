@@ -232,16 +232,19 @@ export function alwaysOnToday(r: Routine): FixedReason | null {
 export const onToday = (r: Routine): boolean =>
   !isOffToday(r, logicalDateKey()) && (!!r.trackedToday || (matchesDueDay(r, logicalDateKey()) && (alwaysOnToday(r) !== null || !!r.dueDate || dueOnDay(r, logicalDayStart()))));
 
-/** Manual pins override dates; dates alone only schedule their own day. */
-export const matchesDueDay = (item: { dueDate?: string | null }, day: string): boolean =>
-  !item.dueDate || item.dueDate.slice(0, 10) === day;
+/** Deadlines remain on the board until completed; manual pins can also bring
+ * future work forward. Completed work only lingers on its completion day. */
+export function matchesDueDay(item: { dueDate?: string | null; completed?: boolean; done?: boolean; completedAt?: string }, day: string, complete = !!(item.completed || item.done)): boolean {
+  const due = item.dueDate?.slice(0, 10);
+  return !due || due === day || (due < day && (!complete || (!!item.completedAt && logicalDateKey(new Date(item.completedAt)) === day)));
+}
 
 /** A deliberate unpin may suppress today's auto-pin, not a later deadline.
  * Older builds wrote an undated offToday by mistake during task creation.
  * Let dated items from those builds recover automatically on their due day. */
 export function isOffToday(item: { offToday?: boolean; offTodayOn?: string; dueDate?: string | null }, day: string): boolean {
   if (!item.offToday) return false;
-  if (item.dueDate?.slice(0, 10) === day) return item.offTodayOn === day;
+  if (item.dueDate && item.dueDate.slice(0, 10) <= day) return item.offTodayOn === day;
   return true;
 }
 
