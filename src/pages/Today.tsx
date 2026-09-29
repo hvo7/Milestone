@@ -10,7 +10,7 @@
  */
 import { useState, Suspense } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
-import type { Routine, Schedule, Action, Questline, System } from '../types';
+import type { Routine, Schedule, Action, Questline, Quest, System } from '../types';
 import {
   useQuestStore, logicalDateKey, logicalDayStart, dateKey, periodExpired, skipActive,
   isMultiDayCycle, isGoalRoutine, engagedOnDay, subtaskStats, repeats, isQuestComplete, questProgress, DAY_RESET_HOUR,
@@ -20,12 +20,16 @@ import { showsOnDay, vynuesShowsOnDay, actionShowsOnDay, questShowsOnDay, dueDat
 import { useVynuesStore, vynuesCategoryKey } from '../vynuesStore';
 import { RecurrenceBadge } from '../recurrence';
 import NavBar from '../components/NavBar';
+import RecurringDates from '../components/RecurringDates';
+import { routineIsArchived } from '../lib/archive';
+import { isGeneralTask } from '../domain/taskState';
 import { lazyChunk } from '../lib/lazyChunk';
 // The two drawers are the heaviest thing on this page and neither is on screen
 // until the user asks for one — so they load on demand rather than sitting in
 // the chunk that has to arrive before anything renders.
 const TaskCreateDrawer = lazyChunk(() => import('../components/TaskCreateDrawer'));
 const TaskEditDrawer = lazyChunk(() => import('../components/TaskEditDrawer'));
+const QuestCreateDrawer = lazyChunk(() => import('../components/QuestCreateDrawer'));
 // `import type`, not `import { type ... }`: under verbatimModuleSyntax the latter
 // still emits the import statement, which pins the module into this chunk and
 // silently undoes the lazy() above.
@@ -115,6 +119,7 @@ interface TodoItem {
   onDelete: () => void;
   /** Opens the full edit drawer for this task. */
   editTarget?: EditTarget;
+  editQuest?: { questlineId: string; quest: Quest };
   /** Tag-click menu for reassigning this row's system. Routines only — quest
    *  actions and Vynues tasks have no system to belong to. */
   systemMenu?: SystemMenu;
@@ -165,6 +170,7 @@ export default function Today() {
   const [drawerCategory, setDrawerCategory] = useState('');
   const [drawerSystem, setDrawerSystem] = useState('');
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [editQuest, setEditQuest] = useState<{ questlineId: string; quest: Quest } | null>(null);
 
   const dragTodo = useReorder(reorderTodo);
 
@@ -246,7 +252,8 @@ export default function Today() {
   const routineMeta = (r: Routine) => {
     const bits: React.ReactNode[] = [];
     if (repeats(r)) bits.push(<RecurrenceBadge key="rec" recurring={r.recurring} intervalDays={r.intervalDays} monthlyRule={r.monthlyRule} />);
-    else if (r.dueDate) bits.push(<DueLabel key="due" dueDate={r.dueDate} todayKey={viewKey} />);
+    if (repeats(r) && isGeneralTask(r)) bits.push(<RecurringDates key="dates" task={{ ...r, completed: willReset(r) ? false : r.completed }} now={new Date(`${viewKey}T12:00:00`)} />);
+    if (!repeats(r) && r.dueDate) bits.push(<DueLabel key="due" dueDate={r.dueDate} todayKey={viewKey} />);
     if (!preview && isGoalRoutine(r) && !r.completed && r.target == null) {
       const stats = subtaskStats(r.subtasks);
       bits.push(
@@ -258,7 +265,7 @@ export default function Today() {
   };
 
   // ── Sources ────────────────────────────────────────────────────────────────
-  const onToday = byOrder(routines.filter(r => !r.hidden && showsOnDay(r, viewKey, viewStart)));
+  const onToday = byOrder(routines.filter(r => !routineIsArchived(r, questlines, systems) && showsOnDay(r, viewKey, viewStart)));
   // The anchor group is a place on this page, not a category in the list: a task
   // marked for it shows there and *only* there. Exclusive on purpose — the point
   // of the section is that those few things sit apart from the day's churn, which
@@ -275,20 +282,20 @@ export default function Today() {
     // question nobody asks while working through the day.
     const sys = routineSystemIds(r)
       .map(sid => systems.find(s => s.id === sid))
-      .find((s): s is System => !!s);
+      .find((s): s is System => !!s && !s.hidden);
     if (sys) return systemCategory(sys);
     const ql = r.questlineId ? questlines.find(q => q.id === r.questlineId) : undefined;
     return ql ? questlineCategory(ql) : GENERAL_CATEGORY;
   };
 
   // Due or undated pinned quests surface as one item with their action steps.
-  const pinnedQuests = questlines.flatMap(ql =>
+  const pinnedQuests = questlines.filter(ql => !ql.hidden).flatMap(ql =>
     ql.quests
       .filter(q => questShowsOnDay(q, viewKey))
       .map(quest => ({ quest, ql }))
   );
 
-  const questActions = questlines.flatMap(ql =>
+  const questActions = questlines.filter(ql => !ql.hidden).flatMap(ql =>
     ql.quests.flatMap(q =>
       // A quest pinned as a unit owns its actions on Today (they show nested under
       // it), so they must not also appear as standalone rows.
@@ -379,6 +386,7 @@ export default function Today() {
       return {
         id: quest.id,
         title: cleanQuest(quest.title),
+        editQuest: { questlineId: ql.id, quest },
         category: cat,
         completed: done,
         todayDone: false,
@@ -519,7 +527,7 @@ export default function Today() {
       onToggle={it.onToggle}
       onDelete={it.onDelete}
       onRename={it.onRename}
-      onEdit={it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
+      onEdit={it.editQuest ? () => setEditQuest(it.editQuest!) : it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
       drag={dragEnabled ? {
         value: it.id,
         onDragStart: dragTodo.onDragStart,
@@ -610,7 +618,7 @@ export default function Today() {
                     onToggle={it.onToggle}
                     onDelete={it.onDelete}
                     onRename={it.onRename}
-                    onEdit={it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
+                    onEdit={it.editQuest ? () => setEditQuest(it.editQuest!) : it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
                     target={it.target}
                     progress={it.progress}
                     step={it.step}
@@ -766,7 +774,7 @@ export default function Today() {
                     sourceLine={it.meta}
                     onToggle={it.onToggle}
                     onRename={it.onRename}
-                    onEdit={it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
+                    onEdit={it.editQuest ? () => setEditQuest(it.editQuest!) : it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
                     target={it.target}
                     progress={it.progress}
                     step={it.step}
@@ -819,6 +827,7 @@ export default function Today() {
       <Suspense fallback={null}>
         {drawerOpen && <TaskCreateDrawer open={drawerOpen} initialCategory={drawerCategory} initialSystem={drawerSystem} onClose={() => setDrawerOpen(false)} />}
         {editTarget && <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />}
+        {editQuest && <QuestCreateDrawer open editing={editQuest} onClose={() => setEditQuest(null)} />}
       </Suspense>
     </div>
   );

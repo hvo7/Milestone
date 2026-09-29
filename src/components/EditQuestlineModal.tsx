@@ -5,6 +5,7 @@ import SpacePicker from './SpacePicker';
 import IconPicker from './IconPicker';
 import ColorPicker from './ColorPicker';
 import ModalShell from './ModalShell';
+import ArchiveButton from './ArchiveButton';
 
 interface Props { questline: Questline; onClose: () => void; }
 
@@ -48,7 +49,7 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
   };
 
   return (
-    <ModalShell onClose={onClose} maxWidth={480} style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+    <ModalShell onClose={onClose} maxWidth={480} overlayStyle={{ justifyContent: 'flex-end', padding: 0 }} style={{ height: '100dvh', maxHeight: '100dvh', overflowY: 'auto', borderRadius: 0, marginLeft: 'auto' }}>
           <h2 style={{ margin: '0 0 20px', fontSize: 16, fontWeight: 600, color: 'var(--page-text)' }}>Edit Questline</h2>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -158,6 +159,7 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
               )}
             </div>
 
+            <ArchiveButton label="Archive questline" onClick={() => { useQuestStore.getState().toggleQuestlineHidden(questline.id); onClose(); }} />
             <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
               <button className="btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
               <button className="btn-gold" style={{ flex: 2, opacity: title.trim() ? 1 : 0.5 }} onClick={handleSave} disabled={!title.trim()}>Save</button>

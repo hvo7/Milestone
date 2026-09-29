@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** How long to hold before a row lifts. Long enough that a tap-to-expand or a
  *  flick-scroll never arms it by accident, short enough to feel deliberate. */
-const HOLD_MS = 350;
+const HOLD_MS = 180;
 /** Drifting further than this before the hold completes means the gesture was a
  *  scroll (touch) or a sloppy click (mouse) — stand down rather than pick up. */
 const SLOP_PX = 8;
@@ -23,6 +23,8 @@ export interface HoldReorder {
   offsetY: number;
   /** Insertion slot, indexed into the list *without* the dragged row. */
   slot: number | null;
+  /** Preview displacement for neighbours, without persisting until drop. */
+  offsetFor: (id: string) => number;
   /**
    * Each row reports its element here from an effect, rather than the hook handing
    * back a `ref` to spread. Row geometry is only ever read while a gesture is in
@@ -46,6 +48,7 @@ export function useHoldToReorder(ids: string[], commit: (next: string[]) => void
   const [dragId, setDragId]   = useState<string | null>(null);
   const [offsetY, setOffsetY] = useState(0);
   const [slot, setSlot]       = useState<number | null>(null);
+  const [liftSpan, setLiftSpan] = useState(0);
 
   const els     = useRef(new Map<string, HTMLElement>());
   const slotRef = useRef<number | null>(null);
@@ -72,10 +75,13 @@ export function useHoldToReorder(ids: string[], commit: (next: string[]) => void
 
   const onPointerDown = useCallback((e: React.PointerEvent, id: string, index: number) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    if ((e.target as HTMLElement).closest(CONTROL_SELECTOR)) return;
+    const control = (e.target as HTMLElement).closest(CONTROL_SELECTOR);
+    if (control && !control.hasAttribute('data-reorder-handle')) return;
 
+    release.current();
     swallowClick.current = false;
     const startY = e.clientY;
+    const startX = e.clientX;
     const pointerId = e.pointerId;
     const node = e.currentTarget as HTMLElement;
     let armed = false;
@@ -84,7 +90,7 @@ export function useHoldToReorder(ids: string[], commit: (next: string[]) => void
       window.clearTimeout(timer);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
+      window.removeEventListener('pointercancel', onCancel);
       if (armed) {
         document.body.classList.remove('reordering');
         node.style.touchAction = '';
@@ -94,6 +100,7 @@ export function useHoldToReorder(ids: string[], commit: (next: string[]) => void
       setDragId(null);
       setOffsetY(0);
       setSlot(null);
+      setLiftSpan(0);
       slotRef.current = null;
     };
     release.current = cleanup;
@@ -106,6 +113,12 @@ export function useHoldToReorder(ids: string[], commit: (next: string[]) => void
     const lift = () => {
       armed = true;
       swallowClick.current = true;
+      const rect = els.current.get(id)?.getBoundingClientRect();
+      const nextRect = els.current.get(idsRef.current[index + 1])?.getBoundingClientRect();
+      const previousRect = els.current.get(idsRef.current[index - 1])?.getBoundingClientRect();
+      const gap = rect && nextRect ? nextRect.top - rect.top - rect.height
+        : rect && previousRect ? rect.top - previousRect.top - previousRect.height : 0;
+      setLiftSpan((rect?.height ?? 0) + Math.max(0, gap));
       mids = idsRef.current
         .filter(rid => rid !== id)
         .map(rid => {
@@ -128,9 +141,10 @@ export function useHoldToReorder(ids: string[], commit: (next: string[]) => void
     };
 
     const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
       const dy = ev.clientY - startY;
       if (!armed) {
-        if (Math.abs(dy) > SLOP_PX) cleanup();
+        if (Math.hypot(dy, ev.clientX - startX) > SLOP_PX) cleanup();
         return;
       }
       if (ev.cancelable) ev.preventDefault();
@@ -143,7 +157,11 @@ export function useHoldToReorder(ids: string[], commit: (next: string[]) => void
       }
     };
 
-    const onUp = () => {
+    const onCancel = (ev: PointerEvent) => {
+      if (ev.pointerId === pointerId) cleanup();
+    };
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
       const target = slotRef.current;
       if (armed && target !== null && target !== index) {
         const next = idsRef.current.filter(rid => rid !== id);
@@ -156,7 +174,7 @@ export function useHoldToReorder(ids: string[], commit: (next: string[]) => void
     const timer = window.setTimeout(lift, HOLD_MS);
     window.addEventListener('pointermove', onMove);
     window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('pointercancel', onCancel);
   }, []);
 
   const rowProps = useCallback((id: string, index: number): RowHandlers => ({
@@ -169,5 +187,12 @@ export function useHoldToReorder(ids: string[], commit: (next: string[]) => void
     },
   }), [onPointerDown]);
 
-  return { dragId, offsetY, slot, registerRow, rowProps };
+  const offsetFor = (id: string) => {
+    if (!dragId || slot === null || id === dragId) return 0;
+    const from = ids.indexOf(dragId), index = ids.indexOf(id);
+    if (index > from && index <= slot) return -liftSpan;
+    if (index < from && index >= slot) return liftSpan;
+    return 0;
+  };
+  return { dragId, offsetY, slot, offsetFor, registerRow, rowProps };
 }

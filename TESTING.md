@@ -2,9 +2,33 @@
 
 Run `npm run testing` (or double-click `Open Testing.cmd`) to build and open a separate testing window.
 
+For testing and annotating inside a conversation, run `npm run testing -- --browser` and open `http://127.0.0.1:4174/` in the right-side browser panel. This serves the same testing build, with its TESTING banner, on loopback only. Keep using this address for future batches. Reload after rebuilding. The browser preview has its own local test storage (separate from the Electron test profile and production); it starts with the app's default data and retains browser test edits. It does not import a production profile or credentials. External connections and service workers are blocked by the preview server. Only `dist-testing` files are served, never `.testing` or repository files. Port 4173 is left available for DentalTrack.
+
 The amber TESTING banner identifies this environment. Build output goes to `dist-testing`, not `dist` or `release`. Its Electron profile, cookies, local storage and cache live under `.testing`. The window has no production desktop bridge, updater, cloud/phone sync, or network access. Closing it quits only the testing app.
 
 On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
+
+## Batch 007 — approved for v3.3.5
+
+User explicitly approved this reviewed batch for live production and requested npm run package on 2026-09-29. Includes the recurring-date, archive/settings, title editing, animated quest reordering, and toolbar revisions below. Historical pending-review notes below describe the testing stage; this approval supersedes them for Batch 007 only. Testing data and credentials remain isolated.
+
+- Review 6: lift delay reduced to 180 ms. Neighbouring quests now slide up/down during dragging to leave the destination open, using the lifted card's measured height and spacing; reversing or cancelling restores their positions without saving. Moon/sun moved immediately to the right of + (before Reload). Supersedes earlier delay, insertion marker, and toolbar placement below.
+
+- Latest annotations: quick-click quest titles to edit; hold for 350 ms to lift and drag with animated settling and an insertion marker. All visible quests, including the active quest, participate in their saved sequence; archived positions are preserved. Cancelling or scrolling before the hold does not reorder.
+- Moon/sun now lives in the main top-right toolbar, immediately before Add new tab, Reload, and Settings (supersedes the Settings-header placement below). Testing only; no version bump or production release.
+
+- Annotation revisions: archived systems are grouped in expandable questline/quest folders, standalone systems remain rows. Theme is an accessible moon/sun button in the Settings header. Questline, quest, system and shared task titles open their editor; visible pencil/archive row controls are removed, with box-icon Archive actions in edit panels. Questline editing now uses a right-side panel.
+
+- Settings redesigned into General, Archive (box icon), and Data & connections tabs. Archived items and Restore now live only in Settings → Archive, removed from the Systems and Quests pages. No production release approved.
+
+When the browser server is already running, use `npm run testing -- --build-only` to rebuild, then reload the side panel without starting a second server.
+
+- Review revisions: Once and Repeat share a fixed-position due-date field; repeating dates remain schedule-calculated with Next due beneath. Optional system links come after scheduling so they do not push the due-date field down.
+- Archive systems, quests, and questlines without deleting content or links. Restore them from Settings → Archive. Archived parents leave Today and reminders; shared habits remain active if another linked system is active. Uses existing persisted hidden flags, so previously hidden items are also available in Archive.
+
+- Repeating General tasks show Current due and Next due in their creation forms and on task rows in Today, Quests, and All.
+- Dates follow the existing repeat engine and local 2 AM day boundary; completed cycles and unscheduled calendar-rule days show Current due: None. Missing schedule anchors do not invent dates.
+- Display-only: no deadline, reset, pin, or production-profile changes. Not approved for production.
 
 ## Batch 006 — approved same-version hotfix (3.3.4)
 

@@ -2,12 +2,13 @@ import { useState, Suspense } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuestStore, useUIStore } from '../store';
 import SpacesModal from './SpacesModal';
-import ModalShell from './ModalShell';
+import SettingsModal from './SettingsModal';
 import { DEFAULT_SPACES } from '../store';
 import { useVynuesStore } from '../vynuesStore';
 import { VERSION_LABEL, buildSummary } from '../buildInfo';
 import { lazyChunk } from '../lib/lazyChunk';
 import { REFRESH_DAY_EVENT } from '../lib/dayClock';
+import { routineIsArchived } from '../lib/archive';
 import pondCover from '../assets/pond.webp';
 import bridgeCover from '../assets/bridge.webp';
 import riversideCover from '../assets/quests-riverside.png';
@@ -28,6 +29,7 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   const { pathname, key: visitKey } = useLocation();
   const routines     = useQuestStore(s => s.routines);
   const questlines   = useQuestStore(s => s.questlines);
+  const systems     = useQuestStore(s => s.systems);
   const projects     = useVynuesStore(s => s.projects);
   const theme        = useUIStore(s => s.theme);
   const toggleTheme  = useUIStore(s => s.toggleTheme);
@@ -38,9 +40,9 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const dailyRemaining =
-    routines.filter(r => r.recurring === 'daily' && !r.completed && !r.hidden).length +
-    questlines.flatMap(ql =>
-      ql.quests.flatMap(q =>
+    routines.filter(r => r.recurring === 'daily' && !r.completed && !routineIsArchived(r, questlines, systems)).length +
+    questlines.filter(ql => !ql.hidden).flatMap(ql =>
+      ql.quests.filter(q => !q.hidden).flatMap(q =>
         q.actions.filter(a => a.recurring === 'daily' && !a.completed && !a.hidden)
       )
     ).length;
@@ -73,8 +75,8 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   return (
     <>
       {import.meta.env.MODE === 'testing' && <div data-testing-banner style={{ background: '#edc16f', color: '#372b16', padding: '9px 18px', display: 'flex', gap: 14, justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 12, borderRadius: 10, marginBottom: 12 }}>
-        <strong>TESTING · Batch 006 · Overdue carry-over</strong>
-        <span>Separate data · Sync off · Same-version hotfix approved</span>
+        <strong>TESTING · Batch 007 · Repeat due dates</strong>
+        <span>Separate data · Sync off · Pending review</span>
       </div>}
       <nav className="app-nav" aria-label="Main navigation">
         <Link to="/" className="app-brand" aria-label="Milestone home">
@@ -99,6 +101,9 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
         </div>
         <div className="nav-tools">
           <button type="button" className="nav-tool" onClick={() => setSpacesOpen(true)} title="Add or manage space tabs" aria-label="Add new tab">＋</button>
+          <button type="button" className="nav-tool" onClick={toggleTheme} title={`Use ${theme === 'dark' ? 'light' : 'dark'} mode`} aria-label={`Use ${theme === 'dark' ? 'light' : 'dark'} mode`}>
+            <NavIcon name={theme === 'dark' ? 'sun' : 'moon'} />
+          </button>
           <button type="button" className="nav-tool" onClick={() => window.dispatchEvent(new Event(REFRESH_DAY_EVENT))}
             title="Reload tasks — new day starts at 2:00 AM local time" aria-label="Reload tasks">
             <NavIcon name="reload" />
@@ -116,18 +121,11 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
       </header>
 
       <Suspense fallback={null}>
-        {settingsOpen && <ModalShell onClose={() => setSettingsOpen(false)}>
-          <section role="dialog" aria-modal="true" aria-labelledby="settings-heading" onKeyDown={e => { if (e.key === 'Escape') setSettingsOpen(false); }}>
-            <h2 id="settings-heading" style={{ marginTop: 0 }}>Settings</h2>
-            <div style={{ display: 'grid', gap: 12 }}>
-              <button type="button" autoFocus className="btn-ghost" onClick={toggleTheme}>Appearance · {theme === 'dark' ? 'Dark' : 'Light'} — switch theme</button>
-              <button type="button" className="btn-ghost" onClick={() => { setSettingsOpen(false); setRemindOpen(true); }}>Notifications · {reminders?.enabled ? reminders.time : 'Off'}</button>
-              <button type="button" className="btn-ghost" onClick={() => { setSettingsOpen(false); setDataOpen(true); }}>Data, backups, sync &amp; updates</button>
-              <button type="button" className="btn-ghost" disabled={!isElectron} onClick={() => { setSettingsOpen(false); setSyncOpen(true); }}>Notion import / export{!isElectron && ' · Desktop only'}</button>
-              <button type="button" className="btn-ghost" onClick={() => setSettingsOpen(false)}>Close</button>
-            </div>
-          </section>
-        </ModalShell>}
+        {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)}
+          notifications={reminders?.enabled ? reminders.time : 'Off'} desktop={isElectron}
+          onNotifications={() => { setSettingsOpen(false); setRemindOpen(true); }}
+          onData={() => { setSettingsOpen(false); setDataOpen(true); }}
+          onNotion={() => { setSettingsOpen(false); setSyncOpen(true); }} />}
         {spacesOpen && <SpacesModal onClose={() => setSpacesOpen(false)} />}
         {syncOpen   && <NotionSyncModal onClose={() => setSyncOpen(false)} />}
         {dataOpen   && <DataModal       onClose={() => setDataOpen(false)} />}
@@ -137,8 +135,10 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   );
 }
 
-function NavIcon({ name }: { name: 'reload' | 'settings' }) {
+function NavIcon({ name }: { name: 'reload' | 'settings' | 'sun' | 'moon' }) {
   const paths = {
+    moon: <path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z" />,
+    sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2" /></>,
     reload: <path d="M20 4v6h-6M20 10a8 8 0 1 0-1 7" />,
     settings: <><circle cx="12" cy="12" r="3" /><path d="m10 3-1 3-2 1-3-1-2 4 2 2v2l-2 2 2 4 3-1 2 1 1 3h4l1-3 2-1 3 1 2-4-2-2v-2l2-2-2-4-3 1-2-1-1-3Z" transform="translate(0 -1) scale(1 .95)" /></>,
   };

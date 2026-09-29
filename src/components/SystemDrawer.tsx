@@ -11,6 +11,7 @@
  * gather its actions before it exists.
  */
 import { useEffect, useRef, useState } from 'react';
+import ArchiveButton from './ArchiveButton';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useQuestStore, systemGoalIds, systemQuestIds, routineSystemIds } from '../store';
 import { cleanQuest } from '../lib/ui';
@@ -250,6 +251,7 @@ function Panel({ id, onClose, initialQuestlineId, spaceId: initialSpaceId }: { i
           )}
         </Field>
 
+        {existing && <ArchiveButton label="Archive system" onClick={() => { useQuestStore.getState().updateSystem(existing.id, { hidden: true }); onClose(); }} />}
         {existing && (
           <button
             type="button"

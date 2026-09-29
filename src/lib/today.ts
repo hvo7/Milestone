@@ -10,7 +10,8 @@
  * key and that day's midnight — so the Today tab's tomorrow preview can ask every
  * one of these about the *next* day by passing a different pair.
  */
-import type { Action, Quest, Questline, Routine } from '../types';
+import type { Action, Quest, Questline, Routine, System } from '../types';
+import { routineIsArchived } from './archive';
 import { isOffToday, matchesDueDay } from '../domain/schedule';
 import { alwaysOnToday, dateKey, dueOnDay, isMultiDayCycle, logicalDateKey, logicalDayStart, onToday, repeats, skipActive } from '../domain/schedule';
 import { engagedOnDay, isGeneralTask } from '../domain/taskState';
@@ -111,7 +112,7 @@ export interface DueSummary {
  * would defeat the point of having skipped it.
  */
 export function dueSummary(
-  quest: { questlines: Questline[]; routines: Routine[] },
+  quest: { questlines: Questline[]; routines: Routine[]; systems?: System[] },
   vynues: { projects: VynuesProject[] },
   dayStart: Date = logicalDayStart(),
 ): DueSummary {
@@ -127,12 +128,13 @@ export function dueSummary(
   };
 
   for (const r of quest.routines) {
-    if (r.hidden || !showsOnDay(r, dayKey, dayStart)) continue;
+    if (routineIsArchived(r, quest.questlines, quest.systems ?? []) || !showsOnDay(r, dayKey, dayStart)) continue;
     if (skipActive(r, dayKey)) continue;
     count(routineSettledOnDay(r, dayKey), r.title);
   }
 
   for (const ql of quest.questlines) {
+    if (ql.hidden) continue;
     for (const q of ql.quests) {
       if (q.hidden) continue;
       // A quest pinned as a unit owns its actions on Today, so it counts as one

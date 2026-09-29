@@ -1,0 +1,23 @@
+.settings-dialog { color: var(--page-text); }
+.settings-header { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:24px 28px; border-bottom:1px solid var(--card-border); }
+.settings-header h2 { margin:0; font-size:22px; font-weight:650; }
+.settings-header p, .settings-intro { margin:6px 0 0; color:var(--page-text-dim); font-size:13px; }
+.settings-layout { display:grid; grid-template-columns:190px minmax(0,1fr); min-height:330px; }
+.settings-tabs { padding:18px 12px; background:var(--input-bg); border-right:1px solid var(--card-border); display:flex; flex-direction:column; gap:6px; }
+.settings-tabs button { display:flex; gap:10px; align-items:center; padding:12px; font:inherit; font-size:13px; text-align:left; border:1px solid transparent; border-radius:8px; background:transparent; color:var(--page-text-dim); cursor:pointer; }
+.settings-tabs button[aria-selected="true"] { background:var(--accent-soft); color:var(--accent); border-color:var(--accent-border); font-weight:600; }
+.settings-tabs svg { flex-shrink:0; }
+.settings-content { padding:26px; min-width:0; max-height:65vh; overflow:auto; }
+.settings-content h3 { margin:0; font-size:18px; font-weight:600; }
+.settings-row { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px; padding:22px 0; border-bottom:1px solid var(--card-border); }
+.settings-row:last-child { border-bottom:0; }
+.settings-row h4 { margin:0; font-size:14px; font-weight:600; }
+.settings-row p { margin:6px 0 0; font-size:12px; color:var(--page-text-dim); line-height:1.5; }
+.settings-row > div { flex:1; min-width:130px; }
+.settings-row .btn-ghost { white-space:nowrap; font-size:12px; }
+.settings-row small { display:block; margin-top:5px; color:var(--page-text-dim); }
+.settings-empty { margin-top:26px; padding:24px 16px; text-align:center; border:1px dashed var(--card-border); border-radius:10px; color:var(--page-text-dim); font-size:13px; }
+.archive-group { margin-top:16px; padding:12px; border:1px solid var(--card-border); border-radius:8px; }
+.archive-group summary { cursor:pointer; font-size:14px; font-weight:600; overflow-wrap:anywhere; }
+.archive-group summary small { display:block; font-size:11px; font-weight:400; color:var(--page-text-dim); margin:5px 0 10px; }
+@media(max-width:600px) { .settings-layout { grid-template-columns:1fr; } .settings-tabs { flex-direction:row; flex-wrap:wrap; border-right:0; border-bottom:1px solid var(--card-border); padding:10px; } .settings-tabs button { flex:1 1 auto; padding:10px; } .settings-content { padding:20px; max-height:55vh; } .settings-header { padding:20px; } }

@@ -5,6 +5,7 @@ import { useVynuesStore, vynuesCategoryKey, vynuesProjectId } from '../vynuesSto
 import { RepeatPicker, type RepeatValue } from '../recurrence';
 import { MenuSelect } from '../vynuesUi';
 import Field from './Field';
+import ScheduleDueField from './ScheduleDueField';
 import MultiSelect from './MultiSelect';
 import { cleanQuest, ANCHOR_LABEL, ANCHOR_ICON, ANCHOR_CATEGORY } from '../lib/ui';
 
@@ -194,21 +195,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
                 </Field>
               )}
 
-              {/* Vynues tasks live in their own store, which has no systems. */}
-              {/* Only for something that repeats. A system is made of the things
-                  you do frequently; a one-and-done task belongs to a quest. */}
-              {systems.length > 0 && !projectId && repeats && (
-                <Field label="Systems">
-                  <MultiSelect
-                    options={systems.filter(sys => !sys.hidden).map(sys => ({ id: sys.id, label: sys.title }))}
-                    values={systemIds}
-                    onToggle={sid => setSystemIds(ids => (ids.includes(sid) ? ids.filter(x => x !== sid) : [...ids, sid]))}
-                    placeholder="No system"
-                    noun="systems"
-                  />
-                </Field>
-              )}
-
+              {!isAnchor && <ScheduleDueField schedule={{ ...repeat, lastResetAt: new Date().toISOString() }} value={dueDate} onChange={setDueDate} />}
               <Field label="Repeats">
                 {isAnchor ? (
                   <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--input-border)', background: 'var(--input-bg)', width: 'fit-content' }}>
@@ -231,7 +218,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
                     ))}
                   </div>
                 ) : (
-                  <RepeatPicker value={repeat} onChange={setRepeat} />
+                  <div style={{ minHeight: 76 }}><RepeatPicker value={repeat} onChange={setRepeat} /></div>
                 )}
               </Field>
 
@@ -298,18 +285,11 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
                 )}
               </Field>
               )}
-
-              {!isAnchor && !repeat.recurring && !repeat.monthlyRule && (
-                <Field label="Due date">
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={e => setDueDate(e.target.value)}
-                    className="rune-input"
-                    style={{ fontSize: 14, padding: '9px 12px', cursor: 'pointer' }}
-                  />
-                </Field>
-              )}
+              {systems.length > 0 && !projectId && repeats && <Field label="Systems">
+                <MultiSelect options={systems.filter(sys => !sys.hidden).map(sys => ({ id: sys.id, label: sys.title }))}
+                  values={systemIds} onToggle={sid => setSystemIds(ids => ids.includes(sid) ? ids.filter(x => x !== sid) : [...ids, sid])}
+                  placeholder="No system" noun="systems" />
+              </Field>}
             </div>
 
             <div style={{ padding: '16px 22px', borderTop: '1px solid var(--card-border)', display: 'flex', gap: 10 }}>

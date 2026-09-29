@@ -6,9 +6,11 @@ import TaskRow, { type RowStrip } from './today/TaskRow';
 import { DueLabel } from './today/labels';
 import { usePhoneLayout } from '../lib/usePhoneLayout';
 import PinButton from './PinButton';
+import RecurringDates from './RecurringDates';
+import { isGeneralTask } from '../domain/taskState';
 
 /** Same completion, counters, sessions and nested steps as Today; no copied data. */
-export default function RoutineTaskRow({ routine: r, onEdit, onRemove }: {
+export default function RoutineTaskRow({ routine: r, onEdit }: {
   routine: Routine; onEdit: () => void; onRemove?: () => void;
 }) {
   const phoneLayout = usePhoneLayout();
@@ -39,7 +41,7 @@ export default function RoutineTaskRow({ routine: r, onEdit, onRemove }: {
     <div className="practice-task">
       <TaskRow compact={phoneLayout} title={r.title} completed={r.completed} todayDone={todayDone} skipped={skipped}
         onSkip={repeats(r) ? () => skip(r.id) : undefined} streak={r.streak} accentHex="var(--accent)"
-        sourceLine={<><RecurrenceBadge recurring={r.recurring} intervalDays={r.intervalDays} monthlyRule={r.monthlyRule} />{r.dueDate && !r.completed && <DueLabel dueDate={r.dueDate} todayKey={today} />}</>}
+        sourceLine={<><RecurrenceBadge recurring={r.recurring} intervalDays={r.intervalDays} monthlyRule={r.monthlyRule} />{isGeneralTask(r) && repeats(r) && <RecurringDates task={r} />}{r.dueDate && !r.completed && <DueLabel dueDate={r.dueDate} todayKey={today} />}</>}
         tag={r.anchor ? { label: ANCHOR_LABEL, color: 'var(--accent)' } : undefined}
         onToggle={() => toggle(r.id)} onRename={title => rename(r.id, title)} onEdit={onEdit}
         target={r.target} progress={r.progress} step={r.step} unit={r.unit} onIncrement={r.target != null ? delta => increment(r.id, delta) : undefined} sessionGoal={sessionMode(r)} strip={strip}
@@ -47,8 +49,7 @@ export default function RoutineTaskRow({ routine: r, onEdit, onRemove }: {
       />
       <div className="practice-task-tools">
         <PinButton state={pinned ? 'all' : 'none'} onClick={() => pin(r.id)} title={pinned ? 'Remove from Today' : 'Pin to Today'} />
-        <button type="button" className="btn-ghost" onClick={onEdit} aria-label={`Edit ${r.title}`}>Edit</button>
-        {onRemove && <button type="button" className="btn-ghost" onClick={onRemove} aria-label={`Unlink ${r.title} from this system`}>Unlink</button>}
+        <button type="button" className="btn-ghost" style={{ color: 'var(--danger)' }} onClick={() => useQuestStore.getState().deleteRoutine(r.id)} aria-label={`Delete ${r.title}`}>✕</button>
       </div>
     </div>
   );

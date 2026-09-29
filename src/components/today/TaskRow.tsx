@@ -7,6 +7,7 @@ import { useState, useRef } from 'react';
 import { motion, Reorder, useDragControls, type PanInfo } from 'framer-motion';
 import SubtaskTree, { type SubNode, type SubtaskTreeHandlers } from '../SubtaskTree';
 import IconButton from '../IconButton';
+import EditTitle from '../EditTitle';
 import { countSubNodes, hasCheckpoints } from '../../lib/ui';
 import { SessionStrip, CheckpointPips } from './ProgressStrip';
 
@@ -420,8 +421,8 @@ export default function TaskRow({
             />
           ) : (
             <span
-              onDoubleClick={startEdit}
-              title={onRename ? 'Double-click to rename' : undefined}
+              onDoubleClick={onEdit ? undefined : startEdit}
+              title={onEdit ? 'Edit task' : onRename ? 'Double-click to rename' : undefined}
               style={{
                 display: 'block',
                 fontSize: 13.5,
@@ -433,7 +434,7 @@ export default function TaskRow({
                 overflowWrap: 'anywhere',
               }}
             >
-              {title}
+              {onEdit ? <EditTitle onEdit={onEdit}>{title}</EditTitle> : title}
             </span>
           )}
 
@@ -480,16 +481,6 @@ export default function TaskRow({
           {subtasksEnabled && !completed && !skipped && hovered && (
             <IconButton onClick={() => setAddingSub(v => !v)} title="Add a step" size={14}>
               ＋
-            </IconButton>
-          )}
-          {onEdit && (
-            <IconButton
-              onClick={onEdit}
-              title="Edit everything — name, schedule, target, steps…"
-              size={12}
-              opacity={hovered || editing ? 1 : 0.45}
-            >
-              ✎
             </IconButton>
           )}
           {onDelete && hovered && !completed && (
@@ -644,8 +635,8 @@ export default function TaskRow({
             />
           ) : (
             <span
-              onDoubleClick={startEdit}
-              title={onRename ? 'Double-click to rename' : undefined}
+              onDoubleClick={onEdit ? undefined : startEdit}
+              title={onEdit ? 'Edit task' : onRename ? 'Double-click to rename' : undefined}
               style={{
                 display: 'block',
                 // Large but unweighted: the questline above carries the bold, and
@@ -658,7 +649,7 @@ export default function TaskRow({
                 cursor: onRename ? 'text' : undefined,
               }}
             >
-              {title}
+              {onEdit ? <EditTitle onEdit={onEdit}>{title}</EditTitle> : title}
               {todayDone && !completed && (
                 <span className="pill-today-done">✓ TODAY</span>
               )}
@@ -712,11 +703,6 @@ export default function TaskRow({
           {subtasksEnabled && !completed && !skipped && (hovered || subs.length > 0) && (
             <IconButton onClick={() => setAddingSub(v => !v)} title="Add a step" size={15}>
               ＋
-            </IconButton>
-          )}
-          {onEdit && (hovered || editing) && (
-            <IconButton onClick={onEdit} title="Edit everything — name, due date, schedule, steps…" size={12}>
-              ✎
             </IconButton>
           )}
           {onDelete && hovered && !completed && (

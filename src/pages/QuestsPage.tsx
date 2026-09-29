@@ -10,6 +10,7 @@ import AddModal from '../components/AddModal';
 import QuestCreateDrawer from '../components/QuestCreateDrawer';
 import type { EditTarget } from '../components/TaskEditDrawer';
 import NavBar from '../components/NavBar';
+import { routineIsArchived } from '../lib/archive';
 import { lazyChunk } from '../lib/lazyChunk';
 import QuestlineSidebar from '../components/QuestlineSidebar';
 import RoutineTaskRow from '../components/RoutineTaskRow';
@@ -124,12 +125,12 @@ export default function QuestsPage() {
   const [editingQuest, setEditingQuest] = useState<{ questlineId: string; quest: Quest } | null>(null);
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
 
-  const visible = questlines.filter(ql => editMode || !ql.hidden);
+  const visible = questlines.filter(ql => !ql.hidden);
   const selection = readQuestlineSelection(params, visible);
   const selected = selection.kind === 'questline' ? visible.find(ql => ql.id === selection.id) : undefined;
   const serving = selected ? systems.filter(s => !s.hidden && systemServesQuestline(s, selected)) : [];
   // A direct task link remains visible even if its system serves another goal.
-  const linked = selected ? routines.filter(r => (editMode || !r.hidden) && routineServesQuestline(r, selected)
+  const linked = selected ? routines.filter(r => !routineIsArchived(r, questlines, systems) && routineServesQuestline(r, selected)
     && !routineSystemIds(r).some(id => serving.some(sys => sys.id === id))) : [];
 
   return (

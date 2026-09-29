@@ -29,10 +29,10 @@ describe('consistent task controls', () => {
       (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = false;
     }
   });
-  it('has only Add new tab, Reload and Settings in the toolbar', () => {
+  it('places the theme toggle after Add new tab and before Reload and Settings', () => {
     const host = document.createElement('div');
     host.innerHTML = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(NavBar)));
-    expect([...host.querySelectorAll('.nav-tools button')].map(b => b.getAttribute('aria-label'))).toEqual(['Add new tab', 'Reload tasks', 'Settings']);
+    expect([...host.querySelectorAll('.nav-tools button')].map(b => b.getAttribute('aria-label'))).toEqual(['Add new tab', expect.stringMatching(/^Use (light|dark) mode$/), 'Reload tasks', 'Settings']);
   });
   it('renders manual and checklist quests with the same circular checkbox', () => {
     for (const completionMode of ['manual', 'steps'] as const) {

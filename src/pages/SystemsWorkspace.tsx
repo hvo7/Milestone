@@ -8,6 +8,8 @@ import type { System } from '../types';
 import type { SystemTarget } from '../components/SystemDrawer';
 import type { EditTarget } from '../components/TaskEditDrawer';
 import NavBar from '../components/NavBar';
+import EditTitle from '../components/EditTitle';
+import { routineIsArchived } from '../lib/archive';
 import QuestlineSidebar from '../components/QuestlineSidebar';
 import QuestArtwork from '../components/QuestArtwork';
 import RoutineTaskRow from '../components/RoutineTaskRow';
@@ -24,18 +26,18 @@ export function SystemCard({ system, onEdit, onEditTask, onAddTask, focused }: {
   const routines = useQuestStore(s => s.routines);
   const questlines = useQuestStore(s => s.questlines);
   const history = useQuestStore(s => s.taskHistory);
+  const systems = useQuestStore(s => s.systems);
   const unlink = useQuestStore(s => s.toggleRoutineSystem);
   const panel = useRef<HTMLElement>(null);
   useEffect(() => { if (focused) panel.current?.scrollIntoView({ block: 'nearest' }); }, [focused]);
-  const members = systemRoutines(routines, system.id);
+  const members = systemRoutines(routines, system.id).filter(r => !routineIsArchived(r, questlines, systems));
   const health = systemHealth(members, history);
   const goals = questlines.filter(ql => systemGoalIds(system).includes(ql.id));
   const quests = questlines.flatMap(ql => ql.quests.filter(q => systemQuestIds(system).includes(q.id)).map(q => ({ q, ql })));
   return (
     <section ref={panel} className="parchment questline-section" aria-label={system.title}>
       <div className="questline-section-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}><QuestArtwork title={system.title} id={system.id} icon={system.icon || '⚙️'} size={20} /><h2 style={{ margin: 0, overflowWrap: 'anywhere' }}>{system.title}</h2></div>
-        <button type="button" className="btn-ghost" onClick={onEdit} aria-label={`Edit system ${system.title}`}>Edit system</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}><QuestArtwork title={system.title} id={system.id} icon={system.icon || '⚙️'} size={20} /><h2 style={{ margin: 0, overflowWrap: 'anywhere' }}><EditTitle onEdit={onEdit}>{system.title}</EditTitle></h2></div>
       </div>
       {system.description && <p>{system.description}</p>}
       <div className="practice-links">

@@ -6,6 +6,8 @@ import { cleanQuest } from '../lib/ui';
 import { MenuSelect } from '../vynuesUi';
 import { RepeatPicker, type RepeatValue } from '../recurrence';
 import Field from './Field';
+import ScheduleDueField from './ScheduleDueField';
+import ArchiveButton from './ArchiveButton';
 
 /** Sentinel "questline" value for an uncategorized General task. General items are
  *  stored as routines (not real quests) so they share the same pool as the Today
@@ -191,10 +193,12 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
                     />
                   </Field>
 
+                  <ScheduleDueField schedule={{ ...repeat, lastResetAt: editing?.quest.lastResetAt ?? new Date().toISOString() }} value={dueDate} onChange={setDueDate} />
                   <Field label="Repeats">
-                    <RepeatPicker value={repeat} onChange={setRepeat} />
+                    <div style={{ minHeight: 76 }}><RepeatPicker value={repeat} onChange={setRepeat} /></div>
                   </Field>
 
+                  {editing && <ArchiveButton label="Archive quest" onClick={() => { useQuestStore.getState().toggleQuestHidden(editing.questlineId, editing.quest.id); onClose(); }} />}
                   {!isGeneral && <Field label="Achievement">
                     <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', color: 'var(--page-text)', fontSize: 13 }}>
                       <input type="checkbox" checked={manualCompletion} onChange={e => setManualCompletion(e.target.checked)} />
@@ -202,17 +206,6 @@ export default function QuestCreateDrawer({ open, onClose, initialQuestlineId, e
                     </label>
                   </Field>}
 
-                  {!isRepeating && (
-                    <Field label={<>Due date <span style={{ fontWeight: 400, textTransform: 'none', opacity: 0.7 }}>· optional</span></>}>
-                      <input
-                        type="date"
-                        value={dueDate}
-                        onChange={e => setDueDate(e.target.value)}
-                        className="rune-input"
-                        style={{ fontSize: 14, padding: '9px 12px', cursor: 'pointer' }}
-                      />
-                    </Field>
-                  )}
               </>
             </div>
 

@@ -12,6 +12,12 @@ for (const args of [
   const result = spawnSync(process.execPath, args, { cwd: root, stdio: 'inherit', windowsHide: true });
   if (result.error || result.status !== 0) process.exit(result.status || 1);
 }
+if (process.argv.includes('--build-only')) {
+  console.log('Milestone Testing rebuilt. Reload the existing preview.');
+} else if (process.argv.includes('--browser')) {
+  const { startTestingPreview } = await import('./testing-preview.mjs');
+  await startTestingPreview();
+} else {
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 const attached = process.argv.includes('--attached');
@@ -21,3 +27,4 @@ const child = spawn(require('electron'), [path.join(root, 'electron/testing.cjs'
 child.on('error', error => { console.error(error); process.exitCode = 1; });
 if (!attached) child.unref();
 console.log('Opening Milestone Testing. Production has not been updated.');
+}

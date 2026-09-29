@@ -5,6 +5,11 @@ import { useQuestStore, recurrenceLabel, isArchivedRoutine, onToday, logicalDate
 import { useVynuesStore } from '../vynuesStore';
 import { RepeatPicker, RecurrenceBadge, type RepeatValue } from '../recurrence';
 import NavBar from '../components/NavBar';
+import RecurringDates from '../components/RecurringDates';
+import { routineIsArchived } from '../lib/archive';
+import { isGeneralTask } from '../domain/taskState';
+import { repeats } from '../domain/schedule';
+import type { Routine } from '../types';
 import PinButton from '../components/PinButton';
 import { actionOnToday } from '../domain/schedule';
 import { vynuesOnToday } from '../vynuesStore';
@@ -74,6 +79,7 @@ interface AllTask {
   /** Routines always repeat, so their picker hides the "Once" option. */
   repeatOnly: boolean;
   meta?: string;
+  repeatDates?: Routine;
   /** One-off due date ('YYYY-MM-DD') and its setter — only wired for tasks that support it. */
   dueDate?: string | null;
   onSetDueDate?: (dueDate: string | null) => void;
@@ -168,6 +174,7 @@ function AllRow({ task }: { task: AllTask }) {
           {task.meta && (
             <span style={{ display: 'block', marginTop: 2, fontSize: 11, color: 'var(--page-text-dim)' }}>{task.meta}</span>
           )}
+          {task.repeatDates && <div style={{ marginTop: 4 }}><RecurringDates task={task.repeatDates} /></div>}
         </div>
 
         {label === 'Once'
@@ -318,6 +325,7 @@ function GroupPanel({ group, addSlot }: { group: Group; addSlot?: React.ReactNod
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function AllPage() {
+  const systems = useQuestStore(s => s.systems);
   const questlines  = useQuestStore(s => s.questlines);
   const routines    = useQuestStore(s => s.routines);
   const toggleRoutine       = useQuestStore(s => s.toggleRoutine);
@@ -343,6 +351,7 @@ export default function AllPage() {
     id: r.id, title: r.title, done: r.completed, streak: r.streak,
     recurring: r.recurring, intervalDays: r.intervalDays, monthlyRule: r.monthlyRule, repeatOnly: false,
     dueDate: r.dueDate,
+    repeatDates: isGeneralTask(r) && repeats(r) ? r : undefined,
     // The Today pin only matters for what Today doesn't auto-show: non-daily
     // cadences, and General one-offs, which wait to be pinned rather than
     // arriving on a due date the create drawer filled in with today.
@@ -357,8 +366,9 @@ export default function AllPage() {
 
   // ── Build groups ───────────────────────────────────────────────────────────
   const todayKey = logicalDateKey();
-  const generalTasks = routines.filter(r => !r.questlineId && !r.anchor && !r.hidden && !isArchivedRoutine(r, todayKey)).map(fromRoutine);
-  const anchorTasks  = routines.filter(r => r.anchor && !r.hidden).map(fromRoutine);
+  const activeRoutine = (r: Routine) => !routineIsArchived(r, questlines, systems);
+  const generalTasks = routines.filter(r => !r.questlineId && !r.anchor && activeRoutine(r) && !isArchivedRoutine(r, todayKey)).map(fromRoutine);
+  const anchorTasks  = routines.filter(r => r.anchor && activeRoutine(r)).map(fromRoutine);
 
   // Completed one-time General tasks move here the day after they're finished,
   // wait out their retention window, then delete themselves automatically.
@@ -378,7 +388,7 @@ export default function AllPage() {
   const questGroups: Group[] = questlines
     .filter(ql => !ql.hidden)
     .map(ql => {
-      const actionTasks: AllTask[] = ql.quests.flatMap(q =>
+      const actionTasks: AllTask[] = ql.quests.filter(q => !q.hidden).flatMap(q =>
         q.actions.filter(a => !a.hidden).map(a => ({
           id: a.id, title: a.title, done: a.completed,
           recurring: a.recurring ?? null, intervalDays: a.intervalDays, monthlyRule: a.monthlyRule, repeatOnly: false,
@@ -391,7 +401,7 @@ export default function AllPage() {
           onRepeat: (v: RepeatValue) => setActionRecurring(ql.id, q.id, a.id, v.recurring, v.intervalDays, v.monthlyRule),
         }))
       );
-      const linkedTasks = routines.filter(r => r.questlineId === ql.id && !r.hidden).map(fromRoutine);
+      const linkedTasks = routines.filter(r => r.questlineId === ql.id && activeRoutine(r)).map(fromRoutine);
       return { id: ql.id, name: ql.title, color: categoryColor(ql.color), tasks: [...linkedTasks, ...actionTasks] };
     })
     .filter(g => g.tasks.length > 0);

@@ -7,6 +7,14 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.5 — 2026-09-29
+
+- Repeating General tasks show current and next due dates with a consistent scheduling form.
+- Archive and restore systems, quests, and questlines in Settings, with linked systems nested beneath their quest or questline.
+- Click titles to edit in the side panel; archive controls live inside editors.
+- Hold quest titles briefly to reorder, with nearby quests sliding aside during dragging.
+- Redesigned Settings and placed the moon/sun shortcut beside the add-tab button.
+
 ## 3.3.4 — 2026-09-25
 
 - Fixed manually pinned General tasks, quests, and project tasks missing from Today when their due date differs. Pinning keeps the original due date; unpinned tasks still wait for their due day.
