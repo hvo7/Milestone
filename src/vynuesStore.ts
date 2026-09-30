@@ -176,7 +176,7 @@ interface VynuesState {
   updateProject: (id: string, updates: Partial<Pick<VynuesProject, 'name' | 'description' | 'color' | 'status' | 'spaceId'>>) => void;
   deleteProject: (id: string) => void;
 
-  addTask:    (projectId: string, title: string, priority?: TaskPriority, dueDate?: string | null, recurring?: TaskRecurrence, intervalDays?: number, notes?: string, tracked?: boolean, subtasks?: string[], monthlyRule?: MonthlyRule | null) => void;
+  addTask:    (projectId: string, title: string, priority?: TaskPriority, dueDate?: string | null, recurring?: TaskRecurrence, intervalDays?: number, notes?: string, tracked?: boolean, subtasks?: string[], monthlyRule?: MonthlyRule | null, cycleStart?: string) => void;
   toggleTask: (projectId: string, taskId: string) => void;
   toggleTaskTracked: (projectId: string, taskId: string) => void;
   updateTask: (projectId: string, taskId: string, updates: Partial<Pick<VynuesTask, 'title' | 'priority' | 'dueDate' | 'notes' | 'recurring' | 'tracked' | 'intervalDays' | 'monthlyRule'>>) => void;
@@ -254,7 +254,7 @@ export const useVynuesStore = create<VynuesState>()(
           return { projects: s.projects.filter(p => p.id !== id) };
         }),
 
-      addTask: (projectId, title, priority = 'medium', dueDate = null, recurring = null, intervalDays, notes, tracked, subtasks, monthlyRule) =>
+      addTask: (projectId, title, priority = 'medium', dueDate = null, recurring = null, intervalDays, notes, tracked, subtasks, monthlyRule, cycleStart) =>
         set(s => {
           const repeats = !!recurring || !!intervalDays || !!monthlyRule;
           // Daily/weekly tasks flow into Today automatically, so pinning is only for
@@ -277,7 +277,7 @@ export const useVynuesStore = create<VynuesState>()(
                 ...(notes?.trim() ? { notes: notes.trim() } : {}),
                 ...(tracked && canTrack ? { tracked: true } : {}),
                 ...(subs.length ? { subtasks: subs } : {}),
-                lastResetAt: repeats ? new Date().toISOString() : undefined,
+                lastResetAt: repeats ? (cycleStart ?? new Date().toISOString()) : undefined,
                 streak: repeats ? 0 : undefined,
                 createdAt: new Date().toISOString(),
               }],

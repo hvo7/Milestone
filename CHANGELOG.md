@@ -7,6 +7,12 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.6 — 2026-09-30
+
+- Fixed the locked Current due date field for interval repeats in the New task drawer.
+- Selected dates now anchor the saved repeat cycle and recalculate Next due for General, quest-linked, and project tasks.
+- Existing schedules remain unchanged; calendar-rule dates still follow their selected rule.
+
 ## 3.3.5 — 2026-09-29
 
 - Repeating General tasks show current and next due dates with a consistent scheduling form.

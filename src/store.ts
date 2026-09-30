@@ -137,7 +137,7 @@ interface QuestData {
 
   // Routines
   /** Returns the new task's id, so the caller can file it into a system too. */
-  addRoutine:           (title: string, desc: string, recurring: RecurringType | null, questlineId?: string, intervalDays?: number, questId?: string, dueDate?: string | null, counter?: CounterConfig, monthlyRule?: MonthlyRule | null) => string;
+  addRoutine:           (title: string, desc: string, recurring: RecurringType | null, questlineId?: string, intervalDays?: number, questId?: string, dueDate?: string | null, counter?: CounterConfig, monthlyRule?: MonthlyRule | null, cycleStart?: string) => string;
   /** Set/clear a one-time task's due date ('YYYY-MM-DD' or null). */
   setRoutineDueDate:    (rId: string, dueDate: string | null) => void;
   /** Add a habit to the highlighted anchor-habit category (Today tab). */
@@ -570,9 +570,9 @@ export const useQuestStore = create<QuestData>()(
 
       // ── Routines ──────────────────────────────────────────────────────────
 
-      addRoutine: (title, desc, recurring, questlineId, intervalDays, questId, dueDate, counter, monthlyRule) => {
+      addRoutine: (title, desc, recurring, questlineId, intervalDays, questId, dueDate, counter, monthlyRule, cycleStart) => {
         const id = `r-${uid()}`;
-        set(s => ({ routines: [...s.routines, { id, title, description: desc, recurring, completed: false, trackedToday: autoPins({ recurring, intervalDays, monthlyRule }), lastResetAt: new Date().toISOString(), createdAt: new Date().toISOString(), streak: 0, order: s.routines.length, ...(questlineId ? { questlineId } : {}), ...(questId ? { questId } : {}), ...(intervalDays ? { intervalDays } : {}), ...(monthlyRule ? { monthlyRule } : {}), ...(!recurring && !monthlyRule && dueDate ? { dueDate } : {}), ...counterFields(counter) }] }));
+        set(s => ({ routines: [...s.routines, { id, title, description: desc, recurring, completed: false, trackedToday: autoPins({ recurring, intervalDays, monthlyRule }), lastResetAt: cycleStart ?? new Date().toISOString(), createdAt: new Date().toISOString(), streak: 0, order: s.routines.length, ...(questlineId ? { questlineId } : {}), ...(questId ? { questId } : {}), ...(intervalDays ? { intervalDays } : {}), ...(monthlyRule ? { monthlyRule } : {}), ...(!recurring && !monthlyRule && dueDate ? { dueDate } : {}), ...counterFields(counter) }] }));
         return id;
       },
 

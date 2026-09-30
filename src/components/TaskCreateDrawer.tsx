@@ -6,6 +6,7 @@ import { RepeatPicker, type RepeatValue } from '../recurrence';
 import { MenuSelect } from '../vynuesUi';
 import Field from './Field';
 import ScheduleDueField from './ScheduleDueField';
+import { scheduledStart } from '../lib/scheduledStart';
 import MultiSelect from './MultiSelect';
 import { cleanQuest, ANCHOR_LABEL, ANCHOR_ICON, ANCHOR_CATEGORY } from '../lib/ui';
 
@@ -65,6 +66,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
   const ql = questlines.find(q => q.id === questlineId);
   const visibleQuestlines = questlines.filter(q => !q.hidden);
   const activeProjects = vynuesProjects.filter(p => p.status === 'active');
+  const schedule = scheduledStart({ ...repeat, lastResetAt: new Date().toISOString() }, dueDate);
 
   function create() {
     if (!title.trim()) return;
@@ -84,19 +86,21 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
       addVynuesTask(
         projectId, title.trim(), 'medium',
         oneOff ? (dueDate || null) : null,
-        repeat.recurring, repeat.intervalDays,
+        repeat.recurring, schedule.intervalDays,
         description.trim() || undefined,
         oneOff && !dueDate,
         undefined,
         repeat.monthlyRule,
+        schedule.lastResetAt,
       );
     } else {
       newId = addRoutine(
         title.trim(), description.trim(), repeat.recurring,
-        questlineId || undefined, repeat.intervalDays, questId || undefined,
+        questlineId || undefined, schedule.intervalDays, questId || undefined,
         (repeat.recurring || repeat.monthlyRule) ? null : (dueDate || null),
         counter,
         repeat.monthlyRule,
+        schedule.lastResetAt,
       );
     }
     // Vynues tasks live in their own store and have no systems, hence the guard.
@@ -195,7 +199,7 @@ export default function TaskCreateDrawer({ open, onClose, initialCategory = '', 
                 </Field>
               )}
 
-              {!isAnchor && <ScheduleDueField schedule={{ ...repeat, lastResetAt: new Date().toISOString() }} value={dueDate} onChange={setDueDate} />}
+              {!isAnchor && <ScheduleDueField schedule={schedule} value={dueDate} onChange={setDueDate} editableRepeat={!repeat.monthlyRule} />}
               <Field label="Repeats">
                 {isAnchor ? (
                   <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--input-border)', background: 'var(--input-bg)', width: 'fit-content' }}>

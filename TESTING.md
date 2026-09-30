@@ -8,6 +8,12 @@ The amber TESTING banner identifies this environment. Build output goes to `dist
 
 On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
 
+## Batch 008 — approved for v3.3.6
+
+User approved publishing this repeat-date fix to production on 2026-09-30. No testing data is transferred; existing task schedules are not migrated.
+
+- New-task interval repeats allow editing Current due date. The chosen date anchors the saved repeat cycle and recalculates Next due, rather than being discarded as a one-off deadline. Applies to General, quest-linked, and project tasks in the New task drawer. Calendar-rule dates remain controlled by their rule. Existing tasks and production are unchanged.
+
 ## Batch 007 — approved for v3.3.5
 
 User explicitly approved this reviewed batch for live production and requested npm run package on 2026-09-29. Includes the recurring-date, archive/settings, title editing, animated quest reordering, and toolbar revisions below. Historical pending-review notes below describe the testing stage; this approval supersedes them for Batch 007 only. Testing data and credentials remain isolated.
