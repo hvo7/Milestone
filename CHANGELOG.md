@@ -7,6 +7,12 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.7 — 2026-10-14
+
+- Added Goal reset time in Settings → General, with a local-time picker and Save button.
+- Today and recurring goal resets follow the saved hour and minute, with automatic refresh at the selected time.
+- Existing profiles retain the 2:00 AM default until changed.
+
 ## 3.3.6 — 2026-09-30
 
 - Fixed the locked Current due date field for interval repeats in the New task drawer.

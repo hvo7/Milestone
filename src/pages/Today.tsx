@@ -8,12 +8,13 @@
  * predicates live in lib/today.ts, where the reminder scheduler and the tests can
  * reach them without rendering a page.
  */
+import { atResetTime } from '../uiStore';
 import { useState, Suspense } from 'react';
 import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import type { Routine, Schedule, Action, Questline, Quest, System } from '../types';
 import {
   useQuestStore, logicalDateKey, logicalDayStart, dateKey, periodExpired, skipActive,
-  isMultiDayCycle, isGoalRoutine, engagedOnDay, subtaskStats, repeats, isQuestComplete, questProgress, DAY_RESET_HOUR,
+  isMultiDayCycle, isGoalRoutine, engagedOnDay, subtaskStats, repeats, isQuestComplete, questProgress,
   sessionMode, cycleDayKeys, routineSystemIds,
 } from '../store';
 import { showsOnDay, vynuesShowsOnDay, actionShowsOnDay, questShowsOnDay, dueDateMatchesDay, activeTasksFirst } from '../lib/today';
@@ -183,7 +184,7 @@ export default function Today() {
   const viewStart = logicalDayStart();
   if (preview) viewStart.setDate(viewStart.getDate() + 1);
   const viewKey   = preview ? dateKey(viewStart) : todayKey;
-  const viewProbe = new Date(viewStart.getTime() + (DAY_RESET_HOUR + 1) * 3_600_000);
+  const viewProbe = atResetTime(viewStart);
   const willReset = (s: Schedule) => preview && periodExpired(s, viewProbe);
 
   // Subtask handler bundle for a routine row.
@@ -252,7 +253,7 @@ export default function Today() {
   const routineMeta = (r: Routine) => {
     const bits: React.ReactNode[] = [];
     if (repeats(r)) bits.push(<RecurrenceBadge key="rec" recurring={r.recurring} intervalDays={r.intervalDays} monthlyRule={r.monthlyRule} />);
-    if (repeats(r) && isGeneralTask(r)) bits.push(<RecurringDates key="dates" task={{ ...r, completed: willReset(r) ? false : r.completed }} now={new Date(`${viewKey}T12:00:00`)} />);
+    if (repeats(r) && isGeneralTask(r)) bits.push(<RecurringDates key="dates" task={{ ...r, completed: willReset(r) ? false : r.completed }} now={atResetTime(new Date(`${viewKey}T12:00:00`))} />);
     if (!repeats(r) && r.dueDate) bits.push(<DueLabel key="due" dueDate={r.dueDate} todayKey={viewKey} />);
     if (!preview && isGoalRoutine(r) && !r.completed && r.target == null) {
       const stats = subtaskStats(r.subtasks);

@@ -31,6 +31,7 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   const questlines   = useQuestStore(s => s.questlines);
   const systems     = useQuestStore(s => s.systems);
   const projects     = useVynuesStore(s => s.projects);
+  const resetTime = useUIStore(s => s.resetTime);
   const theme        = useUIStore(s => s.theme);
   const toggleTheme  = useUIStore(s => s.toggleTheme);
   const reminders    = useUIStore(s => s.reminders);
@@ -75,7 +76,7 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   return (
     <>
       {import.meta.env.MODE === 'testing' && <div data-testing-banner style={{ background: '#edc16f', color: '#372b16', padding: '9px 18px', display: 'flex', gap: 14, justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 12, borderRadius: 10, marginBottom: 12 }}>
-        <strong>TESTING · Batch 008 · Editable repeat dates</strong>
+        <strong>TESTING · Batch 009 · Goal reset time</strong>
         <span>Separate data · Sync off · Pending review</span>
       </div>}
       <nav className="app-nav" aria-label="Main navigation">
@@ -105,7 +106,7 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
             <NavIcon name={theme === 'dark' ? 'sun' : 'moon'} />
           </button>
           <button type="button" className="nav-tool" onClick={() => window.dispatchEvent(new Event(REFRESH_DAY_EVENT))}
-            title="Reload tasks — new day starts at 2:00 AM local time" aria-label="Reload tasks">
+            title={`Reload tasks — new day starts at ${resetTime} local time`} aria-label="Reload tasks">
             <NavIcon name="reload" />
           </button>
           <button type="button" className="nav-tool" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings" aria-haspopup="dialog">

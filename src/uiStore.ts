@@ -1,4 +1,6 @@
 import { migrateLegacyStorage } from './lib/storageMigration';
+import { configureResetTime } from './lib/resetTime';
+export { atResetTime, resetMinutes } from './lib/resetTime';
 
 export const QUEST_STORE_KEY = 'milestone-v1';
 export const UI_STORE_KEY = 'milestone-ui';
@@ -27,6 +29,8 @@ export interface ReminderSettings {
 export const DEFAULT_REMINDERS: ReminderSettings = { enabled: false, time: '19:00', keepInTray: false };
 
 interface UIStore {
+  resetTime: string;
+  setResetTime: (time: string) => void;
   editMode: boolean;
   theme: 'dark' | 'light';
   reminders: ReminderSettings;
@@ -37,6 +41,12 @@ interface UIStore {
 export const useUIStore = create<UIStore>()(
   persist(
     (set) => ({
+      resetTime: '02:00',
+      setResetTime: (time) => {
+        if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return;
+        set({ resetTime: time });
+        window.dispatchEvent(new Event('milestone:refresh-day'));
+      },
       editMode: false,
       theme: 'light' as 'dark' | 'light',
       reminders: DEFAULT_REMINDERS,
@@ -53,3 +63,6 @@ export const useUIStore = create<UIStore>()(
     { name: UI_STORE_KEY }
   )
 );
+
+configureResetTime(useUIStore.getState().resetTime);
+useUIStore.subscribe(state => configureResetTime(state.resetTime));

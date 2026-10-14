@@ -1,3 +1,4 @@
+import { atResetTime } from '../uiStore';
 import type { Schedule } from '../types';
 
 /** Anchor an interval's open cycle to the date chosen in a creation form.
@@ -8,6 +9,5 @@ export function scheduledStart(schedule: Schedule, date: string): Schedule {
   if (!Number.isFinite(due.getTime())) return schedule;
   const days = schedule.intervalDays || (schedule.recurring === 'weekly' ? 7 : schedule.recurring === 'monthly' ? 30 : 1);
   due.setDate(due.getDate() - days + 1);
-  due.setHours(2, 0, 0, 0);
-  return { ...schedule, intervalDays: days, lastResetAt: due.toISOString() };
+  return { ...schedule, intervalDays: days, lastResetAt: atResetTime(due).toISOString() };
 }

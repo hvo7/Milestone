@@ -8,6 +8,13 @@ The amber TESTING banner identifies this environment. Build output goes to `dist
 
 On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
 
+## Batch 009 — approved for v3.3.7
+
+User explicitly approved this reset-time feature for production on 2026-10-14. Testing data and preferences are not transferred to production.
+
+- Settings → General has a Goal reset time picker and explicit Save button, defaulting to 02:00. Stored per device/profile in UI preferences; no production profile changes.
+- Local logical-day boundaries, weekly boundaries, Today previews, repeating-date calculations and the automatic day clock follow the selected hour and minute. Saving refreshes immediately and re-arms the clock; the setting can therefore begin a new logical day immediately.
+
 ## Batch 008 — approved for v3.3.6
 
 User approved publishing this repeat-date fix to production on 2026-09-30. No testing data is transferred; existing task schedules are not migrated.

@@ -1,3 +1,4 @@
+import { atResetTime } from '../uiStore';
 import type { Schedule } from '../types';
 import { repeats } from '../domain/schedule';
 import { recurringDates } from '../lib/recurringDates';
@@ -7,7 +8,7 @@ export default function ScheduleDueField({ schedule, value, onChange, editableRe
   schedule: Schedule; value: string; onChange: (value: string) => void; editableRepeat?: boolean;
 }) {
   const repeating = repeats(schedule);
-  const dates = recurringDates(schedule, editableRepeat && value ? new Date(`${value}T12:00:00`) : new Date());
+  const dates = recurringDates(schedule, editableRepeat && value ? atResetTime(new Date(`${value}T12:00:00`)) : new Date());
   return <Field label={repeating ? 'Current due date' : 'Due date · optional'}>
     <input aria-label={repeating ? 'Current due date' : 'Due date'} type={repeating && !editableRepeat && !dates.current ? 'text' : 'date'}
       readOnly={repeating && !editableRepeat} value={repeating ? (editableRepeat ? value || dates.current || '' : dates.current ?? 'None') : value}

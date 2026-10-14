@@ -1,4 +1,5 @@
 import { type Action, type Routine, type Schedule, type MonthlyRule } from '../types';
+import { atResetTime, resetMinutes } from '../lib/resetTime';
 import {
   occursOn, lastOccurrenceOnOrBefore, nextOccurrenceAfter, monthlyRuleLabel, monthlyRuleShort,
 } from '../lib/monthlyRule';
@@ -81,7 +82,7 @@ export const DAY_RESET_HOUR = 2;
  *  DAY_RESET_HOUR count as the previous calendar day. */
 export function logicalDayStart(d: Date = new Date()): Date {
   const x = new Date(d);
-  if (x.getHours() < DAY_RESET_HOUR) x.setDate(x.getDate() - 1);
+  if (x < atResetTime(x)) x.setDate(x.getDate() - 1);
   x.setHours(0, 0, 0, 0);
   return x;
 }
@@ -91,16 +92,14 @@ export function logicalDayStart(d: Date = new Date()): Date {
 export function nextDailyReset(ref: Date = new Date()): Date {
   const d = logicalDayStart(ref);
   d.setDate(d.getDate() + 1);
-  d.setHours(DAY_RESET_HOUR, 0, 0, 0);
-  return d;
+  return atResetTime(d);
 }
 
 /** Start of the current logical week: DAY_RESET_HOUR on the most recent Sunday. */
 function thisWeekReset(ref: Date = new Date()): Date {
   const d = logicalDayStart(ref);
   d.setDate(d.getDate() - d.getDay()); // back to the (logical) Sunday
-  d.setHours(DAY_RESET_HOUR, 0, 0, 0);
-  return d;
+  return atResetTime(d);
 }
 
 /** The next weekly rollover instant. */
@@ -154,7 +153,7 @@ export function dueOnDay(s: Schedule, dayStart: Date): boolean {
   if (recurring === 'monthly') {
     if (!lastResetAt) return false;
     // Due once the 30-day mark lands before this logical day's 2am rollover.
-    return new Date(lastResetAt).getTime() + MONTHLY_MS < dayStart.getTime() + 86_400_000 + DAY_RESET_HOUR * 3_600_000;
+    return new Date(lastResetAt).getTime() + MONTHLY_MS < dayStart.getTime() + 86_400_000 + resetMinutes() * 60_000;
   }
   return false;
 }

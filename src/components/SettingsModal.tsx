@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import ModalShell from './ModalShell';
 import ArchivePanel from './ArchivePanel';
+import { useUIStore } from '../uiStore';
 import './settings.css';
 
 export default function SettingsModal({ onClose, notifications, onNotifications, onData, onNotion, desktop }: {
@@ -8,6 +9,9 @@ export default function SettingsModal({ onClose, notifications, onNotifications,
   onNotifications: () => void; onData: () => void; onNotion: () => void; desktop: boolean;
 }) {
   const [tab, setTab] = useState('general');
+  const resetTime = useUIStore(s => s.resetTime);
+  const setResetTime = useUIStore(s => s.setResetTime);
+  const [resetDraft, setResetDraft] = useState(resetTime);
   const dialog = useRef<HTMLElement>(null);
   const tabs = [{ id: 'general', label: 'General', icon: 'settings' }, { id: 'archive', label: 'Archive', icon: 'archive' }, { id: 'data', label: 'Data & connections', icon: 'data' }] as const;
   useEffect(() => {
@@ -19,7 +23,7 @@ export default function SettingsModal({ onClose, notifications, onNotifications,
     <section ref={dialog} className="settings-dialog" role="dialog" aria-modal="true" aria-labelledby="settings-heading" onKeyDown={e => {
       if (e.key === 'Escape') onClose();
       if (e.key !== 'Tab') return;
-      const controls = [...(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]), [tabindex="0"]') ?? [])];
+      const controls = [...(dialog.current?.querySelectorAll<HTMLElement>('button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), [tabindex="0"]') ?? [])];
       const first = controls[0], last = controls[controls.length - 1];
       if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }
       else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
@@ -39,6 +43,12 @@ export default function SettingsModal({ onClose, notifications, onNotifications,
         </div>
         <div className="settings-content" role="tabpanel" id={`settings-panel-${tab}`} aria-labelledby={`settings-tab-${tab}`}>
           {tab === 'general' && <><h3>General</h3><p className="settings-intro">Your everyday preferences.</p>
+            <div className="settings-row"><div><h4><label htmlFor="goal-reset-time">Goal reset time</label></h4><p>Your daily goals and Today board start a new day at this local time. Weekly goals keep their weekly cadence. Saving applies immediately and may start a new day.</p></div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <input id="goal-reset-time" type="time" className="rune-input" value={resetDraft} onChange={e => setResetDraft(e.target.value)} style={{ width: 130 }} />
+                <button className="btn-ghost" disabled={!resetDraft || resetDraft === resetTime} onClick={() => setResetTime(resetDraft)}>Save reset time</button>
+              </div>
+            </div>
             <div className="settings-row"><div><h4>Notifications</h4><p>{notifications === 'Off' ? 'Reminders are turned off.' : `Reminders at ${notifications}.`}</p></div><button className="btn-ghost" onClick={onNotifications}>Manage reminders</button></div>
           </>}
           {tab === 'archive' && <ArchivePanel />}

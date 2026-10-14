@@ -1,3 +1,4 @@
+import { atResetTime } from '../uiStore';
 import type { Schedule } from '../types';
 import { dateKey, dueOnDay, logicalDayStart, repeats } from '../domain/schedule';
 
@@ -29,7 +30,7 @@ export function recurringDates(task: Schedule & { completed?: boolean }, now = n
     // These cycles restart after the current due day; use the same engine to
     // calculate the following cycle, including its local-day boundary.
     const reset = task.intervalDays ? new Date(after) : new Date(Date.parse(task.lastResetAt!) + 30 * 86_400_000);
-    if (task.intervalDays) reset.setHours(2);
+    if (task.intervalDays) reset.setTime(atResetTime(reset).getTime());
     nextSchedule = { ...task, lastResetAt: reset.toISOString() };
   }
   const next = find(nextSchedule, after);
