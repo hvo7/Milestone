@@ -8,6 +8,13 @@ The amber TESTING banner identifies this environment. Build output goes to `dist
 
 On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
 
+## Batch 010 — approved for v3.3.8
+
+User explicitly approved this feature for production on 2026-10-18. Testing data and preferences are not copied into production.
+
+- Settings → General: Unchecked items first, enabled by default. Completed quests move below unfinished quests; checked tasks within a quest move below unchecked tasks. Stable display-only grouping preserves manual order and sequential unlocking.
+- Disable the toggle to restore manual order and normal hold-to-reorder. Edit mode always shows manual quest order. Preference is stored per device/profile; production is unchanged.
+
 ## Batch 009 — approved for v3.3.7
 
 User explicitly approved this reset-time feature for production on 2026-10-14. Testing data and preferences are not transferred to production.

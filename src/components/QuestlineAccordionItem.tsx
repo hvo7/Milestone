@@ -20,6 +20,7 @@ import QuestArtwork from './QuestArtwork';
 import PinButton from './PinButton';
 import QuestDoneToggle from './QuestDoneToggle';
 import EditTitle from './EditTitle';
+import { completionOrder } from '../lib/completionOrder';
 import { questShowsOnDay } from '../lib/today';
 import { logicalDateKey } from '../domain/schedule';
 import { categoryColor, cleanQuest } from '../lib/ui';
@@ -94,7 +95,8 @@ function CompactQuestRow({ questline, quest, locked, subdued, active = false, dr
 
   const complete = isQuestComplete(quest);
   const { done: ad, total: at } = questProgress(quest);
-  const actions = quest.actions.filter(a => !a.hidden);
+  const completedLast = useUIStore(s => s.completedLast);
+  const actions = completionOrder(quest.actions.filter(a => !a.hidden), completedLast, a => a.completed);
   const pinned = questShowsOnDay(quest, logicalDateKey());
   const canExpand = true;
 
@@ -141,7 +143,7 @@ function CompactQuestRow({ questline, quest, locked, subdued, active = false, dr
           color: complete ? 'var(--text-dim)' : active ? categoryColor(questline.color) : 'var(--text-parchment)',
           textDecoration: complete && !quest.recurring ? 'line-through' : 'none',
         }}>
-          <EditTitle reorderHandle onEdit={() => onEditQuest?.(questline.id, quest)}>{cleanQuest(quest.title)}</EditTitle>
+          <EditTitle reorderHandle={!completedLast} onEdit={() => onEditQuest?.(questline.id, quest)}>{cleanQuest(quest.title)}</EditTitle>
         </span>
 
         {quest.recurring && (
@@ -222,6 +224,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
   const routines              = useQuestStore(s => s.routines);
   const taskHistory           = useQuestStore(s => s.taskHistory);
   const editMode              = useUIStore(s => s.editMode);
+  const completedLast = useUIStore(s => s.completedLast);
 
   const [addingQuestTo,  setAddingQuestTo]  = useState<Quest | null>(null);
   const [addingNewQuest, setAddingNewQuest] = useState(false);
@@ -241,9 +244,10 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
   // hierarchy that doesn't exist; they all render as equal rows instead.
   const activeQuest = questline.sequential ? getActiveQuest(questline) : null;
 
-  const sorted = [...questline.quests]
+  const manualOrder = [...questline.quests]
     .filter(q => !q.hidden)
     .sort((a, b) => a.order - b.order);
+  const sorted = completionOrder(manualOrder, completedLast && !editMode, isQuestComplete);
   // Preserve hidden quests in their existing slots while reordering all visible quests.
   const hold = useHoldToReorder(
     sorted.map(q => q.id),
@@ -458,7 +462,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                                 locked={!isQuestUnlocked(questline, quest)}
                                 active={activeQuest?.id === quest.id}
                                 subdued={!!activeQuest && activeQuest.id !== quest.id}
-                                drag={hold.rowProps(quest.id, i)}
+                                drag={completedLast ? { onPointerDown: () => {}, onClickCapture: () => {} } : hold.rowProps(quest.id, i)}
                                 registerRow={hold.registerRow}
                                 dragging={hold.dragId === quest.id ? { offsetY: hold.offsetY } : null}
                                 onEditQuest={onEditQuest}

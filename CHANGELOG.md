@@ -7,6 +7,12 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.8 — 2026-10-18
+
+- Questlines show unchecked quests and tasks first, with completed items grouped at the bottom.
+- Added Unchecked items first in Settings → General, enabled by default. Turning it off restores saved manual order and hold-to-reorder; Edit mode always shows manual quest order.
+- Sorting does not change sequential unlock rules or saved task order.
+
 ## 3.3.7 — 2026-10-14
 
 - Added Goal reset time in Settings → General, with a local-time picker and Save button.

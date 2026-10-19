@@ -21,7 +21,7 @@ it('clicks to edit, holds the active title to reorder, and cancels without savin
   const line: Questline = { id: 'hold-line', title: 'Hold line', description: '', icon: '', color: 'gold', sequential: true,
     quests: ['First', 'Second', 'Third'].map((title, order) => ({ id: title, title, order, description: '', actions: [] })) };
   useQuestStore.setState({ questlines: [line] });
-  useUIStore.setState({ editMode: false });
+  useUIStore.setState({ editMode: false, completedLast: false });
   const host = document.createElement('div'); document.body.append(host);
   const root = createRoot(host), edit = vi.fn();
   try {
