@@ -129,3 +129,55 @@ it('shows an empty state when there has not been a check-in', () => {
   click(button('Show last check-in'));
   expect(host.querySelector('#lv-last-check-in')?.textContent).toBe('No check-ins yet.');
 });
+
+it('creates two-tier plans, enforces order and preserves check-in drafts across immediate checklist saves', () => {
+  const key = statusVitalsKey(false);
+  localStorage.setItem(key, JSON.stringify([saveCheckIn(area(), { status: 'behind', reason: '', next: '' })]));
+  act(() => root.render(<StatusLifeVitalsPage />));
+  click(host.querySelector('.lv-region')!);
+  type(host.querySelector('.lv-status-form textarea')!, 'Draft reason stays');
+  const add = (label: string) => {
+    type(host.querySelector('.lv-plan-editor input')!, label);
+    click(button('Save item'));
+  };
+  click(button('+ Add task')); add('Catch up lectures');
+  click(button('+ Subtask')); add('Read notes');
+  click(button('+ Subtask')); add('Practice questions');
+  click(button('+ Add task')); add('Submit homework');
+  const select = host.querySelector<HTMLSelectElement>('.lv-plan-order select')!;
+  act(() => { select.value = 'sequential'; select.dispatchEvent(new Event('change', { bubbles: true })); });
+  const check = (label: string) => host.querySelector<HTMLInputElement>(`[aria-label="Complete ${label}"]`)!;
+  expect(check('Practice questions').disabled).toBe(true);
+  expect(check('Submit homework').disabled).toBe(true);
+  click(check('Read notes')); click(check('Practice questions'));
+  expect(check('Catch up lectures').checked).toBe(true);
+  expect(check('Submit homework').disabled).toBe(false);
+  click(check('Submit homework'));
+  expect(host.querySelector<HTMLTextAreaElement>('.lv-status-form textarea')!.value).toBe('Draft reason stays');
+  expect(JSON.parse(localStorage.getItem(key)!)[0].entries[0].status).toBe('behind');
+  click(button('Maintenance')); click(button('+ Add task')); add('Weekly review');
+  click(check('Weekly review')); click(button('Reset checks')); click(button('Confirm'));
+  expect(check('Weekly review').checked).toBe(false);
+  act(() => root.unmount()); root = createRoot(host);
+  act(() => root.render(<StatusLifeVitalsPage />)); click(host.querySelector('.lv-region')!);
+  expect(check('Submit homework').checked).toBe(true);
+  click(button('Maintenance')); expect(check('Weekly review').checked).toBe(false);
+});
+
+it('preserves checklist edits on storage failure and requires confirmation before deleting a task with subtasks', () => {
+  const key = statusVitalsKey(false);
+  localStorage.setItem(key, JSON.stringify([{ ...area(), plans: { catchUp: { sequential: false, tasks: [] }, maintenance: { sequential: false, tasks: [{ id: 't', title: 'Review', done: false, subtasks: [{ id: 's', title: 'Read', done: false }] }] } } }]));
+  act(() => root.render(<StatusLifeVitalsPage />)); click(host.querySelector('.lv-region')!);
+  click(host.querySelector('[aria-label="Edit Read"]')!);
+  type(host.querySelector('.lv-plan-editor input')!, 'Read chapter');
+  const failure = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+  click(button('Save item'));
+  expect(host.querySelector<HTMLInputElement>('.lv-plan-editor input')!.value).toBe('Read chapter');
+  expect(host.textContent).toContain('Could not save checklist');
+  failure.mockRestore(); click(button('Save item'));
+  click(host.querySelector('[aria-label="Delete Review"]')!);
+  expect(host.textContent).toContain('Delete this task and its subtasks?');
+  expect(JSON.parse(localStorage.getItem(key)!)[0].plans.maintenance.tasks).toHaveLength(1);
+  click(button('Confirm'));
+  expect(JSON.parse(localStorage.getItem(key)!)[0].plans.maintenance.tasks).toEqual([]);
+});

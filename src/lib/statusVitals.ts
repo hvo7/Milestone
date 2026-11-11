@@ -2,6 +2,7 @@ import { validAreas, type AreaIcon, type Pace } from './lifeVitals';
 import { lifeVitalsStorageKey } from './lifeVitalsStorage';
 import { simplePace, simpleVitalsKey, validSimpleVitals } from './simpleVitals';
 import { statusVitalsExamples } from '../testing/statusVitalsExamples';
+import { validPlans, type VitalPlans } from './vitalPlans';
 
 export type VitalStatus = Exclude<Pace, 'unrated'>;
 export type VitalEntry = {
@@ -10,7 +11,7 @@ export type VitalEntry = {
 };
 export type StatusVital = {
   id: string; name: string; icon: AreaIcon; onPace: string;
-  entries: VitalEntry[]; archived?: boolean;
+  entries: VitalEntry[]; archived?: boolean; plans?: VitalPlans;
 };
 export type CheckInDraft = Pick<VitalEntry, 'status' | 'reason' | 'next'>;
 export const statusVitalsKey = (testing: boolean) => testing
@@ -40,7 +41,7 @@ export function validStatusVitals(value: unknown): value is StatusVital[] {
   return Array.isArray(value) && value.length <= 100 && new Set(value.map(a => a?.id)).size === value.length && value.every(a =>
     object(a) && id(a.id) && text(a.name, 40) && !!a.name.trim() && text(a.onPace, 300) &&
     ['gym', 'school', 'work', 'projects', 'wellbeing', 'people'].includes(String(a.icon)) &&
-    (a.archived === undefined || typeof a.archived === 'boolean') && Array.isArray(a.entries) &&
+    (a.archived === undefined || typeof a.archived === 'boolean') && (a.plans === undefined || validPlans(a.plans)) && Array.isArray(a.entries) &&
     new Set(a.entries.map(e => e?.id)).size === a.entries.length && a.entries.every(e => object(e) && id(e.id) &&
       ['behind', 'on-pace', 'ahead'].includes(String(e.status)) && text(e.reason, 600) && text(e.next, 200) &&
       text(e.onPace, 300) && date(e.createdAt) && date(e.updatedAt)));

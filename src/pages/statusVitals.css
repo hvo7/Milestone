@@ -29,6 +29,35 @@
 .lv-history-heading time, .lv-last-check { font-size: 10px; color: var(--page-text-dim); }
 .lv-status-history p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.65; margin: 10px 0 0; }
 .lv-status-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.lv-checklist { margin-top: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--page-border); }
+.lv-plan-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+.lv-plan-tabs button, .lv-plan-tools button { font: inherit; color: var(--page-text); background: transparent; border: 1px solid var(--page-border); border-radius: 7px; cursor: pointer; padding: 7px 10px; }
+.lv-plan-tabs button[aria-pressed=true] { background: var(--accent-soft); border-color: var(--accent); }
+.lv-plan-tabs button:disabled, .lv-plan-tools button:disabled { opacity: .45; cursor: default; }
+.lv-plan-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.lv-plan-heading h3 { margin: 0; }
+.lv-plan-heading > span, .lv-plan-order { font-size: 12px; }
+.lv-plan-order { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
+.lv-plan-order select, .lv-plan-editor input { background: var(--input-bg); color: var(--page-text); border: 1px solid var(--input-border); border-radius: 7px; font: inherit; padding: 9px; }
+.lv-plan-tasks, .lv-plan-subtasks { padding: 0; list-style: none; }
+.lv-plan-tasks > li { padding: 16px 0; border-bottom: 1px solid var(--page-border); }
+.lv-plan-subtasks { margin: 12px 0 0 24px; padding-left: 14px; border-left: 2px solid var(--page-border); }
+.lv-plan-subtasks > li { padding: 8px 0; }
+.lv-plan-row { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; }
+.lv-plan-row > span { overflow-wrap: anywhere; min-width: 0; }
+.lv-plan-row input { width: 18px; height: 18px; margin: 2px 0 0; flex-shrink: 0; accent-color: var(--accent); }
+.lv-plan-done { text-decoration: line-through; opacity: .65; }
+.lv-plan-lock { font-size: 10px; margin-left: auto; }
+.lv-plan-tools { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0 0 28px; font-size: 11px; }
+.lv-plan-tools button { border-color: transparent; padding: 5px 7px; min-height: 30px; }
+.lv-plan-tools button:hover:not(:disabled) { border-color: var(--page-border); background: var(--accent-soft); }
+.lv-plan-editor { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.lv-plan-editor label { flex-basis: 100%; font-size: 12px; }
+.lv-plan-editor input { display: block; width: 100%; margin-top: 8px; box-sizing: border-box; }
+.lv-plan-confirm { padding: 12px; margin-top: 12px; border: 1px solid var(--page-border); border-radius: 8px; font-size: 13px; }
+.lv-plan-finished { font-size: 12px; color: var(--success); margin-bottom: 0; }
+.lv-checklist > .lv-text-button { margin-left: 12px; }
+.lv-checklist :is(button, input, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: no-preference) {
   .lv-status-option { transition: background-color 150ms, border-color 150ms, color 150ms; }
 }

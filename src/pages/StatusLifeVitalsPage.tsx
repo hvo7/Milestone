@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import NavBar from '../components/NavBar';
+import VitalChecklist from '../components/VitalChecklist';
 import { paceLabels, type Pace } from '../lib/lifeVitals';
 import { historyEntries, latestEntry, loadStatusVitals, newStatusVital, saveCheckIn, statusPace, statusVitalsKey,
   validStatusVitals, type StatusVital, type VitalEntry, type VitalStatus } from '../lib/statusVitals';
@@ -131,6 +132,7 @@ export function StatusAreaFocus({ area, origin, onClose, onEdit, onSave }: {
       </section>
       {area.onPace && <section className="lv-personal-definition"><h3>On pace means</h3><p>{area.onPace}</p></section>}
       <div className="lv-focus-body">
+        <VitalChecklist area={area} onSave={onSave} />
         <form ref={formRef} onSubmit={save} className="lv-status-form">
           <h3>{editId ? 'Edit check-in' : 'New check-in'}</h3>
           <fieldset className="lv-status-options"><legend>Status</legend>
