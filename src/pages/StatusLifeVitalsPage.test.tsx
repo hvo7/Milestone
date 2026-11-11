@@ -130,6 +130,23 @@ it('shows an empty state when there has not been a check-in', () => {
   expect(host.querySelector('#lv-last-check-in')?.textContent).toBe('No check-ins yet.');
 });
 
+it('places status first and reveals only its matching checklist directly beneath it', () => {
+  renderFocus(saveCheckIn(area(), { status: 'ahead', reason: '', next: '' }));
+  const title = host.querySelector('#status-focus-title')!;
+  const choices = host.querySelector('.lv-status-options')!;
+  expect(title.nextElementSibling).toBe(choices);
+  expect(host.querySelector('input[type=radio]:checked')).toBeNull();
+  expect(host.querySelector('.lv-checklist')).toBeNull();
+  expect(host.querySelector('[aria-label="Checklist type"]')).toBeNull();
+  click(host.querySelector('input[value=behind]')!);
+  expect(choices.nextElementSibling).toBe(host.querySelector('.lv-checklist'));
+  expect(host.querySelector('.lv-checklist h3')?.textContent).toBe('Get back on pace');
+  click(host.querySelector('input[value="on-pace"]')!);
+  expect(host.querySelector('.lv-checklist h3')?.textContent).toBe('Keep on pace');
+  click(host.querySelector('input[value=ahead]')!);
+  expect(host.querySelector('.lv-checklist')).toBeNull();
+});
+
 it('filters attention and persists, replaces, and clears one current priority', () => {
   const key = statusVitalsKey(false);
   const fresh = saveCheckIn({ ...area(), name: 'Gym' }, { status: 'on-pace', reason: '', next: '' });

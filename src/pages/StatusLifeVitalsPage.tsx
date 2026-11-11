@@ -100,7 +100,7 @@ export function StatusAreaFocus({ area, origin, onClose, onEdit, onSave }: {
   const reset = () => { setEditId(undefined); setStatus(null); setReason(''); setNext(''); setError(''); };
   const editEntry = (entry: VitalEntry) => {
     setEditId(entry.id); setStatus(entry.status); setReason(entry.reason); setNext(entry.next); setError('');
-    formRef.current?.querySelector<HTMLInputElement>('input[type="radio"]')?.focus();
+    dialogRef.current?.querySelector<HTMLInputElement>('input[type="radio"]')?.focus();
   };
   const save = (event: FormEvent) => {
     event.preventDefault();
@@ -118,8 +118,15 @@ export function StatusAreaFocus({ area, origin, onClose, onEdit, onSave }: {
     onPointerCancel={() => { backdropDownRef.current = false; }}
     onClick={e => { if (backdropDownRef.current && e.target === e.currentTarget) close(); backdropDownRef.current = false; }}>
     <div ref={panelRef} className={`lv-focus-panel lv-status-focus lv-${statusPace(area)}`}>
-      <div className="lv-focus-top"><PaceBadge pace={statusPace(area)} /><button type="button" className="lv-close" onClick={close} aria-label="Close life area">&times;</button></div>
+      <div className="lv-focus-top"><button type="button" className="lv-close" onClick={close} aria-label="Close life area">&times;</button></div>
       <h2 id="status-focus-title">{area.name}</h2>
+          <fieldset className="lv-status-options"><legend>Status</legend>
+            {(['behind', 'on-pace', 'ahead'] as const).map(value => <label key={value} className={`lv-status-option lv-${value}`}>
+              <input type="radio" name="vital-status" form="vital-check-in-form" value={value} checked={status === value} onChange={() => { setStatus(value); setError(''); }} />
+              <span>{paceLabels[value]}</span>
+            </label>)}
+          </fieldset>
+        {(status === 'behind' || status === 'on-pace') && <VitalChecklist key={status} kind={status === 'behind' ? 'catchUp' : 'maintenance'} area={area} onSave={onSave} />}
       <button type="button" className="lv-text-button lv-last-check-toggle" aria-expanded={showLastCheckIn} aria-controls="lv-last-check-in" onClick={() => setShowLastCheckIn(show => !show)}>
         {showLastCheckIn ? 'Hide last check-in' : 'Show last check-in'}
       </button>
@@ -132,14 +139,9 @@ export function StatusAreaFocus({ area, origin, onClose, onEdit, onSave }: {
       </section>
       {area.onPace && <section className="lv-personal-definition"><h3>On pace means</h3><p>{area.onPace}</p></section>}
       <div className="lv-focus-body">
-        <form ref={formRef} onSubmit={save} className="lv-status-form">
+        <form id="vital-check-in-form" ref={formRef} onSubmit={save} className="lv-status-form">
           <h3>{editId ? 'Edit check-in' : 'New check-in'}</h3>
-          <fieldset className="lv-status-options"><legend>Status</legend>
-            {(['behind', 'on-pace', 'ahead'] as const).map(value => <label key={value} className={`lv-status-option lv-${value}`}>
-              <input type="radio" name="vital-status" value={value} checked={status === value} onChange={() => { setStatus(value); setError(''); }} />
-              <span>{paceLabels[value]}</span>
-            </label>)}
-          </fieldset>
+
           <label>{status === 'behind' ? 'What’s holding you back?' : status === 'ahead' ? 'What’s going well?' : 'What’s going on?'} <span className="lv-optional">(optional)</span>
             <textarea rows={3} maxLength={600} value={reason} onChange={e => setReason(e.target.value)} />
           </label>
@@ -150,7 +152,7 @@ export function StatusAreaFocus({ area, origin, onClose, onEdit, onSave }: {
             <button type="submit" className="lv-primary">{editId ? 'Save changes' : 'Save check-in'}</button>
           </div>
         </form>
-        {(status === 'behind' || status === 'on-pace') && <VitalChecklist key={status} kind={status === 'behind' ? 'catchUp' : 'maintenance'} area={area} onSave={onSave} />}
+
         {entries.length > 0 && <details className="lv-status-history"><summary>Check-in history ({entries.length})</summary>
           <ol>{entries.slice(0, historyCount).map(entry => <li key={entry.id}>
             <div className="lv-history-heading"><PaceBadge pace={entry.status} /><time dateTime={entry.createdAt}>{dateLabel(entry.createdAt)}</time></div>
