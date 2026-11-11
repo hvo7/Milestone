@@ -178,3 +178,20 @@ The user explicitly approved shipping this batch. Icons are enabled in the produ
 ## Shipping
 
 Collect features here, review them in the testing window, and wait for explicit user approval of the batch. Only then enable approved feature flags in the release build, validate, bump the version and publish. Publishing workflows are manual-only; do not dispatch them before approval. Do not copy test task data into production.
+
+
+## Testing batch: Today quest pins (2026-11-11)
+
+Status: testing only; production promotion awaits explicit approval. Source branch: testing/today-pins. No release, deployment, version bump, or production profile writes.
+
+Request and behavior: completed pinned quests stay on Today through their completion day, then lose their manual pin at the configured local day-reset boundary. Unfinished pins remain. Today shows an always-visible pin control on existing quest rows, including Done for today; it unpins without deleting, completing, or changing deadlines. The tomorrow preview is read-only. Due-date scheduling can still surface a quest on a later due day.
+
+Implementation: src/domain/taskState.ts derives expiry from the manual completion stamp or latest visible checklist step and clears trackedToday before recurrence resets erase evidence. src/lib/today.ts uses the same expiry for previews and due summaries. src/pages/Today.tsx wires unpin for quest rows only; src/components/today/TaskRow.tsx reuses PinButton in both layouts and suppresses the redundant delete-shaped unpin control. src/lib/todayQuestPinExpiry.test.ts covers empty/manual/checklist quests, rollover, unfinished pins, recurrence resets, and rendered open/completed unpin actions.
+
+Storage and compatibility: no schema change; only the existing trackedToday flag is cleared. Completion history, steps, deadlines, and quests are retained. Legacy completed quests lacking any valid completion timestamp expire on the first processing pass. Existing routine/project scheduling is unchanged. Testing data remains isolated; no profiles, snapshots, credentials, or generated output are included in the commit.
+
+Validation (current batch): npm test -- src/lib/todayQuestPinExpiry.test.ts src/lib/todayPinRegression.test.ts src/lib/today.test.ts src/store.test.ts passed: 4 files, 99 tests. npm run testing -- --browser passed TypeScript and the testing Vite build, serving http://127.0.0.1:4174/. Browser visual verification was blocked: conversation browser returned "Tab 1 is not part of browser session". Automated rendered click tests passed; no manual visual pass is claimed. Full suite not run.
+
+Review: open the testing URL, pin a quest from Quests, return to Today, click its pin in either open or completed state. Verify the quest remains in Quests. Complete another pin and check Tomorrow or cross the configured reset time. For rollback, revert this batch's source commit and rebuild testing; cleared pins can be manually restored in Quests. No production rollback is required.
+
+Publication: remote main and its three release/deployment workflows inspected; all deploy only by workflow_dispatch. Source is published through the GitHub connector with an expected-head check because shell Git networking failed and this checkout's Git metadata is read-only. Local HEAD remains c218de8; the remote testing branch is authoritative for this batch. Existing unrelated working changes were preserved. Pending: user visual review and explicit production approval.

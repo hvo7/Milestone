@@ -15,7 +15,7 @@ import { routineIsArchived } from './archive';
 import { isOffToday, matchesDueDay } from '../domain/schedule';
 import { alwaysOnToday, dateKey, dueOnDay, isMultiDayCycle, logicalDateKey, logicalDayStart, onToday, repeats, skipActive } from '../domain/schedule';
 import { engagedOnDay, isGeneralTask } from '../domain/taskState';
-import { isQuestComplete } from '../domain/taskState';
+import { isQuestComplete, questPinExpired } from '../domain/taskState';
 
 // The rule lives in the store, beside the other schedule predicates; re-exported
 // here so callers that think in terms of "the Today page" can reach it too.
@@ -69,6 +69,7 @@ export function vynuesShowsOnDay(t: VynuesTask, dayKey: string, dayStart: Date):
 export const dueDateMatchesDay = matchesDueDay;
 
 export function questShowsOnDay(q: Quest, dayKey: string): boolean {
+  if (questPinExpired(q, dayKey)) return false;
   return !q.hidden && !isOffToday(q, dayKey) && (!!q.trackedToday || (!!q.dueDate && matchesDueDay(q, dayKey, isQuestComplete(q))));
 }
 

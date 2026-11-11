@@ -77,9 +77,23 @@ export function counterFields(counter?: CounterConfig): Partial<Routine> {
   };
 }
 
+/** Completed pins expire on the next logical day, including legacy undated completions. */
+export function questPinExpired(quest: Quest, dayKey = logicalDateKey()): boolean {
+  if (!isQuestComplete(quest)) return false;
+  const visible = quest.actions.filter(a => !a.hidden);
+  const stamps = quest.completionMode === 'manual' || !visible.length
+    ? [quest.completedAt] : visible.map(a => a.completedAt);
+  const days = stamps.filter((stamp): stamp is string => !!stamp && Number.isFinite(Date.parse(stamp)))
+    .map(stamp => logicalDateKey(new Date(stamp)));
+  return !days.length || days.every(day => day < dayKey);
+}
+
 export function processQuestlines(questlines: Questline[]): Questline[] {
   const now = new Date().toISOString();
   return questlines.map(ql => {
+    // Clear before recurrence resets discard the completion timestamps.
+    ql = { ...ql, quests: ql.quests.map(q => q.trackedToday && questPinExpired(q)
+      ? { ...q, trackedToday: false } : q) };
     // Questline-level reset
     if (ql.recurring && periodExpired(ql)) {
       const { done, total } = questlineProgress(ql);

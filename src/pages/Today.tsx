@@ -118,6 +118,7 @@ interface TodoItem {
   onToggle: () => void;
   onRename: (title: string) => void;
   onDelete: () => void;
+  onUnpin?: () => void;
   /** Opens the full edit drawer for this task. */
   editTarget?: EditTarget;
   editQuest?: { questlineId: string; quest: Quest };
@@ -410,6 +411,7 @@ export default function Today() {
         onRename: (t: string) => updateQuestTitle(ql.id, quest.id, t),
         // ✕ on a pinned quest unpins it from Today rather than deleting the quest.
         onDelete: () => toggleQuestTracked(ql.id, quest.id),
+        onUnpin: () => toggleQuestTracked(ql.id, quest.id),
       };
     }),
     ...vynuesItems.map(({ task, project }) => {
@@ -526,6 +528,8 @@ export default function Today() {
       skipped={it.skipped}
       onSkip={it.onSkip}
       onToggle={it.onToggle}
+
+      onUnpin={it.onUnpin}
       onDelete={it.onDelete}
       onRename={it.onRename}
       onEdit={it.editQuest ? () => setEditQuest(it.editQuest!) : it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
@@ -617,6 +621,8 @@ export default function Today() {
                     skipped={it.skipped}
                     onSkip={it.onSkip}
                     onToggle={it.onToggle}
+
+                    onUnpin={it.onUnpin}
                     onDelete={it.onDelete}
                     onRename={it.onRename}
                     onEdit={it.editQuest ? () => setEditQuest(it.editQuest!) : it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
@@ -774,6 +780,8 @@ export default function Today() {
                     accentHex="var(--success)"
                     sourceLine={it.meta}
                     onToggle={it.onToggle}
+
+                    onUnpin={it.onUnpin}
                     onRename={it.onRename}
                     onEdit={it.editQuest ? () => setEditQuest(it.editQuest!) : it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
                     target={it.target}

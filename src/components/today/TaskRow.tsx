@@ -7,6 +7,7 @@ import { useState, useRef } from 'react';
 import { motion, Reorder, useDragControls, type PanInfo } from 'framer-motion';
 import SubtaskTree, { type SubNode, type SubtaskTreeHandlers } from '../SubtaskTree';
 import IconButton from '../IconButton';
+import PinButton from '../PinButton';
 import EditTitle from '../EditTitle';
 import { countSubNodes, hasCheckpoints } from '../../lib/ui';
 import { SessionStrip, CheckpointPips } from './ProgressStrip';
@@ -141,6 +142,7 @@ export interface TaskRowProps {
   systemMenu?: SystemMenu;
   onToggle: () => void;
   onDelete?: () => void;
+  onUnpin?: () => void;
   onRename?: (title: string) => void;
   /** Opens the full edit panel (due date, schedule, category, steps — everything). */
   onEdit?: () => void;
@@ -265,7 +267,7 @@ function TagMenu({ label, color, menu }: { label: string; color: string; menu: S
 }
 
 export default function TaskRow({
-  title, completed, todayDone = false, skipped, onSkip, streak, accentHex, sourceLine, tag, systemMenu, onToggle, onDelete, onRename, onEdit, drag,
+  title, completed, todayDone = false, skipped, onSkip, streak, accentHex, sourceLine, tag, systemMenu, onToggle, onDelete, onUnpin, onRename, onEdit, drag,
   subtasks, subHandlers,
   target, progress, step, unit, onIncrement, sessionGoal = false, strip, readOnly = false, compact = false,
 }: TaskRowProps) {
@@ -483,7 +485,8 @@ export default function TaskRow({
               ＋
             </IconButton>
           )}
-          {onDelete && hovered && !completed && (
+          {onUnpin && !readOnly && <PinButton state="all" onClick={onUnpin} title="Unpin from Today" />}
+          {onDelete && !onUnpin && hovered && !completed && (
             <IconButton onClick={onDelete} title="Delete" hover="var(--danger)" size={12}>
               ✕
             </IconButton>
@@ -705,7 +708,8 @@ export default function TaskRow({
               ＋
             </IconButton>
           )}
-          {onDelete && hovered && !completed && (
+          {onUnpin && !readOnly && <PinButton state="all" onClick={onUnpin} title="Unpin from Today" />}
+          {onDelete && !onUnpin && hovered && !completed && (
             <IconButton onClick={onDelete} title="Delete" hover="var(--danger)" size={12}>
               ✕
             </IconButton>
