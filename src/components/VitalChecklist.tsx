@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from 'react';
 import { emptyPlan, lockedTask, planProgress, resetPlan, taskDone, togglePlanItem, type VitalPlan, type VitalPlans } from '../lib/vitalPlans';
-import { statusPace, type StatusVital } from '../lib/statusVitals';
+import { type StatusVital } from '../lib/statusVitals';
 
-export default function VitalChecklist({ area, onSave }: { area: StatusVital; onSave: (area: StatusVital) => boolean }) {
-  const [kind, setKind] = useState<keyof VitalPlans>(statusPace(area) === 'behind' ? 'catchUp' : 'maintenance');
+export default function VitalChecklist({ area, onSave, kind }: { area: StatusVital; onSave: (area: StatusVital) => boolean; kind: keyof VitalPlans }) {
   const [editor, setEditor] = useState<{ taskId?: string; stepId?: string; addSub?: boolean; title: string } | null>(null);
   const [confirm, setConfirm] = useState<{ taskId?: string; stepId?: string } | null>(null);
   const [error, setError] = useState('');
@@ -47,7 +46,6 @@ export default function VitalChecklist({ area, onSave }: { area: StatusVital; on
     }) });
   };
   return <section className="lv-checklist" aria-label="Action checklists">
-    <div className="lv-plan-tabs" aria-label="Checklist type">{(['catchUp', 'maintenance'] as const).map(value => <button type="button" key={value} aria-pressed={kind === value} disabled={!!editor || !!confirm} onClick={() => { setKind(value); setError(''); }}>{value === 'catchUp' ? 'Catch-up' : 'Maintenance'}</button>)}</div>
     <div className="lv-plan-heading"><h3>{kind === 'catchUp' ? 'Get back on pace' : 'Keep on pace'}</h3><span>{progress.done}/{progress.total} tasks</span></div>
     {plan.tasks.length > 0 && <label className="lv-plan-order">Order<select aria-label="Checklist order" value={plan.sequential ? 'sequential' : 'any'} onChange={e => commit({ ...plan, sequential: e.target.value === 'sequential' })}><option value="any">Any order</option><option value="sequential">Sequential</option></select></label>}
     <ol className="lv-plan-tasks">{plan.tasks.map((task, index) => {
@@ -72,7 +70,7 @@ export default function VitalChecklist({ area, onSave }: { area: StatusVital; on
       : <button type="button" className="lv-secondary" disabled={plan.tasks.length >= 100} onClick={() => setEditor({ title: '' })}>+ Add task</button>}
     {kind === 'maintenance' && hasChecks && !confirm && <button type="button" className="lv-text-button" onClick={() => setConfirm({})}>Reset checks</button>}
     {confirm && <div className="lv-plan-confirm" role="group" aria-label="Confirm checklist change"><p>{confirm.taskId ? (confirm.stepId ? 'Delete this subtask?' : 'Delete this task and its subtasks?') : 'Uncheck all maintenance tasks and subtasks?'}</p><button type="button" className="lv-secondary" onClick={removeOrReset}>Confirm</button><button type="button" className="lv-text-button" onClick={() => setConfirm(null)}>Cancel</button></div>}
-    {progress.total > 0 && progress.done === progress.total && <p className="lv-plan-finished">Checklist complete. Review your status below.</p>}
+    {progress.total > 0 && progress.done === progress.total && <p className="lv-plan-finished">Checklist complete.</p>}
     {error && <p role="alert">{error}</p>}
   </section>;
 }

@@ -130,12 +130,42 @@ it('shows an empty state when there has not been a check-in', () => {
   expect(host.querySelector('#lv-last-check-in')?.textContent).toBe('No check-ins yet.');
 });
 
+it('filters attention and persists, replaces, and clears one current priority', () => {
+  const key = statusVitalsKey(false);
+  const fresh = saveCheckIn({ ...area(), name: 'Gym' }, { status: 'on-pace', reason: '', next: '' });
+  const behind = saveCheckIn(area(), { status: 'behind', reason: '', next: '' });
+  localStorage.setItem(key, JSON.stringify([fresh, behind]));
+  act(() => root.render(<StatusLifeVitalsPage />));
+  const setPriority = (id: string) => act(() => {
+    const select = host.querySelector<HTMLSelectElement>('[aria-label="Current priority"]')!;
+    select.value = id; select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  setPriority(behind.id);
+  expect(host.querySelector('.lv-region')?.textContent).toContain('School');
+  setPriority(fresh.id);
+  expect(JSON.parse(localStorage.getItem(key)!).filter((a: StatusVital) => a.priority).map((a: StatusVital) => a.name)).toEqual(['Gym']);
+  click(button('Needs attention (1)'));
+  expect(host.querySelectorAll('.lv-region')).toHaveLength(1);
+  expect(host.querySelector('.lv-region')?.textContent).toContain('School');
+  expect(host.querySelector<HTMLSelectElement>('[aria-label="Current priority"]')!.value).toBe(fresh.id);
+  act(() => root.unmount()); root = createRoot(host); act(() => root.render(<StatusLifeVitalsPage />));
+  expect(host.querySelector<HTMLSelectElement>('[aria-label="Current priority"]')!.value).toBe(fresh.id);
+  const failure = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });
+  setPriority(behind.id);
+  expect(host.querySelector<HTMLSelectElement>('[aria-label="Current priority"]')!.value).toBe(fresh.id);
+  failure.mockRestore();
+  setPriority('');
+  expect(JSON.parse(localStorage.getItem(key)!).some((a: StatusVital) => a.priority)).toBe(false);
+});
+
 it('creates two-tier plans, enforces order and preserves check-in drafts across immediate checklist saves', () => {
   const key = statusVitalsKey(false);
   localStorage.setItem(key, JSON.stringify([saveCheckIn(area(), { status: 'behind', reason: '', next: '' })]));
   act(() => root.render(<StatusLifeVitalsPage />));
   click(host.querySelector('.lv-region')!);
   type(host.querySelector('.lv-status-form textarea')!, 'Draft reason stays');
+  expect(host.querySelector('.lv-checklist')).toBeNull();
+  click(host.querySelector('input[value=behind]')!);
   const add = (label: string) => {
     type(host.querySelector('.lv-plan-editor input')!, label);
     click(button('Save item'));
@@ -155,19 +185,23 @@ it('creates two-tier plans, enforces order and preserves check-in drafts across 
   click(check('Submit homework'));
   expect(host.querySelector<HTMLTextAreaElement>('.lv-status-form textarea')!.value).toBe('Draft reason stays');
   expect(JSON.parse(localStorage.getItem(key)!)[0].entries[0].status).toBe('behind');
-  click(button('Maintenance')); click(button('+ Add task')); add('Weekly review');
+  click(host.querySelector('input[value="on-pace"]')!); click(button('+ Add task')); add('Weekly review');
   click(check('Weekly review')); click(button('Reset checks')); click(button('Confirm'));
   expect(check('Weekly review').checked).toBe(false);
   act(() => root.unmount()); root = createRoot(host);
   act(() => root.render(<StatusLifeVitalsPage />)); click(host.querySelector('.lv-region')!);
+  expect(host.querySelector('.lv-checklist')).toBeNull();
+  click(host.querySelector('input[value=behind]')!);
   expect(check('Submit homework').checked).toBe(true);
-  click(button('Maintenance')); expect(check('Weekly review').checked).toBe(false);
+  click(host.querySelector('input[value="on-pace"]')!); expect(check('Weekly review').checked).toBe(false);
+  click(host.querySelector('input[value=ahead]')!); expect(host.querySelector('.lv-checklist')).toBeNull();
 });
 
 it('preserves checklist edits on storage failure and requires confirmation before deleting a task with subtasks', () => {
   const key = statusVitalsKey(false);
   localStorage.setItem(key, JSON.stringify([{ ...area(), plans: { catchUp: { sequential: false, tasks: [] }, maintenance: { sequential: false, tasks: [{ id: 't', title: 'Review', done: false, subtasks: [{ id: 's', title: 'Read', done: false }] }] } } }]));
   act(() => root.render(<StatusLifeVitalsPage />)); click(host.querySelector('.lv-region')!);
+  click(host.querySelector('input[value="on-pace"]')!);
   click(host.querySelector('[aria-label="Edit Read"]')!);
   type(host.querySelector('.lv-plan-editor input')!, 'Read chapter');
   const failure = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota'); });

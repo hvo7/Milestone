@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { historyEntries, loadStatusVitals, newStatusVital, saveCheckIn, statusPace, statusVitalsKey, validStatusVitals } from './statusVitals';
+import { attentionReason, choosePriority, historyEntries, loadStatusVitals, newStatusVital, saveCheckIn, statusPace, statusVitalsKey, validStatusVitals } from './statusVitals';
 import { newVital, simpleVitalsKey } from './simpleVitals';
 import { lifeVitalsStorageKey } from './lifeVitalsStorage';
 import { lifeVitalsExamples } from '../testing/lifeVitalsExamples';
@@ -8,6 +8,32 @@ const area = () => ({ ...newStatusVital(), name: 'School', onPace: 'Stay caught 
 const store = (values: Record<string, string> = {}) => ({ getItem: (key: string) => values[key] ?? null });
 const firstTime = '2026-11-09T12:00:00Z';
 const secondTime = '2026-11-10T12:00:00Z';
+
+it('identifies behind, unreviewed and seven-day-old areas without changing their status', () => {
+  const now = Date.parse('2026-11-11T12:00:00Z');
+  const fresh = saveCheckIn(area(), { status: 'ahead', reason: '', next: '' }, undefined, secondTime);
+  const old = saveCheckIn(area(), { status: 'on-pace', reason: '', next: '' }, undefined, '2026-11-04T12:00:00Z');
+  expect(attentionReason(area(), now)).toBe('Not checked yet');
+  expect(attentionReason(fresh, now)).toBeNull();
+  expect(attentionReason(old, now - 1)).toBeNull();
+  expect(attentionReason(old, now)).toBe('Review due (7+ days)');
+  expect(statusPace(old)).toBe('on-pace');
+  expect(attentionReason({ ...old, archived: true }, now)).toBeNull();
+  expect(attentionReason(saveCheckIn(area(), { status: 'behind', reason: '', next: '' }), now)).toBe('Behind');
+});
+
+it('keeps at most one non-archived priority and preserves plans and history', () => {
+  const a = area(), b = area();
+  let areas = choosePriority([a, b], a.id);
+  areas = choosePriority(areas, b.id);
+  expect(areas.map(x => x.priority)).toEqual([false, true]);
+  expect(areas[1].entries).toEqual(b.entries);
+  expect(validStatusVitals(areas)).toBe(true);
+  expect(choosePriority(areas, 'missing')).toBe(areas);
+  expect(choosePriority(areas, '').every(x => !x.priority)).toBe(true);
+  expect(validStatusVitals(areas.map(x => ({ ...x, priority: true })))).toBe(false);
+  expect(validStatusVitals([{ ...b, priority: true, archived: true }])).toBe(false);
+});
 
 describe('status check-in history', () => {
   it('starts unassessed, records a chosen status and keeps past check-ins', () => {

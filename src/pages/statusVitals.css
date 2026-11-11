@@ -58,6 +58,14 @@
 .lv-plan-finished { font-size: 12px; color: var(--success); margin-bottom: 0; }
 .lv-checklist > .lv-text-button { margin-left: 12px; }
 .lv-checklist :is(button, input, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lv-overview-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin: 20px 0; }
+.lv-overview-controls .lv-plan-tabs { margin: 0; flex-wrap: wrap; }
+.lv-priority-picker { display: flex; align-items: center; gap: 10px; font-size: 12px; max-width: 100%; }
+.lv-priority-picker select { min-width: 0; max-width: 220px; padding: 9px; border-radius: 7px; background: var(--input-bg); color: var(--page-text); border: 1px solid var(--input-border); font: inherit; }
+.lv-priority-picker select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lv-priority-badge { display: block; width: fit-content; font-size: 10px; color: var(--accent); border: 1px solid var(--accent-border); border-radius: 5px; padding: 3px 6px; margin-top: 5px; }
+.lv-attention-reason { display: block; font-size: 11px; margin-top: 5px; }
+.lv-attention-empty { font-size: 13px; padding: 24px 0; }
 @media (prefers-reduced-motion: no-preference) {
   .lv-status-option { transition: background-color 150ms, border-color 150ms, color 150ms; }
 }
