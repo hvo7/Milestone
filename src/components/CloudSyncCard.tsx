@@ -42,7 +42,7 @@ export default function CloudSyncCard() {
   const [working, setWorking] = useState(false);
 
   // Browser/dev builds have no bridge to the filesystem — nothing to offer.
-  if (!status.available) return null;
+  if (!status.available || status.overWifi) return null;
 
   async function choose() {
     const folder = await window.electronAPI!.sync.pickFolder();
@@ -54,6 +54,8 @@ export default function CloudSyncCard() {
       // survives; an empty one has no ambiguity to resolve.
       if (peers.length) setPending({ folder, peers });
       else await enableSync(folder, 'push');
+    } catch (error) {
+      useSyncStatus.setState({ error: error instanceof Error ? error.message : 'Could not inspect the folder.' });
     } finally {
       setWorking(false);
     }
@@ -96,7 +98,7 @@ export default function CloudSyncCard() {
             </p>
           </div>
         </>
-      ) : status.enabled ? (
+      ) : status.folderEnabled ? (
         /* ── Running ──────────────────────────────────────────────────────── */
         <>
           <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5 }}>

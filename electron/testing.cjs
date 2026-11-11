@@ -17,14 +17,14 @@ if (!app.requestSingleInstanceLock()) { app.quit(); } else {
   ipcMain.on('testing:seed', event => {
     try {
       const source = JSON.parse(fs.readFileSync(path.join(testingDir, 'seed.json'), 'utf8'));
-      event.returnValue = { quest: source.quest, vynues: source.vynues, exportedAt: source.exportedAt };
+      event.returnValue = { quest: source.quest, vynues: source.vynues, exportedAt: source.exportedAt, revision: source.revision };
     } catch { event.returnValue = {}; }
   });
   app.whenReady().then(() => {
     session.defaultSession.setPermissionRequestHandler((_contents, _permission, done) => done(false));
     session.defaultSession.webRequest.onBeforeRequest({ urls: ['http://*/*', 'https://*/*', 'ws://*/*', 'wss://*/*'] }, (_details, done) => done({ cancel: true }));
     win = new BrowserWindow({
-      title: 'Milestone — TESTING · Batch 010', width: 1440, height: 940,
+      title: 'Milestone — TESTING · Batch 015', width: 1440, height: 940,
       backgroundColor: '#191e25', autoHideMenuBar: true,
       webPreferences: { preload: path.join(__dirname, 'testing-preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true },
     });

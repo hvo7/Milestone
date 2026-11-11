@@ -28,6 +28,7 @@ const SystemsPage   = lazyChunk(() => import('./pages/SystemsPage'));
 const QuestsPage    = lazyChunk(() => import('./pages/QuestsPage'));
 const QuestlinePage = lazyChunk(() => import('./pages/QuestlinePage'));
 const SpacePage = lazyChunk(() => import('./pages/SpacePage'));
+const LifeVitalsPage = lazyChunk(() => import('./pages/StatusLifeVitalsPage'));
 
 // Hash routing everywhere. Electron serves the built app over file://, which
 // requires it — and the web build is hosted on GitHub Pages, a static file server
@@ -99,6 +100,7 @@ function AppRoutes() {
         <Routes>
           <Route path="/"              element={<Today />} />
           <Route path="/all"           element={<AllPage />} />
+          {LifeVitalsPage && <Route path="/vitals" element={<LifeVitalsPage />} />}
           <Route path="/systems"       element={<SystemsPage />} />
           <Route path="/quests"        element={<QuestsPage />} />
           <Route path="/questline/:id" element={<QuestlinePage />} />

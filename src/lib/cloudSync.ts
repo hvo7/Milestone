@@ -54,6 +54,7 @@ import { loadRelay, relayConfigured, provisionSharedRelay } from './relay';
 
 export type Clock = Record<string, number>;
 export type Slot = 'quest' | 'vynues' | 'ui';
+type Version = { at: string; deviceId: string };
 
 export const SLOT_NAMES: Slot[] = ['quest', 'vynues', 'ui'];
 
@@ -68,10 +69,40 @@ export interface SyncDoc {
   clock: Clock;
   /** Per-slot clocks. Absent on documents written by older builds. */
   slotClocks?: Partial<Record<Slot, Clock>>;
+  slotVersions?: Partial<Record<Slot, Version>>;
   stores: Partial<Record<Slot, string>>;
 }
 
-interface SyncConfig { enabled: boolean; folder: string; deviceId: string; deviceName: string; }
+/** Reject corrupt payloads before touching persisted data or live store methods. */
+export function isSyncDoc(value: unknown): value is SyncDoc {
+  if (!value || typeof value !== 'object') return false;
+  const doc = value as SyncDoc;
+  const validClock = (clock: Clock) => clock && typeof clock === 'object' && !Array.isArray(clock)
+    && Object.entries(clock).every(([id, count]) => /^[\w-]{1,64}$/.test(id) && Number.isSafeInteger(count) && count >= 0);
+  if (doc._milestoneSync !== 1 || typeof doc.deviceId !== 'string' || !/^[\w-]{1,64}$/.test(doc.deviceId)
+    || typeof doc.deviceName !== 'string' || !Number.isFinite(Date.parse(doc.updatedAt)) || !validClock(doc.clock)
+    || !doc.stores || typeof doc.stores !== 'object') return false;
+  try {
+    for (const slot of SLOT_NAMES) {
+      if (doc.slotClocks?.[slot] && !validClock(doc.slotClocks[slot]!)) return false;
+      const version = doc.slotVersions?.[slot];
+      if (version && (!Number.isFinite(Date.parse(version.at)) || typeof version.deviceId !== 'string')) return false;
+      const raw = doc.stores[slot];
+      if (raw === undefined) continue;
+      if (typeof raw !== 'string') return false;
+      const parsed = JSON.parse(raw);
+      if (!parsed?.state || typeof parsed.state !== 'object' || Array.isArray(parsed.state)) return false;
+      const store = SLOTS.find(item => item.slot === slot)!.store as unknown as { getState: () => Record<string, unknown> };
+      const live = store.getState();
+      if (Object.keys(parsed.state).some(key => ['__proto__', 'constructor', 'prototype'].includes(key) || typeof live[key] === 'function')) return false;
+      if (slot === 'quest' && (!Array.isArray(parsed.state.questlines) || !Array.isArray(parsed.state.routines))) return false;
+      if (slot === 'vynues' && !Array.isArray(parsed.state.projects)) return false;
+    }
+    return true;
+  } catch { return false; }
+}
+
+interface SyncConfig { enabled: boolean; folderEnabled?: boolean; folder: string; deviceId: string; deviceName: string; }
 
 /** Minimal shape of a persisted zustand store — enough to push adopted state in
  *  without dragging each store's full state type across module boundaries. */
@@ -94,6 +125,7 @@ export interface SyncStatus {
   /** Desktop build with the sync bridge — false in a browser tab. */
   available: boolean;
   enabled: boolean;
+  folderEnabled: boolean;
   folder: string;
   deviceName: string;
   peers: { deviceName: string; updatedAt: string }[];
@@ -111,7 +143,7 @@ export interface SyncStatus {
 }
 
 export const useSyncStatus = create<SyncStatus>(() => ({
-  available: false, enabled: false, folder: '', deviceName: '',
+  available: false, enabled: false, folderEnabled: false, folder: '', deviceName: '',
   peers: [], lastSyncedAt: null, busy: false, error: null, notice: null, overWifi: false, linked: false,
 }));
 
@@ -158,6 +190,11 @@ let config: SyncConfig | null = null;
 let applying = false;
 let writeTimer: ReturnType<typeof setTimeout> | null = null;
 let pullChain: Promise<void> = Promise.resolve();
+let cleanup: (() => void) | null = null;
+let pendingPull: Promise<void> | null = null;
+let pullRequested = false;
+// Delivery is remembered for this connection, independent of offline peers.
+let deliveredSnapshot = '';
 
 function enqueue(work: () => Promise<void>) {
   pullChain = pullChain.then(work).catch(err => {
@@ -192,10 +229,18 @@ async function buildTransport(): Promise<SyncBridge | null> {
   const local = window.electronAPI?.sync as SyncBridge | undefined;
   if (local) parts.push(local);
 
+  const savedRelay = loadRelay();
+  const linkToken = local ? '' : rememberToken();
+  // Pairing inside an iPhone Home Screen app writes the relay settings, not
+  // Safari's URL token. Use that key for the same-origin route too.
+  const originToken = savedRelay.url === location.origin && relayConfigured(savedRelay)
+    ? savedRelay.token : linkToken;
+
   // A page served by a desktop or a relay can always reach the endpoint it came
   // from, at the origin it came from.
-  if (!local && await servedByMilestone()) {
-    parts.push(httpBridge({ token: rememberToken(), me: identity() }));
+  // A paired offline PWA must retain its route even when health is unreachable.
+  if (!local && (originToken || await servedByMilestone())) {
+    parts.push(httpBridge({ token: originToken, me: identity() }));
   }
 
   const desktopConfig = local ? await local.getConfig() : null;
@@ -203,7 +248,7 @@ async function buildTransport(): Promise<SyncBridge | null> {
   const relay = loadRelay();
   // Not added twice: a phone that loaded the app *from* the relay is already
   // talking to it through the line above.
-  const servedByRelay = !local && relay.url && location.origin.startsWith(relay.url);
+  const servedByRelay = !local && parts.length > 0 && relay.url === location.origin;
   if (relayConfigured(relay) && !servedByRelay) {
     parts.push(httpBridge({
       base: relay.url,
@@ -230,6 +275,9 @@ interface Meta {
    *  Without this every write would advance all three and re-create exactly the
    *  false conflicts per-slot clocks exist to avoid. */
   published: Partial<Record<Slot, string>>;
+  /** Failed writes survive restart and are retried even if peers haven't changed. */
+  pending?: boolean;
+  versions?: Partial<Record<Slot, Version>>;
 }
 
 const emptyMeta = (): Meta => ({ slots: { quest: {}, vynues: {}, ui: {} }, published: {} });
@@ -244,6 +292,8 @@ function loadMeta(): Meta {
         if (parsed.slots[slot] && typeof parsed.slots[slot] === 'object') meta.slots[slot] = parsed.slots[slot] as Clock;
       }
       if (parsed.published && typeof parsed.published === 'object') meta.published = parsed.published;
+      meta.pending = parsed.pending === true;
+      meta.versions = parsed.versions ?? {};
       return meta;
     }
     // Upgrade from the single-clock format: that one clock described all three
@@ -297,6 +347,7 @@ function applyStores(stores: Partial<Record<Slot, string>>) {
     // theme has to re-assert it — setState alone won't repaint the attribute.
     const theme = useUIStore.getState().theme;
     document.documentElement.setAttribute('data-theme', theme);
+    window.dispatchEvent(new Event('milestone:refresh-day'));
   } finally {
     applying = false;
   }
@@ -305,7 +356,7 @@ function applyStores(stores: Partial<Record<Slot, string>>) {
 
 const backupBundle = () => {
   const stores = snapshot();
-  return { _milestone: 2, appVersion: APP_VERSION, exportedAt: new Date().toISOString(), quest: stores.quest, vynues: stores.vynues };
+  return { _milestone: 2, appVersion: APP_VERSION, exportedAt: new Date().toISOString(), quest: stores.quest, vynues: stores.vynues, ui: stores.ui };
 };
 
 // ── Publish ───────────────────────────────────────────────────────────────────
@@ -331,9 +382,13 @@ async function publish(bump: boolean) {
       const current = stores[slot];
       if (current === meta.published[slot]) continue;      // untouched slot
       meta.slots[slot] = { ...meta.slots[slot], [config.deviceId]: at(meta.slots[slot], config.deviceId) + 1 };
+      meta.versions = { ...meta.versions, [slot]: { at: new Date().toISOString(), deviceId: config.deviceId } };
     }
   }
+  const signature = JSON.stringify({ stores, slots: meta.slots, versions: meta.versions });
+  if (!meta.pending && signature === deliveredSnapshot) return;
   meta.published = { ...stores };
+  meta.pending = true;
   saveMeta(meta);
 
   const doc: SyncDoc = {
@@ -343,11 +398,17 @@ async function publish(bump: boolean) {
     updatedAt: new Date().toISOString(),
     clock: unionClocks(meta.slots),
     slotClocks: meta.slots,
+    slotVersions: meta.versions,
     stores,
   };
 
   const res = await api.write(doc);
-  if (res.ok) setStatus({ lastSyncedAt: res.at ?? new Date().toISOString(), error: null });
+  if (res.ok) {
+    deliveredSnapshot = signature;
+    meta.pending = false;
+    saveMeta(meta);
+    setStatus({ lastSyncedAt: res.at ?? new Date().toISOString(), error: null });
+  }
   else setStatus({ error: res.error ?? 'Could not write to the sync folder.' });
 }
 
@@ -366,11 +427,13 @@ function scheduleWrite() {
 
 /** Of two peer documents, the one that supersedes the other *for one slot* — or,
  *  if neither does, the more recently written. */
-function preferredForSlot(a: SyncDoc, b: SyncDoc, slot: Slot): SyncDoc {
+export function preferredForSlot(a: SyncDoc, b: SyncDoc, slot: Slot): SyncDoc {
   const rel = compareClocks(slotClock(a, slot), slotClock(b, slot));
   if (rel === 'ahead') return a;
   if (rel === 'behind') return b;
-  return a.updatedAt >= b.updatedAt ? a : b;
+  const av = a.slotVersions?.[slot] ?? { at: a.updatedAt, deviceId: a.deviceId };
+  const bv = b.slotVersions?.[slot] ?? { at: b.updatedAt, deviceId: b.deviceId };
+  return av.at > bv.at || (av.at === bv.at && av.deviceId >= bv.deviceId) ? a : b;
 }
 
 /** What this device should do about one slot, given the best peer for it. */
@@ -378,6 +441,7 @@ interface SlotPlan {
   slot: Slot;
   source: SyncDoc;
   relation: ClockRelation;
+  keepLocal?: boolean;
 }
 
 /**
@@ -394,12 +458,18 @@ async function adoptSlots(plans: SlotPlan[], conflicted: SlotPlan[]) {
     // a descendant of it, so park a restorable copy before it goes.
     const stamp = new Date().toISOString().replace(/[:.]/g, '-');
     const res = await api.writeBackup(`${config?.deviceName ?? 'device'}-${stamp}.json`, backupBundle());
+    if (!res.ok) { setStatus({ error: 'Sync paused: could not save a conflict backup. Your local changes were kept.' }); return; }
+    for (const plan of conflicted) {
+      const peer = plan.source;
+      const saved = await api.writeBackup(`${peer.deviceId}-${plan.slot}-${stamp}.json`, {
+        _milestone: 2, appVersion: APP_VERSION, exportedAt: new Date().toISOString(),
+        quest: peer.stores.quest, vynues: peer.stores.vynues, ui: peer.stores.ui,
+      });
+      if (!saved.ok) { setStatus({ error: 'Sync paused: could not back up the other device. Both versions were kept.' }); return; }
+    }
     const names = conflicted.map(p => SLOT_LABEL[p.slot]).join(' and ');
-    const from = conflicted[0].source.deviceName;
     setStatus({
-      notice: res.ok
-        ? `Both computers had edited ${names} since the last sync, so “${from}” (the more recent) was used. This computer's version was saved to backups/ in the sync folder — restore it with Load backup if it was the one you wanted.`
-        : `Both computers had edited ${names} since the last sync, so “${from}” (the more recent) was used. This computer's version could NOT be backed up: ${res.error}`,
+      notice: `Devices independently edited ${names}. The version with the latest edit was selected consistently on both devices. Both versions were saved in sync backups for recovery.`,
     });
   }
 
@@ -409,6 +479,7 @@ async function adoptSlots(plans: SlotPlan[], conflicted: SlotPlan[]) {
 
   const incoming: Partial<Record<Slot, string>> = {};
   for (const plan of plans) {
+    if (plan.keepLocal) continue;
     const raw = plan.source.stores[plan.slot];
     if (typeof raw === 'string') incoming[plan.slot] = raw;
   }
@@ -417,6 +488,7 @@ async function adoptSlots(plans: SlotPlan[], conflicted: SlotPlan[]) {
   const meta = loadMeta();
   for (const plan of plans) {
     meta.slots[plan.slot] = mergeClocks(meta.slots[plan.slot], slotClock(plan.source, plan.slot));
+    if (!plan.keepLocal) meta.versions = { ...meta.versions, [plan.slot]: plan.source.slotVersions?.[plan.slot] ?? { at: plan.source.updatedAt, deviceId: plan.source.deviceId } };
   }
   saveMeta(meta);
   setStatus({ lastSyncedAt: new Date().toISOString(), error: null });
@@ -444,6 +516,13 @@ async function pullOnce() {
   // read was in flight, before deciding whether a peer supersedes this device.
   const previous = loadMeta().published;
   const current = snapshot();
+  // Fresh installs run store hydration/day bookkeeping while the first read is
+  // in flight. Do not promote that empty baseline over an existing peer. Initial
+  // adoption below backs up differing local content before taking remote data.
+  if (Object.keys(previous).length === 0 && writeTimer) {
+    clearTimeout(writeTimer);
+    writeTimer = null;
+  }
   if (writeTimer || (Object.keys(previous).length > 0 && SLOT_NAMES.some(slot => current[slot] !== previous[slot]))) {
     if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
     await publish(true);
@@ -451,15 +530,20 @@ async function pullOnce() {
     if (JSON.stringify(snapshot()) !== JSON.stringify(current)) { void pull(); return; }
   }
 
-  const peers = (res.peers ?? []) as SyncDoc[];
+  if (!Array.isArray(res.peers) || res.peers.some(doc => !isSyncDoc(doc))) {
+    setStatus({ error: 'A device sent invalid sync data. Local data was kept; repair or update that device before syncing.' });
+    return;
+  }
+  const peers = res.peers.filter(isSyncDoc).filter(doc => doc.deviceId !== config?.deviceId);
   setStatus({
-    error: null,
     peers: peers.map(p => ({ deviceName: p.deviceName, updatedAt: p.updatedAt })),
   });
 
-  if (peers.length === 0) { await publish(false); return; } // nobody else yet — make sure we're on record
+  if (peers.length === 0) { await publish(Object.keys(previous).length === 0); return; }
 
   const meta = loadMeta();
+  const localDoc: SyncDoc = { _milestoneSync: 1, ...config, updatedAt: '1970-01-01T00:00:00.000Z',
+    clock: unionClocks(meta.slots), slotClocks: meta.slots, slotVersions: meta.versions, stores: snapshot() };
   const take: SlotPlan[] = [];
   const conflicted: SlotPlan[] = [];
   let weAreAhead = false;
@@ -467,27 +551,45 @@ async function pullOnce() {
   // Each slot is decided on its own evidence: an edit to quests over there and
   // to Vynues over here means both sides fast-forward, with nothing discarded.
   for (const slot of SLOT_NAMES) {
-    const source = peers.reduce((a, b) => preferredForSlot(a, b, slot));
+    const candidates = peers.filter(peer => typeof peer.stores[slot] === 'string');
+    if (!candidates.length) continue;
+    const source = candidates.reduce((a, b) => preferredForSlot(a, b, slot));
     const relation = compareClocks(slotClock(source, slot), meta.slots[slot]);
-    if (relation === 'ahead') take.push({ slot, source, relation });
-    else if (relation === 'concurrent') { const plan = { slot, source, relation }; take.push(plan); conflicted.push(plan); }
+    if (relation === 'ahead') {
+      const plan = { slot, source, relation };
+      take.push(plan);
+      // First pairing must keep a recovery copy of pre-existing local data.
+      if (!meta.published[slot] && current[slot] && current[slot] !== source.stores[slot]) conflicted.push(plan);
+    }
+    else if (relation === 'concurrent') {
+      const plan = { slot, source, relation, keepLocal: preferredForSlot(localDoc, source, slot) === localDoc };
+      take.push(plan); conflicted.push(plan);
+    }
     else if (relation === 'behind') weAreAhead = true;
   }
 
   if (take.length) await adoptSlots(take, conflicted);
-  else if (weAreAhead) await publish(false);   // peers are out of date — re-state ours
+  else if (weAreAhead || loadMeta().pending) await publish(false);
 }
 
 /** Serialised so a burst of watcher events can't run two reconciliations over
  *  the same stores at once. */
 function pull() {
-  return enqueue(pullOnce);
+  pullRequested = true;
+  if (!pendingPull) pendingPull = enqueue(async () => {
+    do { pullRequested = false; await pullOnce(); } while (pullRequested);
+  }).finally(() => { pendingPull = null; });
+  return pendingPull;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /** Called once at startup. Safe to call in a browser (no bridge → no-op). */
-export async function startCloudSync() {
+async function connect() {
+  deliveredSnapshot = '';
+  cleanup?.();
+  cleanup = null;
+  if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
   transport = await buildTransport();
   const browser = !window.electronAPI?.sync;
   // Said even when there is nothing to sync with, because a browser copy that is
@@ -495,34 +597,59 @@ export async function startCloudSync() {
   setStatus({ overWifi: browser, linked: !!bridge() });
 
   const api = bridge();
-  if (!api) return;
+  if (!api) { config = null; setStatus({ available: false, enabled: false, peers: [] }); return; }
 
   config = await api.getConfig();
   setStatus({
     available: true,
     enabled: config.enabled,
+    folderEnabled: config.folderEnabled ?? (!!config.folder && config.enabled),
     folder: config.folder,
     deviceName: config.deviceName,
   });
 
-  for (const { store } of SLOTS) {
-    (store as unknown as { subscribe: (fn: () => void) => void }).subscribe(scheduleWrite);
-  }
+  const offs = SLOTS.map(({ store }) =>
+    (store as unknown as { subscribe: (fn: () => void) => () => void }).subscribe(scheduleWrite));
 
-  api.onChanged(() => { void pull(); });
+  offs.push(api.onChanged(() => { void pull(); }));
 
   // Belt and braces around the watcher: cloud clients can materialise a file in
   // ways fs.watch doesn't report, and coming back to a machine you left open is
   // exactly when you most expect it to have caught up.
-  window.addEventListener('focus', () => { void pull(); });
+  const refresh = () => { void pull(); };
+  const visible = () => { if (!document.hidden) refresh(); };
+  window.addEventListener('focus', refresh);
+  window.addEventListener('online', refresh);
   // `focus` is the desktop's version of that moment. A phone returning from the
   // background often never fires it — the page was never unfocused, it was
   // suspended — so the one thing you always do before looking at your tasks
   // wouldn't refresh them. Both, because either can arrive without the other.
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) void pull(); });
-  setInterval(() => { void pull(); }, 60_000);
+  document.addEventListener('visibilitychange', visible);
+  const timer = setInterval(refresh, 300_000);
+  cleanup = () => {
+    offs.forEach(off => off());
+    window.removeEventListener('focus', refresh);
+    window.removeEventListener('online', refresh);
+    document.removeEventListener('visibilitychange', visible);
+    clearInterval(timer);
+  };
 
-  if (config.enabled) await pull();
+  if (config.enabled) {
+    const meta = loadMeta(); meta.pending = true; saveMeta(meta);
+    await pullOnce();
+  }
+}
+
+/** Reconnect is serialized with writes, so old routes never apply after switching. */
+export function startCloudSync() { return enqueue(connect); }
+export const reconnectCloudSync = startCloudSync;
+
+export async function stopCloudSync() {
+  await enqueue(async () => {
+    cleanup?.(); cleanup = null;
+    if (writeTimer) clearTimeout(writeTimer);
+    writeTimer = null; config = null; transport = null;
+  });
 }
 
 /**
@@ -532,18 +659,19 @@ export async function startCloudSync() {
  *   'adopt' — take what's in the folder, replacing this computer's data
  *   'push'  — publish this computer's data, replacing what the peers hold
  */
-export async function enableSync(folder: string, mode: 'adopt' | 'push') {
+async function enableFolder(folder: string, mode: 'adopt' | 'push') {
   // Folder sync is a desktop arrangement: picking one on a phone would be
   // choosing a folder that phone cannot see.
   const api = window.electronAPI?.sync;
   if (!api) return;
 
   config = await api.setConfig({ enabled: true, folder });
-  setStatus({ enabled: true, folder: config.folder, busy: true, error: null, notice: null });
+  setStatus({ enabled: true, folderEnabled: true, folder: config.folder, busy: true, error: null, notice: null });
 
   try {
     const res = await api.readPeers();
-    const peers = (res.ok ? res.peers ?? [] : []) as SyncDoc[];
+    if (!res.ok) throw new Error(res.error ?? 'Unable to inspect existing sync data.');
+    const peers = (res.peers ?? []).filter(isSyncDoc);
 
     if (mode === 'push') {
       // Absorb every peer's clock on every slot, then bump: the result strictly
@@ -561,12 +689,13 @@ export async function enableSync(folder: string, mode: 'adopt' | 'push') {
     } else if (peers.length) {
       // Explicitly discarding this machine's data, so keep a rescue copy.
       const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      await api.writeBackup(`${config?.deviceName ?? 'device'}-before-adopt-${stamp}.json`, backupBundle());
+      const backup = await api.writeBackup(`${config?.deviceName ?? 'device'}-before-adopt-${stamp}.json`, backupBundle());
+      if (!backup.ok) throw new Error('Could not back up local data; adoption cancelled.');
       // Take every slot from the best peer for it — this is the deliberate
       // "replace what's here", so no slot is exempt.
-      const plans = SLOT_NAMES.map(slot => ({
+      const plans = SLOT_NAMES.filter(slot => peers.some(peer => peer.stores[slot])).map(slot => ({
         slot,
-        source: peers.reduce((a, b) => preferredForSlot(a, b, slot)),
+        source: peers.filter(peer => peer.stores[slot]).reduce((a, b) => preferredForSlot(a, b, slot)),
         relation: 'ahead' as const,
       }));
       await adoptSlots(plans, []);
@@ -581,11 +710,15 @@ export async function enableSync(folder: string, mode: 'adopt' | 'push') {
   }
 }
 
+export function enableSync(folder: string, mode: 'adopt' | 'push') {
+  return enqueue(() => enableFolder(folder, mode)).then(reconnectCloudSync);
+}
+
 export async function disableSync() {
   const api = window.electronAPI?.sync;
   if (!api) return;
-  config = await api.setConfig({ enabled: false });
-  setStatus({ enabled: false, peers: [] });
+  await enqueue(async () => { await api.setConfig({ enabled: false }); });
+  await reconnectCloudSync();
 }
 
 /** Manual "Sync now". */
@@ -598,10 +731,10 @@ export async function syncNow() {
 export async function peekFolder(folder: string): Promise<{ deviceName: string; updatedAt: string }[]> {
   const api = window.electronAPI?.sync;
   if (!api) return [];
-  // readPeers reads the *saved* folder, so record the choice before looking.
-  config = await api.setConfig({ folder });
-  const res = await api.readPeers();
-  return res.ok ? ((res.peers ?? []) as SyncDoc[]).map(p => ({ deviceName: p.deviceName, updatedAt: p.updatedAt })) : [];
+  // Inspection must not silently switch the live connection before confirmation.
+  const res = await api.readPeers(folder);
+  if (!res.ok) throw new Error(res.error ?? 'Unable to inspect sync folder.');
+  return (res.peers ?? []).filter(isSyncDoc).map(p => ({ deviceName: p.deviceName, updatedAt: p.updatedAt }));
 }
 
 /**

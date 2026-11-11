@@ -1,0 +1,49 @@
+/* Shared interface motion. No looping decoration or transforms on page containers:
+   fixed dialogs and drag/reorder elements keep their existing positioning. */
+@media (prefers-reduced-motion: no-preference) {
+  .page-shell {
+    animation: testing-page-reveal 180ms ease-out;
+  }
+
+  .nav-link[aria-current='page']::after {
+    transform-origin: center;
+    animation: testing-tab-reveal 180ms ease-out;
+  }
+
+  :is(.nav-tool, .icon-btn, .lv-primary, .lv-secondary, .lv-close) {
+    transition: color 150ms, background-color 150ms, border-color 150ms, opacity 150ms, scale 120ms;
+  }
+  :is(.nav-tool, .icon-btn, .lv-primary, .lv-secondary, .lv-close):active:not(:disabled) {
+    scale: .96;
+  }
+
+  .questline-nav-item {
+    transition: background-color 160ms, border-color 160ms, color 160ms;
+  }
+  .lv-region {
+    transition: box-shadow 180ms, border-color 180ms;
+  }
+  .lv-badge {
+    transition: background-color 180ms, color 180ms;
+  }
+
+  .lv-dialog[open] {
+    animation: testing-panel-reveal 180ms cubic-bezier(.2,.8,.2,1);
+  }
+  :is(.lv-explainer, .questline-insights)[open] > :not(summary) {
+    animation: testing-page-reveal 180ms ease-out;
+  }
+}
+
+@keyframes testing-page-reveal {
+  from { opacity: .65; }
+  to { opacity: 1; }
+}
+@keyframes testing-tab-reveal {
+  from { transform: scaleX(.35); opacity: .4; }
+  to { transform: scaleX(1); opacity: 1; }
+}
+@keyframes testing-panel-reveal {
+  from { opacity: 0; transform: translateY(6px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}

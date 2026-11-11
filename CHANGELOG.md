@@ -7,6 +7,29 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.12 - 2026-11-10
+
+- Replace detailed Life Vitals tracking with personal Behind / On pace / Ahead status check-ins, optional reasons and next steps.
+- Add editable dated history, personal On pace definitions, and Show / Hide last check-in.
+- Keep existing area names and prior data; fresh production starts empty and never imports testing examples.
+
+## 3.3.11 - 2026-11-09
+
+- Add customizable Life Vitals with empty production storage, status gradients and expanding detail views.
+- Add restrained interface motion and reload feedback, respecting reduced motion.
+- Remove generic page subtitles and Life Vitals filler descriptions.
+
+## 3.3.10 - 2026-10-19
+
+- Stop unchanged sync uploads triggered by stale peers and the desktop's own folder writes.
+- Reduce idle polling, reuse live-notification reads, and budget HTTP/WebSocket requests per client profile while preserving pending edits.
+- Fix initial pairing bookkeeping racing with adoption of an existing remote snapshot.
+
+## 3.3.9 — 2026-10-18
+
+- Add per-questline Manual/Automatic sorting in the questline editor, replacing the global sorting preference.
+- Improve remote pairing, pending delivery, conflict recovery and live sync; add Cloudflare hosting support.
+
 ## 3.3.8 — 2026-10-18
 
 - Questlines show unchecked quests and tasks first, with completed items grouped at the bottom.

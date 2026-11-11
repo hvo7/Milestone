@@ -71,8 +71,8 @@ const docPath = (config) => path.join(config.folder, config.deviceId + DOC_SUFFI
 /** Every device document in the folder except this one's. Malformed files are
  *  skipped rather than fatal: a half-written file from a cloud client mid-copy
  *  is a normal, transient thing to find, and the next watcher tick re-reads it. */
-function readPeers() {
-  const config = loadConfig();
+function readPeers(folder) {
+  const config = { ...loadConfig(), ...(typeof folder === 'string' ? { folder } : {}) };
   if (!config.folder) return { ok: false, error: 'No sync folder chosen yet.' };
   let entries;
   try {
@@ -143,10 +143,13 @@ let watchTimer = null;
 let notify = () => {};
 
 function restartWatcher(config = loadConfig()) {
+  clearTimeout(watchTimer);
   if (watcher) { try { watcher.close(); } catch { /* already gone */ } watcher = null; }
   if (!config.enabled || !config.folder) return;
   try {
-    watcher = fs.watch(config.folder, () => {
+    watcher = fs.watch(config.folder, (_event, filename) => {
+      const name = filename?.toString();
+      if (name && (name === config.deviceId + DOC_SUFFIX || !name.endsWith(DOC_SUFFIX))) return;
       // A cloud client can touch a file several times as it lands (create,
       // write, rename, attribute change). Coalesce, or every arrival would kick
       // off its own read-and-reconcile pass.

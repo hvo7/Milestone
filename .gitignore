@@ -49,4 +49,6 @@ milestone-recovered-*.json
 # only thing standing between the internet and your whole profile, so it lives
 # on the machine that uses it and nowhere else — never in the repo.
 .env
+.dev.vars*
+.wrangler/
 deploy/oracle/.env

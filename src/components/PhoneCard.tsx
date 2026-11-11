@@ -6,7 +6,7 @@
  * phone talks to this computer, on this network, and only while this is on.
  */
 import { useEffect, useState } from 'react';
-import { useSyncStatus } from '../lib/cloudSync';
+import { useSyncStatus, reconnectCloudSync, syncNow } from '../lib/cloudSync';
 import { loadRelay, saveRelay, testRelay, relayConfigured, type RelayConfig } from '../lib/relay';
 
 /**
@@ -26,9 +26,18 @@ function RelaySection() {
     setBusy(true);
     setResult(null);
     try {
-      const saved = saveRelay(config);
-      setConfig(saved);
-      setResult(await testRelay(saved));
+      if (!config.url.trim() && !config.token.trim()) {
+        setConfig(saveRelay(config));
+        await reconnectCloudSync();
+        setResult({ ok: true });
+        return;
+      }
+      const checked = await testRelay(config);
+      setResult(checked);
+      if (checked.ok) {
+        setConfig(saveRelay(config));
+        await reconnectCloudSync();
+      }
     } finally {
       setBusy(false);
     }
@@ -41,9 +50,9 @@ function RelaySection() {
       </h4>
       <p style={{ margin: '0 0 10px', fontSize: 11.5, color: 'var(--text-dim)', lineHeight: 1.5 }}>
         An address that stays up, so edits find each other even when the two devices
-        are never awake at once — and changes arrive as they happen rather than when
-        something next asks. Deploy it with <code>fly deploy</code> (see
-        <code>docs/relay.md</code>), then put the same address and key on every device.
+        are never awake at once. Use the same private relay address and key on every
+        device. Wi-Fi sharing alone only works while your desktop is awake and reachable.
+        Saving a valid connection starts sync immediately. Clear both fields to disconnect.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <input
@@ -67,7 +76,7 @@ function RelaySection() {
           </button>
           {result && (
             <span style={{ fontSize: 11.5, color: result.ok ? 'var(--success)' : 'var(--danger)' }}>
-              {result.ok ? '✓ Reachable' : result.error}
+              {result.ok ? (relayConfigured(config) ? '✓ Connected' : 'Disconnected') : result.error}
             </span>
           )}
           {!result && relayConfigured(config) && (
@@ -77,6 +86,18 @@ function RelaySection() {
       </div>
     </div>
   );
+}
+
+function SyncHealth() {
+  const status = useSyncStatus();
+  return <div role="status" style={{ marginTop: 12, fontSize: 12, lineHeight: 1.6 }}>
+    <strong>{status.busy ? 'Syncing…' : !status.enabled ? 'Not connected' : status.error ? 'Waiting to sync' : status.lastSyncedAt ? 'Changes exchanged' : 'Connecting…'}</strong>
+    <p style={{ margin: '4px 0' }}>{status.error || (status.lastSyncedAt
+      ? `Last successful exchange: ${new Date(status.lastSyncedAt).toLocaleString()}`
+      : 'Changes stay saved on this device until a connection is available.')}</p>
+    {status.notice && <p>{status.notice}</p>}
+    {status.enabled && <button className="btn-ghost" disabled={status.busy} onClick={() => void syncNow()}>Sync now</button>}
+  </div>;
 }
 
 export default function PhoneCard() {
@@ -93,18 +114,25 @@ export default function PhoneCard() {
     void api.status().then(setStatus);
   }, [api]);
 
+  if (import.meta.env.MODE === 'testing') return <div className="parchment" style={{ padding: 16, marginTop: 14 }}>
+    <h3>Live device sync · Testing</h3>
+    <p>Production connections are disabled in this preview. Sync recovery, pairing, and live updates are tested with isolated devices and synthetic data.</p>
+    <p>In production, use Wi-Fi sharing on the same network or the same private relay address and key on every device. Remote sync needs a reachable relay; installing the app alone does not pair devices.</p>
+  </div>;
+
   // On the phone itself this card would be offering to serve the app to itself.
   if (overWifi) {
     return (
       <div className="parchment" style={{ borderRadius: 14, padding: '14px 16px', marginTop: 14 }}>
         <h3 style={{ margin: '0 0 6px', fontSize: 13, fontWeight: 700, color: 'var(--page-text)' }}>
-          {linked ? 'Linked to your other copy' : 'Working on its own'}
+          {linked ? 'Device sync configured' : 'Working on its own'}
         </h3>
         <p style={{ margin: 0, fontSize: 12, color: 'var(--text-dim)', lineHeight: 1.5 }}>
           {linked
-            ? 'Everything is stored on this device, with or without a signal. Changes find your computer over Wi-Fi when you’re home, and through the relay when you’re not.'
+            ? 'Changes stay saved on this device offline. Wi-Fi sharing needs your desktop awake on the same network; syncing away from home needs a configured relay. Reopening the app catches up after Safari pauses it in the background.'
             : 'Everything is stored on this device and works with no signal. Nothing is being exchanged yet — give it a relay below and your computer will see these edits.'}
         </p>
+        <SyncHealth />
         <RelaySection />
       </div>
     );
@@ -120,6 +148,7 @@ export default function PhoneCard() {
       const res: { ok: boolean; error?: string; status: PhoneStatus } =
         status?.enabled ? await api.stop() : await api.start();
       setStatus(res.status);
+      if (res.ok) await reconnectCloudSync();
       if (!res.ok) setError(res.error ?? 'Could not start.');
     } finally {
       setBusy(false);
@@ -192,6 +221,7 @@ export default function PhoneCard() {
 
       {error && <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--danger)' }}>{error}</p>}
 
+      <SyncHealth />
       <RelaySection />
     </div>
   );

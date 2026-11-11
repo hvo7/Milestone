@@ -8,9 +8,13 @@ import { createPackage, extractFile, listPackage } from '@electron/asar';
 import { packager } from '@electron/packager';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const target = path.join(root, 'release', 'Milestone-win32-x64');
+let target = path.join(root, 'release', 'Milestone-win32-x64');
 const patch = process.argv.includes('--patch');
 const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+if (process.argv.includes('--versioned')) {
+  if (!/^\d+\.\d+\.\d+$/.test(pkg.version)) throw new Error('Invalid release version');
+  target = path.join(root, 'release', `Milestone-${pkg.version}-win32-x64`);
+}
 const electronVersion = JSON.parse(await readFile(path.join(root, 'node_modules/electron/package.json'), 'utf8')).version;
 const scratch = await mkdtemp(path.join(os.tmpdir(), 'milestone-package-'));
 

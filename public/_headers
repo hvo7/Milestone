@@ -1,0 +1,12 @@
+/*
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+
+/index.html
+  Cache-Control: no-cache
+
+/sw.js
+  Cache-Control: no-cache
+
+/version.json
+  Cache-Control: no-store

@@ -29,8 +29,6 @@ export interface ReminderSettings {
 export const DEFAULT_REMINDERS: ReminderSettings = { enabled: false, time: '19:00', keepInTray: false };
 
 interface UIStore {
-  completedLast: boolean;
-  setCompletedLast: (enabled: boolean) => void;
   resetTime: string;
   setResetTime: (time: string) => void;
   editMode: boolean;
@@ -43,8 +41,6 @@ interface UIStore {
 export const useUIStore = create<UIStore>()(
   persist(
     (set) => ({
-      completedLast: true,
-      setCompletedLast: (completedLast) => set({ completedLast }),
       resetTime: '02:00',
       setResetTime: (time) => {
         if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return;

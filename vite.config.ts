@@ -85,6 +85,6 @@ export default defineConfig(({ mode }) => ({
     // testing — anything that reaches for `electron` cannot run outside it — but
     // the version comparison that decides whether to overwrite the application
     // very much is (electron/semver.test.mjs).
-    include: ['src/**/*.test.ts', 'electron/**/*.test.mjs'],
+    include: ['src/**/*.test.{ts,tsx}', 'electron/**/*.test.mjs'],
   },
 }))

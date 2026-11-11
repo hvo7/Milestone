@@ -93,7 +93,7 @@ function readDocs(exceptDeviceId) {
 }
 
 function writeDoc(doc) {
-  if (!doc || !doc.deviceId) return { ok: false, error: 'A document with no device id.' };
+    if (!doc || typeof doc.deviceId !== 'string' || !/^[\w-]{1,64}$/.test(doc.deviceId)) return { ok: false, error: 'A document with no usable device id.' };
   try {
     fs.mkdirSync(docsDir(), { recursive: true });
     const target = path.join(docsDir(), doc.deviceId + DOC_SUFFIX);

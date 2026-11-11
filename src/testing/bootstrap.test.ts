@@ -23,3 +23,20 @@ it('never seeds production storage', async () => {
   await import('./bootstrap');
   expect(localStorage.length).toBe(0);
 });
+
+it('refreshes changed production snapshots, backs up test edits and preserves vitals', async () => {
+  vi.stubEnv('MODE', 'testing');
+  const old = JSON.stringify({ state: { questlines: [{ id: 'test-edit' }] } });
+  const fresh = JSON.stringify({ state: { questlines: [{ id: 'current' }] } });
+  localStorage.setItem('milestone-v1', old);
+  localStorage.setItem('milestone-testing-life-vitals-v2', 'custom-vitals');
+  window.milestoneTesting = { seed: { quest: fresh, revision: 'new-snapshot' } };
+  await import('./bootstrap');
+  expect(localStorage.getItem('milestone-v1')).toBe(fresh);
+  expect(JSON.parse(localStorage.getItem('milestone-testing-before-refresh')!).quest).toBe(old);
+  expect(localStorage.getItem('milestone-testing-life-vitals-v2')).toBe('custom-vitals');
+  localStorage.setItem('milestone-v1', old);
+  vi.resetModules();
+  await import('./bootstrap');
+  expect(localStorage.getItem('milestone-v1')).toBe(old);
+});

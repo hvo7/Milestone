@@ -32,7 +32,12 @@ app.whenReady().then(async () => {
     const win = new BrowserWindow({ show: false, width: name === 'phone' ? 390 : 1280, webPreferences: { partition: name, backgroundThrottling: false } });
     await win.loadURL(base + '/?t=synthetic-test');
     clients.push(win);
-    await until(() => win.webContents.executeJavaScript(`!!document.querySelector('input[aria-label="Live sync test mile"]')`), name);
+    try {
+      await until(() => win.webContents.executeJavaScript(`!!document.querySelector('input[aria-label="Live sync test mile"]')`), name);
+    } catch (error) {
+      console.error(await win.webContents.executeJavaScript(`JSON.stringify({text:document.body.innerText,quest:localStorage.getItem('milestone-v1'),meta:localStorage.getItem('milestone-sync-meta')})`));
+      throw error;
+    }
   }
   const checkAll = async completed => (await Promise.all(clients.map(win => win.webContents.executeJavaScript(`JSON.parse(localStorage.getItem('milestone-v1')).state.routines.find(r => r.id === 'mile')?.completed === ${completed} && document.querySelector('input[aria-label="Live sync test mile"]')?.checked === ${completed}`)))).every(Boolean);
   const start = Date.now();

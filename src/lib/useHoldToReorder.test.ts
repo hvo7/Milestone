@@ -18,10 +18,10 @@ function pointer(target: EventTarget, type: string, y = 20, x = 20) {
 it('clicks to edit, holds the active title to reorder, and cancels without saving', async () => {
   vi.useFakeTimers();
   const initial = useQuestStore.getState(), ui = useUIStore.getState();
-  const line: Questline = { id: 'hold-line', title: 'Hold line', description: '', icon: '', color: 'gold', sequential: true,
+  const line: Questline = { id: 'hold-line', title: 'Hold line', description: '', icon: '', color: 'gold', sequential: true, sortMode: 'manual',
     quests: ['First', 'Second', 'Third'].map((title, order) => ({ id: title, title, order, description: '', actions: [] })) };
   useQuestStore.setState({ questlines: [line] });
-  useUIStore.setState({ editMode: false, completedLast: false });
+  useUIStore.setState({ editMode: false });
   const host = document.createElement('div'); document.body.append(host);
   const root = createRoot(host), edit = vi.fn();
   try {

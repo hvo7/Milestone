@@ -23,7 +23,7 @@ const RemindersModal = lazyChunk(() => import('./RemindersModal'));
 
 const isElectron = !!window.electronAPI;
 
-export default function NavBar({ cover }: { cover?: { title: string; subtitle: string } } = {}) {
+export default function NavBar({ cover, hideCover = false }: { cover?: { title: string; subtitle: string }; hideCover?: boolean } = {}) {
   const spaces = useQuestStore(s => s.spaces ?? DEFAULT_SPACES);
   const [spacesOpen, setSpacesOpen] = useState(false);
   const { pathname, key: visitKey } = useLocation();
@@ -50,6 +50,7 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
 
   const tabs = [
     { path: '/',        label: 'Today',   badge: dailyRemaining },
+    { path: '/vitals', label: 'Life Vitals', badge: 0 },
     // Systems sits before Quests deliberately: the process is the thing you act
     // on, the goal is the thing you hope for.
     { path: '/systems', label: 'Systems', badge: 0 },
@@ -76,7 +77,7 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
   return (
     <>
       {import.meta.env.MODE === 'testing' && <div data-testing-banner style={{ background: '#edc16f', color: '#372b16', padding: '9px 18px', display: 'flex', gap: 14, justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 12, borderRadius: 10, marginBottom: 12 }}>
-        <strong>TESTING · Batch 010 · Unchecked items first</strong>
+        <strong>TESTING · Batch 015 · Life Vitals check-ins</strong>
         <span>Separate data · Sync off · Pending review</span>
       </div>}
       <nav className="app-nav" aria-label="Main navigation">
@@ -105,7 +106,16 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
           <button type="button" className="nav-tool" onClick={toggleTheme} title={`Use ${theme === 'dark' ? 'light' : 'dark'} mode`} aria-label={`Use ${theme === 'dark' ? 'light' : 'dark'} mode`}>
             <NavIcon name={theme === 'dark' ? 'sun' : 'moon'} />
           </button>
-          <button type="button" className="nav-tool" onClick={() => window.dispatchEvent(new Event(REFRESH_DAY_EVENT))}
+          <button type="button" className="nav-tool" onClick={event => {
+            {
+              const icon = event.currentTarget.querySelector('svg');
+              icon?.getAnimations().forEach(animation => animation.cancel());
+              const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+              icon?.animate(reduced ? [{ opacity: .4 }, { opacity: 1 }] : [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
+                { duration: reduced ? 150 : 500, easing: 'ease-out' });
+            }
+            window.dispatchEvent(new Event(REFRESH_DAY_EVENT));
+          }}
             title={`Reload tasks — new day starts at ${resetTime} local time`} aria-label="Reload tasks">
             <NavIcon name="reload" />
           </button>
@@ -114,12 +124,11 @@ export default function NavBar({ cover }: { cover?: { title: string; subtitle: s
           </button>
         </div>
       </nav>
-      <header className="water-cover" style={{ backgroundImage: `url("${scene}")` }}>
+      {!hideCover && <header className="water-cover" style={{ backgroundImage: `url("${scene}")` }}>
         <div className="water-cover-content">
           <h1>{heading.title}</h1>
-          <p>{heading.subtitle}</p>
         </div>
-      </header>
+      </header>}
 
       <Suspense fallback={null}>
         {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)}

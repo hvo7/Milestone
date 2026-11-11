@@ -177,7 +177,9 @@ ipcMain.handle('notion:sync', async (_event, { questlines, routines }) => {
 
 ipcMain.handle('sync:get-config', () => {
   const config = cloudSync.loadConfig();
-  return { ...config, sharedRelay: readSharedRelay(config) };
+  return { ...config, folderEnabled: !!config.enabled,
+    enabled: !!config.enabled || !!phone.status().enabled,
+    sharedRelay: readSharedRelay(config) };
 });
 ipcMain.handle('sync:set-config', (_event, patch) => cloudSync.setConfig(patch));
 ipcMain.handle('sync:pick-folder', () => cloudSync.pickFolder(getWindow()));
@@ -185,9 +187,10 @@ ipcMain.handle('sync:pick-folder', () => cloudSync.pickFolder(getWindow()));
 // another computer, the phone server carries them to a phone on this Wi-Fi. A
 // device publishes to both and reads from both, so which route a peer arrived by
 // is not something the reconciler has to know about.
-ipcMain.handle('sync:read-peers', () => {
-  const folder = cloudSync.readPeers();
+ipcMain.handle('sync:read-peers', (_event, previewFolder) => {
+  if (typeof previewFolder === 'string') return cloudSync.readPeers(previewFolder);
   const config = cloudSync.loadConfig();
+  const folder = config.enabled ? cloudSync.readPeers() : { ok: true, peers: [] };
   const peers = [...(folder.ok ? folder.peers ?? [] : []), ...phone.readDocs(config.deviceId)];
   // Two routes can carry the same peer's document; the fresher copy wins so a
   // stale one can't drag the clock backwards.
@@ -200,13 +203,14 @@ ipcMain.handle('sync:read-peers', () => {
 });
 ipcMain.handle('sync:write', (_event, doc) => {
   const viaPhone = phone.writeDoc(doc);
-  const viaFolder = cloudSync.writeDoc(doc);
+  const viaFolder = cloudSync.loadConfig().enabled ? cloudSync.writeDoc(doc) : { ok: false };
   // Either route getting the document out is a successful publish — folder sync
   // being switched off must not read as a sync failure on the phone channel.
-  return viaFolder.ok ? viaFolder : viaPhone.ok ? viaPhone : viaFolder;
+  if (cloudSync.loadConfig().enabled && !viaFolder.ok) return viaFolder;
+  return viaPhone.ok ? viaPhone : viaFolder;
 });
 ipcMain.handle('sync:write-backup', (_event, { name, bundle }) => {
-  const viaFolder = cloudSync.writeBackup(name, bundle);
+  const viaFolder = cloudSync.loadConfig().enabled ? cloudSync.writeBackup(name, bundle) : { ok: false };
   return viaFolder.ok ? viaFolder : phone.writeBackup(name, bundle);
 });
 

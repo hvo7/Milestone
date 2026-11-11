@@ -48,6 +48,7 @@ export interface Schedule {
 }
 
 export interface Action {
+  createdAt?: string;
   id: string;
   title: string;
   completed: boolean;
@@ -67,6 +68,9 @@ export interface Action {
 }
 
 export interface Quest {
+  createdAt?: string;
+  /** Stable fallback for older quests that predate creation timestamps. */
+  creationOrder?: number;
   offTodayOn?: string;
   id: string;
   title: string;
@@ -145,6 +149,7 @@ export interface System {
 }
 
 export interface Questline {
+  sortMode?: 'manual' | 'automatic';
   spaceId?: string;
   id: string;
   title: string;

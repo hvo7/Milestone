@@ -6,7 +6,91 @@ For testing and annotating inside a conversation, run `npm run testing -- --brow
 
 The amber TESTING banner identifies this environment. Build output goes to `dist-testing`, not `dist` or `release`. Its Electron profile, cookies, local storage and cache live under `.testing`. The window has no production desktop bridge, updater, cloud/phone sync, or network access. Closing it quits only the testing app.
 
-On first launch, `.testing/seed.json` supplies a copy of quest and project data from a backup. Later launches retain test edits. Production is never imported again automatically. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
+Each launch through `Open Testing.cmd` or `npm run testing` reads the newest valid automatic backup from `%APPDATA%/Milestone/backups` into `.testing/seed.json`. The desktop testing window adopts changed snapshots before loading its stores. When the source has not changed, testing edits remain. Before adopting a changed source, the previous test quest/project data is retained in the localStorage key `milestone-testing-before-refresh`. Life Vitals data is preserved separately. Close the testing window and reopen it to refresh from production; this is a backup snapshot, not live sync. Open production and let its backup finish first if you need the latest edits. If no valid backup is available, the launcher warns and keeps the previous copy. Browser preview storage remains independent and does not import this snapshot. The seed and profile are ignored by Git. Production credentials and UI settings are not copied.
+
+## Batch 015 - approved for v3.3.12
+
+User approved production on 2026-11-10, including Show last check-in. Production now uses the status check-in page. Fresh profiles start empty; existing area names and definitions migrate from production-only storage, and previous storage remains untouched. The notes below describe the preceding testing work.
+
+v3.3.12 production build, targeted lint and all 14 status check-in tests passed. Packaged and verified `release/Milestone-3.3.12-win32-x64/Milestone.exe`, including the last-check-in control and exclusion of testing profile/seed files. After the user closed Milestone, the original `release/Milestone-win32-x64` folder was updated successfully. Executable version is 3.3.12 and app.asar SHA-256 matches the verified package. No user data was changed. No hosted deployment or GitHub release was performed.
+
+- Added Show / Hide last check-in in each area's popup. The optional panel shows the latest saved status, date, reason and next step; new unsaved selections do not change it. Areas with no saved entry show No check-ins yet. Editing older history does not change which check-in is shown.
+
+- Replaces the testing checklist with a direct Behind / On pace / Ahead choice, optional reason and optional next step. The reason label adapts to the selected status. New check-ins require a deliberate status choice; there is no automatic score.
+- Area setup contains just name and optional personal On pace definition. Users can rename, revise their definition, archive and restore areas. No filler subtitles or explanations.
+- Each save adds a dated history entry. History is collapsed by default, displays five entries at a time, and supports editing older entries while preserving their original dates. Edits to old entries do not replace the newest status. Each entry retains the personal definition that applied at the time.
+- Overview retains the red/amber/green gradients and now shows the last check-in timestamp. Detail retains the expanding popup and gray backdrop with reduced-motion support.
+- Uses separate status-vitals storage. Existing checklist areas retain names, archive state, checklist wording as their On pace definition, and any dated last status as one history entry. Older numeric areas retain names and definitions but do not acquire fabricated historical dates. Previous stores are never overwritten. Fresh production starts empty; testing examples never load into production.
+- Validation: 12 domain/UI tests cover status choice, reasons, history, older-entry editing, storage reload, migration and production isolation, customization, cancel and failed saves. Hidden Electron visual capture was unavailable; desktop/mobile appearance still needs on-screen review. Production remains v3.3.11.
+
+## Batch 014 - Simple Life Vitals - superseded in testing by Batch 015
+
+- Testing uses a new checklist system. Setup requires only an area name and one keeping-up check; optionally add up to three checks total. No units, targets, periods, tolerances, factor modes, notes or icon menu.
+- Check-in shows one to three custom boxes plus Made extra progress. Any unchecked basic means Behind; all checked means On pace; all checked plus extra means Ahead. Extra is disabled until all basics are checked and clears when a basic is unchecked. Save check-in commits the result; closing cancels changes. Untouched areas show Not assessed.
+- Existing area names and archive state carry into the new setup with one unassessed baseline. Old numeric definitions remain untouched in their old storage keys. Simple checks use a separate key and production remains on v3.3.11 until this batch is approved. Fresh production storage stays empty when this feature is released.
+- Editing checklist definitions clears the prior check-in so an old completion cannot claim a newly defined item is done. Saved empty lists stay empty; unreadable new data is reported and cannot be overwritten by adding an area.
+- Status gradients, expanding popup, gray backdrop and reduced-motion support remain. No filler descriptions were added.
+- Validation: 11 domain and rendered UI tests passed, covering status rules, no test data in production, legacy preservation, check limits, actual checkbox interaction, extra gating, cancel and save failure. Testing build and targeted lint passed. Browser preview serves on port 4174; opening the conversation panel was unavailable.
+
+## Batch 013 - approved for v3.3.11
+
+User approved production on 2026-11-09. Life Vitals route/navigation and interface motion are enabled in production. Production starts empty using its own storage key; examples and testing snapshots are not imported. Generic page subtitles and Life Vitals filler copy are removed. The entries below describe the preceding testing work.
+
+Production v3.3.11 packaged successfully at `release/Milestone-3.3.11-win32-x64/Milestone.exe`. The standard output folder was locked (EPERM replacing d3dcompiler_47.dll), so packaging used the new `--versioned` option. Nine Life Vitals tests, production build, targeted lint and archive verification passed. Existing installed shortcuts, hosted web deployment and GitHub release were not updated.
+
+Retry succeeded: copied the verified v3.3.11 package into the original `release/Milestone-win32-x64` folder. Executable version is 3.3.11 and app.asar SHA-256 matches the verified versioned package. Production user data was not modified.
+
+- Testing motion polish: brief page entrances, active-tab underline reveal, toolbar/editor button press feedback, smooth sidebar selection colors, Life Vitals editor entrance and expandable detail fades. Existing task completion, progress, drawer and focus-popup animations remain in charge. All additions are scoped to testing and disabled with reduced motion; no continuous animations or page transforms.
+
+- Vital blocks now use status-tinted gradients: green Ahead, amber On pace, red Behind, neutral Not assessed. Badges and left-edge accents match in light and dark themes; status labels remain visible. Hover preserves the gradient.
+
+- Selected Life Lanes layout: full-width rows, platform palette, and an expanding detail popup over a gray backdrop. Keyboard focus is contained in native dialogs; Escape, backdrop and close button return to the row. Reduced-motion preferences skip zooming.
+- Empty testing profiles now start with editable fictional Gym, School, Work, Finances, Wellbeing and Relationships examples. Existing saved custom/archived areas are preserved. Create and rename any area, select an icon, archive/restore areas, and add/remove up to 30 custom factors per area.
+- Testing reload button spins once per click (repeated clicks restart it); reduced-motion settings use a brief opacity change. Existing refresh behavior is retained.
+- This revision passed the testing build, targeted lint and 9 Life Vitals tests, including production/test storage isolation and preserving saved custom areas. Reload animation still needs on-screen review.
+- Factors support higher-is-better progress, lower-is-better limits, and subjective assessments with written criteria. Numeric factors have actual value, expected amount at check-in, whole-period goal/limit, custom units and an inclusive on-pace tolerance. Blank actual means Not assessed, not zero.
+- Choose which factors affect the area status. Any included Behind factor means Behind; all included factors must be Ahead for Ahead. Otherwise On pace, or Not assessed when an assessment is missing. Excluded factors remain visible.
+- Tracking period is user-defined. Assessments are snapshots updated manually: no automatic rollover, calendar pacing, history, task integration, or sync. The interface states these limits.
+- Preview data uses milestone-testing-life-vitals-v2. Previously saved v1 mock data is converted on read without overwriting the old key. Future production uses its own milestone-life-vitals-v1 key, starts empty, and never imports testing data or example seeds. Route and navigation remain testing-only. No production release performed.
+- Validation: all 5 focused tests passed, covering progress/limit comparisons, decimal tolerance boundaries, manual/missing values, aggregation, validation and legacy conversion. TypeScript/testing build, targeted ESLint and diff whitespace checks passed. On-screen animation verification remains outstanding because earlier local browser and Electron preview attempts were unavailable.
+
+## Batch 012 - approved and released as v3.3.10
+
+User approved production release on 2026-10-19. `npm run package` completed; desktop output is `release/Milestone-win32-x64/Milestone.exe`. Cloudflare app/relay deployment completed as `da1013bb-755a-46d3-a50f-cdb034a11d43`. No GitHub release was published, production profiles were not changed, and Testing data/credentials were not transferred. Other desktop installations must update before they receive these safeguards.
+
+Validation: 474 application tests, 50 focused sync tests and 9 Node desktop/watcher/HTTP tests passed, along with actual local Cloudflare runtime integration. Three isolated production renderers synced phone edits in 767 ms and desktop edits in 776 ms without reloads. Final builds and targeted sync lint passed. Existing repository-wide lint and dependency findings are recorded in `docs/engineering-review-2026-10-19.md`.
+
+- Fixed a first-pairing race found by the real-renderer smoke test: initial bookkeeping no longer publishes an empty baseline before adopting the existing peer; backup-before-adoption remains intact.
+
+- Fix the idle upload loop: exclude own files and non-peer files from the OneDrive watcher; remember successfully delivered snapshots for each connection so an offline laptop does not cause unchanged uploads. A new connection publishes once; failed writes remain pending and new edits/adopted clocks publish normally.
+- Push still delivers changes immediately. Healthy polling and the reconciliation backstop now run every five minutes; disconnected polling and capability discovery retry once per minute. Notification-triggered reconciliation reuses its fetched peer list.
+- HTTP requests and WebSocket handshakes share a persisted per-origin, per-device-profile budget: 30 per minute and 8,000 per UTC day. Budget exhaustion pauses network calls while retaining local edits for retry. HTTP preflight requests, older clients, other profiles/devices, and third-party traffic are outside this client budget, so it is not an account-wide Cloudflare quota guarantee.
+- Regression coverage simulates an offline peer for 24 hours with zero unchanged uploads, verifies a fresh edit still uploads, and verifies minute/day budgets and UTC reset.
+
+## Batch 011 — approved for v3.3.9
+
+Local desktop packaging completed successfully with `npm run package` after the user closed the running app. Output: `release/Milestone-win32-x64/Milestone.exe`. No GitHub release was published by this local packaging step; no device pairing or profile transfer was performed.
+
+The user explicitly approved the desktop release, including sync improvements and per-questline Manual/Automatic sorting. Validation: 469 application tests, 42 focused sync tests, and 8 desktop/HTTP integration tests passed. Version advanced to 3.3.9 using the patch-version script. No device pairing, profile overwrite, or Testing data transfer is authorized by this packaging step. Historical pending-review notes below describe the testing stage.
+
+The user added the Cloudflare secret separately; live verification confirmed `configured: true` and unauthenticated peers still return 401. The secret was not read or copied into this repository.
+
+- Cloudflare hosting exception approved by the user on 2026-10-18 and deployed: `https://milestone-sync.henryhuyvo74.workers.dev`, version `6c547b0c-707b-4ad9-9b75-9b2e0598bcfc`. Only code-only web assets and the relay were uploaded; no device data, Testing profile, credentials, or desktop release. Live checks: app 200, health 200 with `configured: false`, unauthenticated peers 401. The pairing secret still needs to be set before desktop-first pairing. No paid services or plan upgrades were requested. This approval does not approve packaging or releasing the desktop batch. Earlier no-deployment notes below describe the preparation stage.
+- Cloudflare adapter prepared locally: SQLite Durable Object storage, authenticated HTTP exchange, chunked large snapshots, hibernating WebSocket push, and code-only static app assets. Node/Wi-Fi relay SSE remains supported. No Cloudflare deployment, pairing keys, or device resets performed. User completed Wrangler browser authorization; OAuth credentials remain managed by Wrangler, not in the repository or Testing profile.
+- Read-only Cloudflare check confirmed `milestone-sync` does not yet exist on the authorized account. Deployment still awaits batch approval. Same-origin iPhone pairing uses the saved connection key; offline push discovery retries instead of permanently falling back to an unsupported transport. Latest focused sync checks: 42 application tests plus 8 desktop/HTTP tests, and 3 push-transport tests. Testing build passed again after these changes.
+- `npm run test:cloudflare` exercises the actual local Cloudflare runtime with synthetic data: two-way push, authorization, invalid/stale writes, large payloads, backup retention/retrieval, and restart persistence. Setup and desktop-authoritative iPhone pairing are documented in `docs/relay-cloudflare.md`.
+- Cloudflare developer tooling lives in its own locked dependency tree; uses the same Miniflare runtime as Wrangler. Audit reports zero vulnerabilities there. Free-plan quotas still apply; the adapter caps device/snapshot counts and retains 20 recovery backups. The new app tests total 467 passing; local deployment dry-run passes.
+
+- Device sync reliability revamp: Wi-Fi sharing and remote relay no longer depend on folder sync being enabled. Saving a validated relay or toggling phone sharing reconnects immediately. Paired mobile PWAs retain their route when launched offline.
+- Durable pending uploads retry after reconnect/startup and every 15 seconds, even when peers have not changed. SSE remains the live path, with a 4-second fallback poll. Requests time out; duplicate watchers are cleaned up; partial-route delivery remains pending instead of falsely reporting success.
+- Initial desktop publication now advances its clock so fresh phones can adopt it. Incoming records are validated before application. Concurrent whole-store edits use stable per-slot edit timestamps and deterministic tie-breaking; both snapshots are backed up before resolution, and backup failure prevents replacement. This is not item-level merging: concurrent edits within the same store still select one version and retain the other in recovery backups.
+- Settings reports the last successful exchange and pending errors; folder inspection no longer changes the active connection before confirmation. The preview explains sync isolation and never connects to production.
+- Validation uses synthetic desktop/mobile profiles and an ephemeral local relay (no live credentials or production data). Real-device pairing and remote hosting still need confirmation; the website alone is not a sync server. Production release is not approved.
+- Checks: 465 application tests passed; `npm run test:sync` passes 41 focused tests plus 8 desktop/real-HTTP relay tests. Testing build and targeted lint passed. Preview continues on port 4174. Safari home-screen installation was confirmed by the user; its source address and pairing remain unverified.
+
+- Sorting now belongs to each questline's edit panel: Manual / Automatic. Automatic defaults on and sorts oldest-created first within unchecked/checked groups in both views; Manual restores saved order and dragging. The global General-settings toggle is removed. New quests and steps receive creation timestamps; older undated items use their known saved sequence, captured before manual reordering. Historical creation times cannot be recovered for legacy items.
+
+- Fix unchecked-first sorting being bypassed in Edit mode. Both questline views now honor the same toggle. While automatic grouping is on, Edit-mode drag handles are hidden and drag writes are blocked; disabling it restores saved manual order and dragging. Production unchanged.
 
 ## Batch 010 — approved for v3.3.8
 

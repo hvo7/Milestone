@@ -9,8 +9,6 @@ export default function SettingsModal({ onClose, notifications, onNotifications,
   onNotifications: () => void; onData: () => void; onNotion: () => void; desktop: boolean;
 }) {
   const [tab, setTab] = useState('general');
-  const completedLast = useUIStore(s => s.completedLast);
-  const setCompletedLast = useUIStore(s => s.setCompletedLast);
   const resetTime = useUIStore(s => s.resetTime);
   const setResetTime = useUIStore(s => s.setResetTime);
   const [resetDraft, setResetDraft] = useState(resetTime);
@@ -45,9 +43,6 @@ export default function SettingsModal({ onClose, notifications, onNotifications,
         </div>
         <div className="settings-content" role="tabpanel" id={`settings-panel-${tab}`} aria-labelledby={`settings-tab-${tab}`}>
           {tab === 'general' && <><h3>General</h3><p className="settings-intro">Your everyday preferences.</p>
-            <div className="settings-row"><div><h4><label htmlFor="completed-last">Unchecked items first</label></h4><p>Move completed quests and their checked tasks to the bottom within each questline. Turn off to use your manual order. Edit mode always shows manual order.</p></div>
-              <input id="completed-last" type="checkbox" role="switch" checked={completedLast} onChange={e => setCompletedLast(e.target.checked)} />
-            </div>
             <div className="settings-row"><div><h4><label htmlFor="goal-reset-time">Goal reset time</label></h4><p>Your daily goals and Today board start a new day at this local time. Weekly goals keep their weekly cadence. Saving applies immediately and may start a new day.</p></div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <input id="goal-reset-time" type="time" className="rune-input" value={resetDraft} onChange={e => setResetDraft(e.target.value)} style={{ width: 130 }} />

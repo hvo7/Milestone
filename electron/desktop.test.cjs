@@ -89,7 +89,7 @@ test('IPC deduplicates sync peers, preserves fallback, and resolves the current 
     shell: {}, notion: {}, updater: {}, backups: {}, tray: {},
     getWindow: () => currentWindow,
     cloudSync: {
-      loadConfig: () => ({ deviceId: 'self' }),
+      loadConfig: () => ({ deviceId: 'self', enabled: false }),
       readPeers: () => ({ ok: true, peers: [{ deviceId: 'peer', updatedAt: '2026-01-01' }] }),
       writeDoc: () => ({ ok: false, error: 'Folder unavailable' }),
       pickFolder: win => win,
@@ -97,11 +97,14 @@ test('IPC deduplicates sync peers, preserves fallback, and resolves the current 
     phone: {
       readDocs: () => [{ deviceId: 'peer', updatedAt: '2026-01-02' }],
       writeDoc: () => ({ ok: true }),
+      status: () => ({ enabled: true }),
     },
   });
   assert.equal(handlers.get('sync:read-peers')().peers.length, 1);
   assert.equal(handlers.get('sync:read-peers')().peers[0].updatedAt, '2026-01-02');
   assert.deepEqual(handlers.get('sync:write')(null, {}), { ok: true });
+  assert.equal(handlers.get('sync:get-config')().enabled, true);
+  assert.equal(handlers.get('sync:get-config')().folderEnabled, false);
   currentWindow = { id: 2 };
   assert.equal(handlers.get('sync:pick-folder')(), currentWindow);
 });

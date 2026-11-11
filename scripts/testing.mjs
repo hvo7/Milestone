@@ -2,9 +2,17 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { refreshTestingSeed } from './testing-seed.mjs';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(import.meta.url);
+try {
+  if (!process.env.APPDATA) throw new Error('APPDATA is unavailable');
+  const snapshot = refreshTestingSeed(path.join(process.env.APPDATA, 'Milestone', 'backups'), path.join(root, '.testing'));
+  console.log(`Testing snapshot: ${snapshot.name} (production is read-only).`);
+} catch (error) {
+  console.warn(`Could not refresh testing data: ${error.message}. Keeping the previous testing copy.`);
+}
 for (const args of [
   ['node_modules/typescript/bin/tsc', '-b'],
   ['node_modules/vite/bin/vite.js', 'build', '--mode', 'testing', '--outDir', 'dist-testing'],

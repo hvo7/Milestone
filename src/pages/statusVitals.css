@@ -1,0 +1,34 @@
+.lv-status-editor { width: min(460px, calc(100vw - 30px)); }
+.lv-status-editor .lv-editor-heading { margin-bottom: 24px; }
+.lv-status-editor label { display: block; }
+.lv-status-editor input, .lv-status-editor textarea { display: block; margin-top: 8px; }
+.lv-status-focus { width: min(540px, 100%); }
+.lv-last-check-toggle { margin-top: 0; min-height: 40px; }
+.lv-last-check-in { margin-top: 8px; border: 1px solid var(--page-border); border-left: 3px solid var(--lv-status); border-radius: 8px; padding: 16px; background: linear-gradient(105deg, var(--lv-wash, transparent), transparent); }
+.lv-last-check-in p { font-size: 13px; line-height: 1.65; margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lv-last-check-in > p:first-child { margin-top: 0; }
+.lv-personal-definition { border-left: 2px solid var(--accent-border); padding: 4px 0 4px 14px; margin: 20px 0 28px; }
+.lv-personal-definition p { margin: 0; font-size: 14px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.lv-optional { font-size: 11px; font-weight: 400; }
+.lv-status-form { margin-top: 24px; }
+.lv-status-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; border: 0; padding: 0; margin: 16px 0 22px; min-width: 0; }
+.lv-status-options legend { font-size: 12px; margin-bottom: 10px; }
+.lv-status-option { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 13px 6px; min-height: 46px; border: 1px solid var(--page-border); border-radius: 8px; cursor: pointer; font-size: 12px; }
+.lv-status-option input { accent-color: var(--lv-status); width: 15px; height: 15px; margin: 0; flex-shrink: 0; }
+.lv-status-option:has(input:checked) { background: var(--lv-status-bg); color: var(--lv-status); border-color: var(--lv-status); }
+.lv-status-option:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.lv-status-form > label { display: block; font-size: 12px; margin-bottom: 18px; }
+.lv-status-form > label input, .lv-status-form textarea { display: block; margin-top: 8px; width: 100%; min-width: 0; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--page-text); border-radius: 8px; padding: 11px 12px; font: inherit; line-height: 1.6; }
+.lv-status-form textarea { resize: vertical; }
+.lv-status-form input:focus-visible, .lv-status-form textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lv-status-history { margin-top: 28px; border-top: 1px solid var(--page-border); padding-top: 20px; font-size: 12px; }
+.lv-status-history summary { cursor: pointer; padding: 4px 0; }
+.lv-status-history ol { list-style: none; padding: 0; margin: 12px 0 0; }
+.lv-status-history li { border-top: 1px solid var(--page-border); padding: 16px 0; }
+.lv-history-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.lv-history-heading time, .lv-last-check { font-size: 10px; color: var(--page-text-dim); }
+.lv-status-history p { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; line-height: 1.65; margin: 10px 0 0; }
+.lv-status-announcement { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (prefers-reduced-motion: no-preference) {
+  .lv-status-option { transition: background-color 150ms, border-color 150ms, color 150ms; }
+}

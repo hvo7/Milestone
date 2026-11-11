@@ -2,7 +2,7 @@ export {};
 
 declare global {
   interface Window {
-    milestoneTesting?: { seed: { quest?: string; vynues?: string; exportedAt?: string } };
+    milestoneTesting?: { seed: { quest?: string; vynues?: string; exportedAt?: string; revision?: string } };
     electronAPI?: {
       platform: string;
       notion: {
@@ -18,7 +18,7 @@ declare global {
         setConfig:   (patch: { enabled?: boolean; folder?: string }) => Promise<{ enabled: boolean; folder: string; deviceId: string; deviceName: string }>;
         /** Opens the folder picker; null if the user cancelled. */
         pickFolder:  () => Promise<string | null>;
-        readPeers:   () => Promise<{ ok: boolean; peers?: unknown[]; unreadable?: number; error?: string }>;
+        readPeers:   (previewFolder?: string) => Promise<{ ok: boolean; peers?: unknown[]; unreadable?: number; error?: string }>;
         write:       (doc: unknown) => Promise<{ ok: boolean; at?: string; error?: string }>;
         writeBackup: (name: string, bundle: unknown) => Promise<{ ok: boolean; path?: string; error?: string }>;
         /** Returns an unsubscribe function. */

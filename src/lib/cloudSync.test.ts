@@ -8,7 +8,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  compareClocks, mergeClocks, slotClock, unionClocks, SLOT_NAMES,
+  compareClocks, mergeClocks, slotClock, unionClocks, SLOT_NAMES, preferredForSlot, isSyncDoc,
   type Clock, type SyncDoc,
 } from './cloudSync';
 
@@ -20,6 +20,25 @@ const doc = (over: Partial<SyncDoc> = {}): SyncDoc => ({
   clock: {},
   stores: {},
   ...over,
+});
+
+it('concurrent resolution chooses the same winner regardless of reader or input order', () => {
+  const a = doc({ deviceId: 'A', clock: { A: 1 } });
+  const b = doc({ deviceId: 'B', clock: { B: 1 } });
+  expect(preferredForSlot(a, b, 'quest')).toBe(b);
+  expect(preferredForSlot(b, a, 'quest')).toBe(b);
+});
+
+it('retransmitting old data does not make it newer than a real edit', () => {
+  const a = doc({ clock: { A: 1 }, updatedAt: '2099-01-01', slotVersions: { quest: { at: '2026-01-01', deviceId: 'A' } } });
+  const b = doc({ deviceId: 'B', clock: { B: 1 }, slotVersions: { quest: { at: '2026-01-02', deviceId: 'B' } } });
+  expect(preferredForSlot(a, b, 'quest')).toBe(b);
+});
+
+it('rejects invalid clocks and payloads which overwrite live store methods', () => {
+  expect(isSyncDoc(doc({ clock: { A: -1 } }))).toBe(false);
+  expect(isSyncDoc(doc({ stores: { quest: JSON.stringify({ state: { questlines: [], routines: [], addQuest: null } }) } }))).toBe(false);
+  expect(isSyncDoc(doc({ stores: { quest: JSON.stringify({ state: { questlines: [], routines: [] } }) } }))).toBe(true);
 });
 
 describe('compareClocks', () => {

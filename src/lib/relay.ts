@@ -15,6 +15,8 @@
  *
  * Where it runs is your choice; server/relay.mjs is the whole implementation.
  */
+import { syncFetch } from './phoneTransport';
+
 const KEY = 'milestone-relay';
 
 export interface RelayConfig {
@@ -58,13 +60,17 @@ export function provisionSharedRelay(config: RelayConfig): boolean {
 export async function testRelay(config: RelayConfig): Promise<{ ok: boolean; error?: string }> {
   const base = config.url.trim().replace(/\/+$/, '');
   if (!base) return { ok: false, error: 'No address.' };
+  if (!config.token.trim()) return { ok: false, error: 'Enter the shared key.' };
   try {
-    const health = await fetch(`${base}/api/health`, { cache: 'no-store' });
+    const target = new URL(base);
+    if (target.protocol !== 'https:' && !(target.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(target.hostname)))
+      return { ok: false, error: 'Use an HTTPS relay to protect your key and data.' };
+    const health = await syncFetch(`${base}/api/health`, { cache: 'no-store' });
     if (!health.ok) return { ok: false, error: `The address answered ${health.status}.` };
     const body = await health.json();
     if (body?.app !== 'milestone') return { ok: false, error: 'That address is not a Milestone relay.' };
 
-    const peers = await fetch(`${base}/api/peers?t=${encodeURIComponent(config.token.trim())}`, { cache: 'no-store' });
+    const peers = await syncFetch(`${base}/api/peers?t=${encodeURIComponent(config.token.trim())}`, { cache: 'no-store' });
     if (peers.status === 401) return { ok: false, error: 'The key does not match the one on the relay.' };
     if (!peers.ok) return { ok: false, error: `The relay answered ${peers.status}.` };
     return { ok: true };

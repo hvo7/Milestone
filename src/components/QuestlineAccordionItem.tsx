@@ -20,7 +20,7 @@ import QuestArtwork from './QuestArtwork';
 import PinButton from './PinButton';
 import QuestDoneToggle from './QuestDoneToggle';
 import EditTitle from './EditTitle';
-import { completionOrder } from '../lib/completionOrder';
+import { automaticOrder } from '../lib/completionOrder';
 import { questShowsOnDay } from '../lib/today';
 import { logicalDateKey } from '../domain/schedule';
 import { categoryColor, cleanQuest } from '../lib/ui';
@@ -95,8 +95,9 @@ function CompactQuestRow({ questline, quest, locked, subdued, active = false, dr
 
   const complete = isQuestComplete(quest);
   const { done: ad, total: at } = questProgress(quest);
-  const completedLast = useUIStore(s => s.completedLast);
-  const actions = completionOrder(quest.actions.filter(a => !a.hidden), completedLast, a => a.completed);
+  const completedLast = questline.sortMode !== 'manual';
+  const visibleActions = quest.actions.filter(a => !a.hidden);
+  const actions = completedLast ? automaticOrder(visibleActions, a => a.completed) : visibleActions;
   const pinned = questShowsOnDay(quest, logicalDateKey());
   const canExpand = true;
 
@@ -224,7 +225,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
   const routines              = useQuestStore(s => s.routines);
   const taskHistory           = useQuestStore(s => s.taskHistory);
   const editMode              = useUIStore(s => s.editMode);
-  const completedLast = useUIStore(s => s.completedLast);
+  const completedLast = questline.sortMode !== 'manual';
 
   const [addingQuestTo,  setAddingQuestTo]  = useState<Quest | null>(null);
   const [addingNewQuest, setAddingNewQuest] = useState(false);
@@ -247,7 +248,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
   const manualOrder = [...questline.quests]
     .filter(q => !q.hidden)
     .sort((a, b) => a.order - b.order);
-  const sorted = completionOrder(manualOrder, completedLast && !editMode, isQuestComplete);
+  const sorted = completedLast ? automaticOrder(questline.quests.filter(q => !q.hidden), isQuestComplete) : manualOrder;
   // Preserve hidden quests in their existing slots while reordering all visible quests.
   const hold = useHoldToReorder(
     sorted.map(q => q.id),
@@ -260,6 +261,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
   );
 
   function handleDrop(dropIdx: number) {
+    if (completedLast) return;
     if (dragIndex.current === null || dragIndex.current === dropIdx) return;
     const reordered = [...sorted];
     const [moved] = reordered.splice(dragIndex.current, 1);
@@ -376,9 +378,10 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                       return (
                         <div
                           key={quest.id}
-                          draggable
-                          onDragStart={() => { dragIndex.current = i; }}
-                          onDragOver={e => { e.preventDefault(); setDragOverIndex(i); }}
+                          data-quest-row={quest.id}
+                          draggable={!completedLast}
+                          onDragStart={e => { if (completedLast) { e.preventDefault(); return; } dragIndex.current = i; }}
+                          onDragOver={e => { if (completedLast) return; e.preventDefault(); setDragOverIndex(i); }}
                           onDrop={() => handleDrop(i)}
                           onDragEnd={() => { dragIndex.current = null; setDragOverIndex(null); }}
                           style={{
@@ -388,11 +391,11 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                             borderRadius: 8,
                             border: isDragOver ? '1px solid var(--accent-border)' : '1px solid var(--card-border)',
                             opacity: isHiddenInEdit ? 0.35 : 1,
-                            cursor: 'grab',
+                            cursor: completedLast ? 'default' : 'grab',
                             transition: 'background 0.12s, border-color 0.12s',
                           }}
                         >
-                          <span style={{ fontSize: 14, color: 'var(--text-dim)', cursor: 'grab', flexShrink: 0, userSelect: 'none', lineHeight: 1 }} title="Drag to reorder">⠿</span>
+                          {!completedLast && <span style={{ fontSize: 14, color: 'var(--text-dim)', cursor: 'grab', flexShrink: 0, userSelect: 'none', lineHeight: 1 }} title="Drag to reorder">⠿</span>}
 
                           {/* Edit mode was the one surface on this tab where a quest
                               could be renamed, moved, hidden and deleted but not

@@ -22,8 +22,11 @@
  */
 
 /** Same surface as `window.electronAPI.sync`, so cloudSync can't tell them apart. */
+import { watchSyncPush } from './syncPush';
+import { reserveSyncRequest } from './syncBudget';
+
 export interface SyncBridge {
-  getConfig: () => Promise<{ enabled: boolean; folder: string; deviceId: string; deviceName: string; sharedRelay?: { url: string; token: string } }>;
+  getConfig: () => Promise<{ enabled: boolean; folderEnabled?: boolean; folder: string; deviceId: string; deviceName: string; sharedRelay?: { url: string; token: string } }>;
   readPeers: () => Promise<{ ok: boolean; peers?: unknown[]; error?: string }>;
   write: (doc: unknown) => Promise<{ ok: boolean; at?: string; error?: string }>;
   writeBackup: (name: string, bundle: unknown) => Promise<{ ok: boolean; error?: string }>;
@@ -36,12 +39,9 @@ const DEVICE_KEY = 'milestone-phone-device';
 /**
  * How often a device asks what changed.
  *
- * There's no push channel — a phone browser drops background sockets the moment
- * you switch apps, so a poll that survives being backgrounded is worth more than
- * a socket that doesn't. Four seconds is under the time it takes to pick the
- * phone up after ticking something off on the desktop.
+ * A one-minute fallback covers unavailable or reconnecting event streams.
  */
-const POLL_MS = 4000;
+const POLL_MS = 60_000;
 
 /**
  * How often to ask when the endpoint is *pushing* changes as they happen.
@@ -52,7 +52,21 @@ const POLL_MS = 4000;
  * while the socket was down and the reconnect missed. Rare enough to check
  * lazily, and every one of these on a phone is battery and radio.
  */
-const SLOW_POLL_MS = 30_000;
+const SLOW_POLL_MS = 300_000;
+
+/** Bound every request so an unreachable route cannot stall all other routes. */
+export async function syncFetch(input: string, init: RequestInit = {}): Promise<Pick<Response, 'ok' | 'status' | 'json'>> {
+  reserveSyncRequest(input);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    // Include body delivery in the timeout, not just the response headers.
+    const body = await response.json();
+    return { ok: response.ok, status: response.status, json: async () => body };
+  }
+  finally { clearTimeout(timer); }
+}
 
 /** The key arrives in the link the desktop shows and is kept, so a device is
  *  paired once — and so a home-screen shortcut with no query string still
@@ -101,6 +115,10 @@ function deviceUuid(): string {
  *  history and manufacture conflicts. */
 export function identity(): Identity {
   let saved = localStorage.getItem(DEVICE_KEY);
+  try {
+    const value = JSON.parse(saved ?? 'null');
+    if (!value || typeof value.deviceId !== 'string' || !/^[\w-]{1,64}$/.test(value.deviceId) || typeof value.deviceName !== 'string') saved = null;
+  } catch { saved = null; }
   if (!saved) {
     saved = JSON.stringify({
       deviceId: deviceUuid(),
@@ -120,7 +138,7 @@ export function identity(): Identity {
 export async function servedByMilestone(): Promise<boolean> {
   if (window.electronAPI) return false;             // the desktop app itself
   try {
-    const res = await fetch('api/health', { cache: 'no-store' });
+    const res = await syncFetch('api/health', { cache: 'no-store' });
     if (!res.ok) return false;
     const body = await res.json();
     return body?.app === 'milestone';
@@ -154,11 +172,13 @@ export function httpBridge({ base = '', token, me }: {
 
   const post = async (path: string, body: unknown) => {
     try {
-      const res = await fetch(url(path), {
+      const res = await syncFetch(url(path), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
+      if (res.status === 401) return { ok: false, error: 'This device is not paired — open the link again.' };
+      if (res.ok === false) return { ok: false, error: `Sync server returned ${res.status}. Changes remain on this device.` };
       return await res.json();
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : 'Not reachable.' };
@@ -167,79 +187,82 @@ export function httpBridge({ base = '', token, me }: {
 
   const fetchPeers = async () => {
     try {
-      const res = await fetch(url('peers', { deviceId: me.deviceId }), { cache: 'no-store' });
+      const res = await syncFetch(url('peers', { deviceId: me.deviceId }), { cache: 'no-store' });
       if (res.status === 401) return { ok: false, error: 'This device is not paired — open the link again.' };
+      if (res.ok === false) return { ok: false, error: `Sync server returned ${res.status}.` };
       return await res.json();
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : 'Not reachable.' };
     }
   };
 
+  let ticking = false;
+  let tickAgain = false;
+  let failed = false;
+  let notificationResult: { body: Awaited<ReturnType<typeof fetchPeers>>; at: number } | null = null;
   const tick = async () => {
-    const body = await fetchPeers();
-    if (!body?.ok) return;                            // offline for a moment; try again next time
-    const stamp = JSON.stringify((body.peers ?? []).map((p: { deviceId: string; updatedAt: string }) => [p.deviceId, p.updatedAt]));
-    if (stamp === lastSeen) return;
-    lastSeen = stamp;
-    for (const fn of listeners) fn();
+    if (ticking) { tickAgain = true; return; }
+    ticking = true;
+    try {
+      const body = await fetchPeers();
+      if (!body?.ok || !Array.isArray(body.peers)) { failed = true; return; }
+      const stamp = JSON.stringify(body.peers.map((p: { deviceId?: string; updatedAt?: string } | null) => [p?.deviceId, p?.updatedAt]).sort());
+      if (stamp === lastSeen && !failed) return;
+      failed = false;
+      lastSeen = stamp;
+      notificationResult = { body, at: Date.now() };
+      for (const fn of listeners) fn();
+    } finally {
+      ticking = false;
+      if (tickAgain && listeners.size) { tickAgain = false; void tick(); }
+    }
   };
+
+  let stopWatching: (() => void) | null = null;
 
   return {
     // `enabled` is unconditional: having a bridge at all means an endpoint was
     // configured or served this page, which is the whole switch.
     getConfig: async () => ({ enabled: true, folder: '', ...me }),
-    readPeers: fetchPeers,
+    readPeers: () => {
+      const cached = notificationResult;
+      notificationResult = null;
+      return cached && Date.now() - cached.at < 1000 ? Promise.resolve(cached.body) : fetchPeers();
+    },
     write: doc => post('write', doc),
     writeBackup: (name, bundle) => post('backup', { name, bundle }),
 
     onChanged: callback => {
       listeners.add(callback);
 
-      /** Poll at whichever rate matches what the stream is doing. */
-      const setPoll = (every: number) => {
-        if (timer) clearInterval(timer);
-        timer = setInterval(() => { void tick(); }, every);
-      };
-      // Every network route needs a fallback: a folder watcher cannot observe
-      // relay edits when SSE is blocked or reconnecting.
-      setPoll(POLL_MS);
+      if (!stopWatching) {
+        const setPoll = (every: number) => {
+          if (timer) clearInterval(timer);
+          timer = setInterval(() => { void tick(); }, every);
+        };
+        setPoll(POLL_MS);
 
-      // The push channel. Opened for every endpoint, including the ones that
-      // don't poll: a desktop pointed at a relay used to find out about the
-      // phone's edits only on the 60-second sweep, because the folder watcher it
-      // was told to rely on cannot see a relay.
-      let stream: EventSource | null = null;
-      if (typeof EventSource !== 'undefined') {
-        try {
-          stream = new EventSource(url('events', { deviceId: me.deviceId }));
-          // Anything at all from the other side means something changed; the
-          // tick then works out whether it changed for us.
-          stream.addEventListener('changed', () => { void tick(); });
-          // The stream is live, so the poll steps back to a backstop. Done on
-          // open rather than at construction because an endpoint too old to
-          // have the route still answers — with a 404, and no open.
-          stream.onopen = () => { setPoll(SLOW_POLL_MS); void tick(); };
-          // EventSource reconnects on its own; the poll goes back to being the
-          // primary route until it does.
-          stream.onerror = () => { setPoll(POLL_MS); };
-        } catch {
-          stream = null;   // no stream, no change: the poll was already running
-        }
+        // Push is primary; polling covers lost notifications and blocked streams.
+        const stopPush = watchSyncPush({
+          health: async () => (await syncFetch(url('health'))).json(),
+          eventsUrl: url('events', { deviceId: me.deviceId }),
+          changed: () => { void tick(); },
+          connected: live => setPoll(live ? SLOW_POLL_MS : POLL_MS),
+        });
+        const onVisible = () => { if (!document.hidden) void tick(); };
+        document.addEventListener('visibilitychange', onVisible);
+        window.addEventListener('online', onVisible);
+
+        stopWatching = () => {
+          document.removeEventListener('visibilitychange', onVisible);
+          window.removeEventListener('online', onVisible);
+          stopPush();
+          if (timer) { clearInterval(timer); timer = null; }
+        };
       }
-
-      // Coming back to the app is the moment you most want it current — and on
-      // a phone the socket was almost certainly dropped while you were away, so
-      // this covers the gap before the reconnect lands.
-      const onVisible = () => { if (!document.hidden) void tick(); };
-      document.addEventListener('visibilitychange', onVisible);
-
       return () => {
         listeners.delete(callback);
-        document.removeEventListener('visibilitychange', onVisible);
-        if (!listeners.size) {
-          if (stream) { stream.close(); stream = null; }
-          if (timer) { clearInterval(timer); timer = null; }
-        }
+        if (!listeners.size) { stopWatching?.(); stopWatching = null; }
       };
     },
   };
@@ -251,19 +274,23 @@ export function httpBridge({ base = '', token, me }: {
  * A device can have more than one way to reach its other copies — the desktop
  * has the cloud folder, the Wi-Fi server and possibly a relay; the phone has the
  * relay and, when it's home, the desktop. Reads take the union, writes go
- * everywhere, and a route being down is not a failure as long as one worked.
+ * everywhere. Partial delivery remains pending until every route acknowledges.
  * The reconciler above is untouched: it still sees a single bridge.
  */
 export function compositeBridge(parts: SyncBridge[]): SyncBridge {
   return {
-    getConfig: () => parts[0].getConfig(),
+    getConfig: async () => {
+      const configs = await Promise.all(parts.map(part => part.getConfig()));
+      return { ...configs[0], enabled: configs.some(config => config.enabled) };
+    },
 
     readPeers: async () => {
       const results = await Promise.all(parts.map(p => p.readPeers().catch(() => ({ ok: false } as const))));
       const best = new Map<string, { deviceId: string; updatedAt?: string }>();
       for (const res of results) {
-        if (!('peers' in res) || !res.peers) continue;
+        if (!('peers' in res) || !Array.isArray(res.peers)) continue;
         for (const doc of res.peers as { deviceId: string; updatedAt?: string }[]) {
+          if (!doc || typeof doc.deviceId !== 'string') continue;
           const seen = best.get(doc.deviceId);
           // The same peer can arrive by two routes; the fresher copy wins so a
           // stale one can't drag its clock backwards.
@@ -272,15 +299,15 @@ export function compositeBridge(parts: SyncBridge[]): SyncBridge {
       }
       const ok = results.some(r => r.ok);
       const errors = results.map(r => ('error' in r ? r.error : null)).filter(Boolean);
-      return { ok: ok || errors.length === 0, peers: [...best.values()], error: ok ? undefined : errors[0] as string };
+      return { ok, peers: [...best.values()], error: ok ? undefined : (errors[0] as string || 'No sync route is reachable.') };
     },
 
     write: async doc => {
       const results = await Promise.all(parts.map(p => p.write(doc).catch(() => ({ ok: false } as const))));
       const good = results.find(r => r.ok);
-      // Publishing to one of two places is a successful publish: the relay being
-      // unreachable on a train must not read as "your edit didn't save".
-      return good ?? results[0] ?? { ok: false, error: 'Nowhere to publish.' };
+      // A local acknowledgement is not delivery to the remote device.
+      if (good && results.every(r => r.ok)) return good;
+      return { ok: false, error: good ? 'Saved locally; some devices are still waiting. Retrying automatically.' : 'Unable to upload. Changes remain on this device; retrying automatically.' };
     },
 
     writeBackup: async (name, bundle) => {

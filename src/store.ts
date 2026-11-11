@@ -125,7 +125,7 @@ interface QuestData {
   addSpace: (name: string) => string | null;
   updateSpace: (id: string, updates: { name?: string; archived?: boolean }) => void;
   addQuestline:       (title: string, desc: string, icon: string, color: GuildColor, spaceId?: string) => void;
-  updateQuestline:    (qlId: string, updates: Partial<Pick<Questline,'title'|'description'|'icon'|'color'|'sequential'|'recurring'|'targetDate'|'spaceId'>>) => void;
+  updateQuestline:    (qlId: string, updates: Partial<Pick<Questline,'title'|'description'|'icon'|'color'|'sequential'|'recurring'|'targetDate'|'spaceId'|'sortMode'>>) => void;
   addQuest:           (qlId: string, title: string, desc: string, recurring: RecurringType | null, dueDate: string | null, monthlyRule?: MonthlyRule | null, completionMode?: Quest['completionMode']) => void;
   updateQuestTitle:   (qlId: string, qId: string, title: string) => void;
   updateQuest:        (qlId: string, qId: string, updates: Partial<Pick<Quest,'title'|'description'|'recurring'|'dueDate'|'intervalDays'|'monthlyRule'|'completionMode'>>) => void;
@@ -382,7 +382,7 @@ export const useQuestStore = create<QuestData>()(
         set(s => ({ questlines: mapQuest(s.questlines, qlId, qId, q => ({ ...q, dueDate: dueDate ?? null })) })),
 
       addAction: (qlId, qId, title) =>
-        set(s => ({ questlines: mapQuest(s.questlines, qlId, qId, q => ({ ...q, actions: [...q.actions, { id: `a-${uid()}`, title, completed: false, trackedToday: false }] })) })),
+        set(s => ({ questlines: mapQuest(s.questlines, qlId, qId, q => ({ ...q, actions: [...q.actions, { id: `a-${uid()}`, title, createdAt: new Date().toISOString(), completed: false, trackedToday: false }] })) })),
 
       deleteAction: (qlId, qId, aId) =>
         set(s => {
@@ -420,7 +420,7 @@ export const useQuestStore = create<QuestData>()(
       addQuest: (qlId, title, desc, recurring, dueDate, monthlyRule, completionMode) =>
         set(s => ({
           questlines: mapById(s.questlines, qlId, ql => {
-            const q: Quest = { id: `q-${uid()}`, title, description: desc, order: ql.quests.length + 1, actions: [], completionMode: completionMode ?? (recurring || monthlyRule ? 'steps' : 'manual'), recurring: recurring ?? null, ...(monthlyRule ? { monthlyRule } : {}), lastResetAt: (recurring || monthlyRule) ? new Date().toISOString() : undefined, streak: 0, dueDate: monthlyRule ? null : (dueDate ?? null) };
+            const q: Quest = { id: `q-${uid()}`, createdAt: new Date().toISOString(), title, description: desc, order: ql.quests.length + 1, actions: [], completionMode: completionMode ?? (recurring || monthlyRule ? 'steps' : 'manual'), recurring: recurring ?? null, ...(monthlyRule ? { monthlyRule } : {}), lastResetAt: (recurring || monthlyRule) ? new Date().toISOString() : undefined, streak: 0, dueDate: monthlyRule ? null : (dueDate ?? null) };
             return { ...ql, quests: [...ql.quests, q] };
           }),
         })),
@@ -563,7 +563,7 @@ export const useQuestStore = create<QuestData>()(
             ];
             return {
               ...ql,
-              quests: ids.map((id, i) => ({ ...ql.quests.find(q => q.id === id)!, order: i + 1 })),
+              quests: ids.map((id, i) => ({ ...ql.quests.find(q => q.id === id)!, creationOrder: ql.quests.find(q => q.id === id)!.creationOrder ?? ql.quests.findIndex(q => q.id === id), order: i + 1 })),
             };
           }),
         })),

@@ -1,0 +1,18 @@
+.lv-simple-editor { width: min(460px, calc(100vw - 30px)); }
+.lv-simple-editor .lv-editor-heading { margin-bottom: 24px; }
+.lv-simple-basics { border: 0; padding: 0; margin: 22px 0 0; min-width: 0; }
+.lv-simple-basics legend { font-size: 12px; font-weight: 600; margin-bottom: 12px; }
+.lv-simple-edit-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.lv-simple-check { display: flex; align-items: center; gap: 14px; padding: 16px; margin-bottom: 10px; min-height: 58px; border: 1px solid var(--page-border); border-radius: 10px; background: var(--input-bg); cursor: pointer; }
+.lv-simple-check span { font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; min-width: 0; }
+.lv-simple-check input { width: 22px; height: 22px; flex: 0 0 22px; accent-color: var(--lv-ahead); cursor: pointer; }
+.lv-simple-check:has(input:checked) { border-color: var(--accent-border); background: var(--accent-soft); }
+.lv-simple-check:focus-within { outline: 2px solid var(--accent); outline-offset: 3px; }
+.lv-simple-extra { margin-top: 22px; }
+.lv-simple-disabled { opacity: .55; cursor: default; }
+.lv-simple-disabled input { cursor: default; }
+.lv-simple-focus { width: min(460px, 100%); }
+.lv-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (prefers-reduced-motion: no-preference) {
+  .lv-simple-check { transition: background-color 160ms, border-color 160ms; }
+}

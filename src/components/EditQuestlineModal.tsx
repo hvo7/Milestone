@@ -23,6 +23,7 @@ function Label({ children }: { children: React.ReactNode }) {
 export default function EditQuestlineModal({ questline, onClose }: Props) {
   const updateQuestline = useQuestStore(s => s.updateQuestline);
   const [spaceId, setSpaceId] = useState(questline.spaceId ?? '');
+  const [sortMode, setSortMode] = useState<'manual' | 'automatic'>(questline.sortMode ?? 'automatic');
   const [title, setTitle]             = useState(questline.title);
   const [description, setDescription] = useState(questline.description);
   const [icon, setIcon]               = useState(questline.icon);
@@ -40,7 +41,7 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
   const handleSave = () => {
     if (!title.trim()) return;
     updateQuestline(questline.id, {
-      spaceId: spaceId || undefined, title: title.trim(), description: description.trim(), icon, color, sequential, recurring,
+      spaceId: spaceId || undefined, title: title.trim(), description: description.trim(), icon, color, sequential, recurring, sortMode,
       // Empty means "no target", which is a real answer and must clear a previous
       // one rather than leaving it stuck.
       targetDate: targetDate || null,
@@ -65,6 +66,20 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
             <div>
               <Label>Description</Label>
               <textarea className="rune-input" rows={2} value={description} onChange={e => setDescription(e.target.value)} style={{ resize: 'vertical', minHeight: 56 }} />
+            </div>
+
+            <div>
+              <Label>Sorting</Label>
+              <div role="group" aria-label="Questline sorting" style={{ display: 'flex', gap: 8 }}>
+                {(['manual', 'automatic'] as const).map(mode => <button key={mode} type="button" className="btn-ghost"
+                  aria-pressed={sortMode === mode} onClick={() => setSortMode(mode)}
+                  style={{ flex: 1, background: sortMode === mode ? 'var(--accent-soft)' : undefined, borderColor: sortMode === mode ? 'var(--accent)' : undefined }}>
+                  {mode === 'manual' ? 'Manual' : 'Automatic'}
+                </button>)}
+              </div>
+              <p style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--text-dim)' }}>
+                {sortMode === 'automatic' ? 'Oldest created first, with checked items at the bottom. Older items without creation dates keep their original saved sequence.' : 'Arrange quests by dragging. Your saved manual order is preserved when switching modes.'}
+              </p>
             </div>
 
             {/* Icon */}
@@ -108,7 +123,7 @@ export default function EditQuestlineModal({ questline, onClose }: Props) {
 
             {/* Quest order */}
             <div>
-              <Label>Quest order</Label>
+              <Label>Quest progression</Label>
               <div style={{ display: 'flex', gap: 8 }}>
                 {[{ value: false, label: 'Flexible', desc: 'All quests available at once' }, { value: true, label: 'Sequential', desc: 'Complete quests in order' }].map(opt => (
                   <button
