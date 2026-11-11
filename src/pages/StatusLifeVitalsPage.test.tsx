@@ -107,6 +107,7 @@ it('shows the latest saved check-in without changing it when a new status is sel
   // Editing an older record must not make it the last check-in.
   const edited = saveCheckIn(second, { status: 'behind', reason: 'Corrected older note', next: '' }, first.entries[0].id, '2026-11-11T12:00:00Z');
   const { save } = renderFocus(edited);
+  click(button('New check-in'));
   const panel = host.querySelector<HTMLElement>('#lv-last-check-in')!;
   expect(panel.hidden).toBe(true);
   click(button('Show last check-in'));
@@ -130,8 +131,33 @@ it('shows an empty state when there has not been a check-in', () => {
   expect(host.querySelector('#lv-last-check-in')?.textContent).toBe('No check-ins yet.');
 });
 
+it.each(['behind', 'on-pace'] as const)('reopens %s with its saved checklist and separates new check-ins', savedStatus => {
+  const original = saveCheckIn(area(), { status: savedStatus, reason: 'Saved note', next: '' });
+  const key = statusVitalsKey(false);
+  localStorage.setItem(key, JSON.stringify([original]));
+  act(() => root.render(<StatusLifeVitalsPage />));
+  click(host.querySelector('.lv-region')!);
+  expect(host.querySelector('.lv-checklist h3')?.textContent).toBe(savedStatus === 'behind' ? 'Get back on pace' : 'Keep on pace');
+  expect(host.querySelector('.lv-status-form')).toBeNull();
+  click(button('+ Add task'));
+  type(host.querySelector('.lv-plan-editor input')!, 'Saved action'); click(button('Save item'));
+  click(host.querySelector('[aria-label="Complete Saved action"]')!);
+  expect(JSON.parse(localStorage.getItem(key)!)[0].entries).toEqual(original.entries);
+  click(button('New check-in'));
+  expect(host.querySelector('input[type=radio]:checked')).toBeNull();
+  expect(host.querySelector('.lv-checklist')).toBeNull();
+  click(host.querySelector('input[value=behind]')!);
+  expect(host.querySelector('.lv-checklist')).not.toBeNull();
+  click(button('Cancel check-in'));
+  expect(host.querySelector<HTMLInputElement>('[aria-label="Complete Saved action"]')!.checked).toBe(true);
+  click(host.querySelector('[aria-label="Close life area"]')!);
+  click(host.querySelector('.lv-region')!);
+  expect(host.querySelector<HTMLInputElement>('[aria-label="Complete Saved action"]')!.checked).toBe(true);
+});
+
 it('places status first and reveals only its matching checklist directly beneath it', () => {
   renderFocus(saveCheckIn(area(), { status: 'ahead', reason: '', next: '' }));
+  click(button('New check-in'));
   const title = host.querySelector('#status-focus-title')!;
   const choices = host.querySelector('.lv-status-options')!;
   expect(title.nextElementSibling).toBe(choices);
@@ -167,7 +193,7 @@ it('shows attention beside all areas and persists, replaces, and clears one curr
   expect(host.querySelector('.lv-attention-panel')?.textContent).not.toContain('Gym');
   click(host.querySelector('[aria-label="Review School"]')!);
   expect(host.querySelector('#status-focus-title')?.textContent).toBe('School');
-  expect(host.querySelector('.lv-checklist')).toBeNull();
+  expect(host.querySelector('.lv-checklist h3')?.textContent).toBe('Get back on pace');
   click(host.querySelector('[aria-label="Close life area"]')!);
   expect(host.querySelector<HTMLSelectElement>('[aria-label="Current priority"]')!.value).toBe(fresh.id);
   act(() => root.unmount()); root = createRoot(host); act(() => root.render(<StatusLifeVitalsPage />));
@@ -185,6 +211,7 @@ it('creates two-tier plans, enforces order and preserves check-in drafts across 
   localStorage.setItem(key, JSON.stringify([saveCheckIn(area(), { status: 'behind', reason: '', next: '' })]));
   act(() => root.render(<StatusLifeVitalsPage />));
   click(host.querySelector('.lv-region')!);
+  click(button('New check-in'));
   type(host.querySelector('.lv-status-form textarea')!, 'Draft reason stays');
   expect(host.querySelector('.lv-checklist')).toBeNull();
   click(host.querySelector('input[value=behind]')!);
@@ -212,6 +239,8 @@ it('creates two-tier plans, enforces order and preserves check-in drafts across 
   expect(check('Weekly review').checked).toBe(false);
   act(() => root.unmount()); root = createRoot(host);
   act(() => root.render(<StatusLifeVitalsPage />)); click(host.querySelector('.lv-region')!);
+  expect(host.querySelector('.lv-checklist h3')?.textContent).toBe('Get back on pace');
+  click(button('New check-in'));
   expect(host.querySelector('.lv-checklist')).toBeNull();
   click(host.querySelector('input[value=behind]')!);
   expect(check('Submit homework').checked).toBe(true);

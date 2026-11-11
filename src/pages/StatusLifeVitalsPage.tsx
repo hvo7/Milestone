@@ -87,6 +87,7 @@ export function StatusAreaFocus({ area, origin, onClose, onEdit, onSave }: {
 }) {
   const { dialogRef, panelRef, backdropDownRef, close } = useFocusDialog(origin, onClose);
   const [status, setStatus] = useState<VitalStatus | null>(null);
+  const [checkingIn, setCheckingIn] = useState(() => !latestEntry(area));
   const [reason, setReason] = useState('');
   const [next, setNext] = useState('');
   const [editId, setEditId] = useState<string>();
@@ -97,8 +98,12 @@ export function StatusAreaFocus({ area, origin, onClose, onEdit, onSave }: {
   const savedRef = useRef(false);
   const entries = historyEntries(area);
   const lastCheckIn = entries[0];
+  const displayedStatus = checkingIn ? status : lastCheckIn?.status ?? null;
   const reset = () => { setEditId(undefined); setStatus(null); setReason(''); setNext(''); setError(''); };
+  const startCheckIn = () => { reset(); setCheckingIn(true); };
+  const cancelCheckIn = () => { reset(); setCheckingIn(!lastCheckIn); };
   const editEntry = (entry: VitalEntry) => {
+    setCheckingIn(true);
     setEditId(entry.id); setStatus(entry.status); setReason(entry.reason); setNext(entry.next); setError('');
     dialogRef.current?.querySelector<HTMLInputElement>('input[type="radio"]')?.focus();
   };
@@ -118,15 +123,16 @@ export function StatusAreaFocus({ area, origin, onClose, onEdit, onSave }: {
     onPointerCancel={() => { backdropDownRef.current = false; }}
     onClick={e => { if (backdropDownRef.current && e.target === e.currentTarget) close(); backdropDownRef.current = false; }}>
     <div ref={panelRef} className={`lv-focus-panel lv-status-focus lv-${statusPace(area)}`}>
-      <div className="lv-focus-top"><button type="button" className="lv-close" onClick={close} aria-label="Close life area">&times;</button></div>
+      <div className="lv-focus-top">{!checkingIn && <button type="button" className="lv-primary" onClick={startCheckIn}>New check-in</button>}<button type="button" className="lv-close" onClick={close} aria-label="Close life area">&times;</button></div>
       <h2 id="status-focus-title">{area.name}</h2>
-          <fieldset className="lv-status-options"><legend>Status</legend>
+          <fieldset className="lv-status-options" disabled={!checkingIn}><legend>{checkingIn ? 'Status' : 'Current status'}</legend>
             {(['behind', 'on-pace', 'ahead'] as const).map(value => <label key={value} className={`lv-status-option lv-${value}`}>
-              <input type="radio" name="vital-status" form="vital-check-in-form" value={value} checked={status === value} onChange={() => { setStatus(value); setError(''); }} />
+              <input type="radio" name="vital-status" form="vital-check-in-form" value={value} checked={displayedStatus === value} onChange={() => { setStatus(value); setError(''); }} />
               <span>{paceLabels[value]}</span>
             </label>)}
           </fieldset>
-        {(status === 'behind' || status === 'on-pace') && <VitalChecklist key={status} kind={status === 'behind' ? 'catchUp' : 'maintenance'} area={area} onSave={onSave} />}
+        {(displayedStatus === 'behind' || displayedStatus === 'on-pace') && <VitalChecklist key={`${checkingIn}-${displayedStatus}`} kind={displayedStatus === 'behind' ? 'catchUp' : 'maintenance'} area={area} onSave={onSave} />}
+      {!checkingIn && <div className="lv-focus-actions"><button type="button" className="lv-secondary" onClick={onEdit}>Edit area</button></div>}
       <button type="button" className="lv-text-button lv-last-check-toggle" aria-expanded={showLastCheckIn} aria-controls="lv-last-check-in" onClick={() => setShowLastCheckIn(show => !show)}>
         {showLastCheckIn ? 'Hide last check-in' : 'Show last check-in'}
       </button>
@@ -139,7 +145,7 @@ export function StatusAreaFocus({ area, origin, onClose, onEdit, onSave }: {
       </section>
       {area.onPace && <section className="lv-personal-definition"><h3>On pace means</h3><p>{area.onPace}</p></section>}
       <div className="lv-focus-body">
-        <form id="vital-check-in-form" ref={formRef} onSubmit={save} className="lv-status-form">
+        {checkingIn && <form id="vital-check-in-form" ref={formRef} onSubmit={save} className="lv-status-form">
           <h3>{editId ? 'Edit check-in' : 'New check-in'}</h3>
 
           <label>{status === 'behind' ? 'What’s holding you back?' : status === 'ahead' ? 'What’s going well?' : 'What’s going on?'} <span className="lv-optional">(optional)</span>
@@ -148,10 +154,10 @@ export function StatusAreaFocus({ area, origin, onClose, onEdit, onSave }: {
           <label>Next step <span className="lv-optional">(optional)</span><input maxLength={200} value={next} onChange={e => setNext(e.target.value)} /></label>
           {error && <p role="alert">{error}</p>}
           <div className="lv-focus-actions">
-            {editId ? <button type="button" className="lv-secondary" onClick={reset}>Cancel edit</button> : <button type="button" className="lv-secondary" onClick={onEdit}>Edit area</button>}
+            {lastCheckIn ? <button type="button" className="lv-secondary" onClick={cancelCheckIn}>{editId ? 'Cancel edit' : 'Cancel check-in'}</button> : <button type="button" className="lv-secondary" onClick={onEdit}>Edit area</button>}
             <button type="submit" className="lv-primary">{editId ? 'Save changes' : 'Save check-in'}</button>
           </div>
-        </form>
+        </form>}
 
         {entries.length > 0 && <details className="lv-status-history"><summary>Check-in history ({entries.length})</summary>
           <ol>{entries.slice(0, historyCount).map(entry => <li key={entry.id}>
