@@ -7,6 +7,11 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.15 - 2026-11-11
+
+- Reopening a Behind or On pace life area immediately shows its saved checklist without creating another check-in.
+- Add an explicit New check-in action that starts with no selected status; cancelling restores the saved status and checklist.
+
 ## 3.3.14 - 2026-11-11
 
 - Add two-tier Life Vitals catch-up and maintenance checklists with sequential or any-order completion and reusable maintenance resets.
