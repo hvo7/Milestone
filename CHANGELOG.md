@@ -7,6 +7,11 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.3.13 - 2026-11-11
+
+- Clear completed quest pins at the next configured day reset while retaining completion history.
+- Add a visible unpin control to existing Today quest rows, including completed quests, without deleting them or changing deadlines.
+
 ## 3.3.12 - 2026-11-10
 
 - Replace detailed Life Vitals tracking with personal Behind / On pace / Ahead status check-ins, optional reasons and next steps.
