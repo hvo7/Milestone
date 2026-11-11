@@ -178,7 +178,6 @@ export default function StatusLifeVitalsPage() {
   const [editing, setEditing] = useState<StatusVital | null>(null);
   const [error, setError] = useState(initial.error ? 'Saved Life Vitals could not be loaded. Reload to try again.' : '');
   const [notice, setNotice] = useState('');
-  const [view, setView] = useState<'all' | 'attention'>('all');
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
     const refresh = () => setNow(Date.now());
@@ -189,7 +188,7 @@ export default function StatusLifeVitalsPage() {
   const visible = areas.filter(a => !a.archived);
   const attention = visible.filter(a => attentionReason(a, now));
   const priority = visible.find(a => a.priority);
-  const shown = (view === 'attention' ? attention : visible).slice().sort((a, b) => Number(!!b.priority) - Number(!!a.priority));
+  const shown = visible.slice().sort((a, b) => Number(!!b.priority) - Number(!!a.priority));
   const selectedArea = areas.find(a => a.id === selected?.id);
   const persist = (next: StatusVital[]) => {
     if (initial.error || !validStatusVitals(next)) return false;
@@ -208,20 +207,30 @@ export default function StatusLifeVitalsPage() {
     <main className="lv-main">
       <header className="lv-heading"><h1>Life Vitals</h1><button type="button" className="lv-secondary" disabled={initial.error || areas.length >= 100} onClick={() => setEditing(newStatusVital())}>+ Add area</button></header>
       {visible.length > 0 && <div className="lv-overview-controls">
-        <div className="lv-plan-tabs" aria-label="Life Vitals view"><button type="button" aria-pressed={view === 'all'} onClick={() => setView('all')}>All areas ({visible.length})</button><button type="button" aria-pressed={view === 'attention'} onClick={() => setView('attention')}>Needs attention ({attention.length})</button></div>
         <label className="lv-priority-picker">Current priority<select aria-label="Current priority" value={priority?.id ?? ''} onChange={e => { if (persist(choosePriority(areas, e.target.value))) setNotice(e.target.value ? 'Current priority updated.' : 'Current priority cleared.'); }}><option value="">None</option>{visible.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       </div>}
+      <div className="lv-overview-layout">
       <div className="lv-grid" aria-label="Life areas">{shown.map((area, index) => {
         const pace = statusPace(area);
         const latest = latestEntry(area);
         return <button type="button" key={area.id} className={`lv-region lv-${pace}`} aria-label={`Open ${area.name}, ${paceLabels[pace]}`} aria-haspopup="dialog"
           onClick={event => { const r = event.currentTarget.getBoundingClientRect(); setSelected({ id: area.id, origin: { left: r.left, top: r.top, width: r.width, height: r.height } }); }}>
           <span className="lv-lane-number">{String(index + 1).padStart(2, '0')}</span>
-          <span className="lv-lane-name"><span className="lv-region-title">{area.name}</span>{area.priority && <span className="lv-priority-badge">Current priority</span>}{latest && <time className="lv-last-check" dateTime={latest.createdAt}>Checked {dateLabel(latest.createdAt)}</time>}{view === 'attention' && <span className="lv-attention-reason">{attentionReason(area, now)}</span>}</span>
+          <span className="lv-lane-name"><span className="lv-region-title">{area.name}</span>{area.priority && <span className="lv-priority-badge">Current priority</span>}{latest && <time className="lv-last-check" dateTime={latest.createdAt}>Checked {dateLabel(latest.createdAt)}</time>}</span>
           <PaceBadge pace={pace} /><span aria-hidden="true">&rarr;</span>
         </button>;
       })}</div>
-      {visible.length > 0 && view === 'attention' && shown.length === 0 && <p className="lv-attention-empty">No areas need attention.</p>}
+      {visible.length > 0 && <aside className="lv-attention-panel" aria-labelledby="lv-attention-title">
+        <h2 id="lv-attention-title">Needs attention <span>{attention.length}</span></h2>
+        {attention.length === 0 ? <p className="lv-attention-empty">No areas need attention.</p> : <ul>{attention.slice().sort((a, b) => Number(!!b.priority) - Number(!!a.priority)).map(area => <li key={area.id}>
+          <button type="button" className="lv-attention-item" aria-label={`Review ${area.name}`} aria-haspopup="dialog" onClick={event => { const r = event.currentTarget.getBoundingClientRect(); setSelected({ id: area.id, origin: { left: r.left, top: r.top, width: r.width, height: r.height } }); }}>
+            <span className="lv-attention-name">{area.name}</span><span aria-hidden="true">&rarr;</span>
+            <span className="lv-attention-reason">{attentionReason(area, now)}</span>
+            {area.priority && <span className="lv-priority-badge">Current priority</span>}
+          </button>
+        </li>)}</ul>}
+      </aside>}
+      </div>
       {visible.length === 0 && !initial.error && <div className="lv-empty-state"><button type="button" className="lv-primary" onClick={() => setEditing(newStatusVital())}>Create your first area</button></div>}
       {areas.some(a => a.archived) && <details className="lv-explainer"><summary>Archived areas</summary>{areas.filter(a => a.archived).map(a => <div className="lv-archive-row" key={a.id}><span>{a.name}</span><button type="button" className="lv-secondary" onClick={() => persist(areas.map(x => x.id === a.id ? { ...x, archived: false } : x))}>Restore</button></div>)}</details>}
       {error && <p role="alert">{error}</p>}

@@ -147,7 +147,7 @@ it('places status first and reveals only its matching checklist directly beneath
   expect(host.querySelector('.lv-checklist')).toBeNull();
 });
 
-it('filters attention and persists, replaces, and clears one current priority', () => {
+it('shows attention beside all areas and persists, replaces, and clears one current priority', () => {
   const key = statusVitalsKey(false);
   const fresh = saveCheckIn({ ...area(), name: 'Gym' }, { status: 'on-pace', reason: '', next: '' });
   const behind = saveCheckIn(area(), { status: 'behind', reason: '', next: '' });
@@ -161,9 +161,14 @@ it('filters attention and persists, replaces, and clears one current priority', 
   expect(host.querySelector('.lv-region')?.textContent).toContain('School');
   setPriority(fresh.id);
   expect(JSON.parse(localStorage.getItem(key)!).filter((a: StatusVital) => a.priority).map((a: StatusVital) => a.name)).toEqual(['Gym']);
-  click(button('Needs attention (1)'));
-  expect(host.querySelectorAll('.lv-region')).toHaveLength(1);
-  expect(host.querySelector('.lv-region')?.textContent).toContain('School');
+  expect(host.querySelectorAll('.lv-region')).toHaveLength(2);
+  expect(host.querySelectorAll('.lv-attention-item')).toHaveLength(1);
+  expect(host.querySelector('.lv-attention-panel')?.textContent).toContain('School');
+  expect(host.querySelector('.lv-attention-panel')?.textContent).not.toContain('Gym');
+  click(host.querySelector('[aria-label="Review School"]')!);
+  expect(host.querySelector('#status-focus-title')?.textContent).toBe('School');
+  expect(host.querySelector('.lv-checklist')).toBeNull();
+  click(host.querySelector('[aria-label="Close life area"]')!);
   expect(host.querySelector<HTMLSelectElement>('[aria-label="Current priority"]')!.value).toBe(fresh.id);
   act(() => root.unmount()); root = createRoot(host); act(() => root.render(<StatusLifeVitalsPage />));
   expect(host.querySelector<HTMLSelectElement>('[aria-label="Current priority"]')!.value).toBe(fresh.id);
