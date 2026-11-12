@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attentionReason, choosePriority, historyEntries, loadStatusVitals, newStatusVital, saveCheckIn, statusPace, statusVitalsKey, validStatusVitals } from './statusVitals';
+import { attentionReason, choosePriority, historyEntries, loadStatusVitals, newStatusVital, nextVitalAction, saveCheckIn, statusPace, statusVitalsKey, validStatusVitals } from './statusVitals';
 import { newVital, simpleVitalsKey } from './simpleVitals';
 import { lifeVitalsStorageKey } from './lifeVitalsStorage';
 import { lifeVitalsExamples } from '../testing/lifeVitalsExamples';
@@ -8,6 +8,27 @@ const area = () => ({ ...newStatusVital(), name: 'School', onPace: 'Stay caught 
 const store = (values: Record<string, string> = {}) => ({ getItem: (key: string) => values[key] ?? null });
 const firstTime = '2026-11-09T12:00:00Z';
 const secondTime = '2026-11-10T12:00:00Z';
+
+it.each([false, true])('finds the first unfinished action in saved order (sequential=%s)', sequential => {
+  const a = saveCheckIn({ ...area(), plans: {
+    catchUp: { sequential, tasks: [
+      { id: 'done', title: 'Finished', done: true, subtasks: [] },
+      { id: 'parent', title: 'Lecture', done: false, subtasks: [{ id: 's1', title: 'Read', done: true }, { id: 's2', title: 'Practice', done: false }] },
+      { id: 'later', title: 'Assignment', done: false, subtasks: [] },
+    ] }, maintenance: { sequential: false, tasks: [{ id: 'm', title: 'Weekly review', done: false, subtasks: [] }] },
+  } }, { status: 'behind', reason: '', next: '' });
+  expect(nextVitalAction(a)).toBe('Lecture: Practice');
+  a.plans!.catchUp.tasks[1].subtasks[1].done = true;
+  expect(nextVitalAction(a)).toBe('Assignment');
+  a.plans!.catchUp.tasks[2].done = true;
+  expect(nextVitalAction(a)).toBeNull();
+  a.entries[0].status = 'on-pace';
+  expect(nextVitalAction(a)).toBe('Weekly review');
+  a.entries[0].status = 'ahead';
+  expect(nextVitalAction(a)).toBeNull();
+  expect(nextVitalAction(area())).toBeNull();
+  expect(nextVitalAction({ ...a, archived: true })).toBeNull();
+});
 
 it('identifies behind, unreviewed and seven-day-old areas without changing their status', () => {
   const now = Date.parse('2026-11-11T12:00:00Z');

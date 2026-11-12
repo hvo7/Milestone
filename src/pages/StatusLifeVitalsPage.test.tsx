@@ -131,6 +131,22 @@ it('shows an empty state when there has not been a check-in', () => {
   expect(host.querySelector('#lv-last-check-in')?.textContent).toBe('No check-ins yet.');
 });
 
+it('advances the sidebar ASAP item when the top unfinished task is completed', () => {
+  const a = saveCheckIn({ ...area(), plans: { catchUp: { sequential: false, tasks: [
+    { id: 'one', title: 'Review notes', done: false, subtasks: [] },
+    { id: 'two', title: 'Practice questions', done: false, subtasks: [] },
+  ] }, maintenance: { sequential: false, tasks: [] } } }, { status: 'behind', reason: '', next: '' });
+  localStorage.setItem(statusVitalsKey(false), JSON.stringify([a]));
+  act(() => root.render(<StatusLifeVitalsPage />));
+  expect(host.querySelector('.lv-attention-asap')?.textContent).toBe('ASAPReview notes');
+  click(host.querySelector('.lv-attention-item')!);
+  click(host.querySelector('[aria-label="Complete Review notes"]')!);
+  expect(host.querySelector('.lv-attention-asap')?.textContent).toBe('ASAPPractice questions');
+  click(host.querySelector('[aria-label="Complete Practice questions"]')!);
+  expect(host.querySelector('.lv-attention-asap')).toBeNull();
+  expect(host.querySelector('.lv-attention-reason')?.textContent).toBe('Behind');
+});
+
 it.each(['behind', 'on-pace'] as const)('reopens %s with its saved checklist and separates new check-ins', savedStatus => {
   const original = saveCheckIn(area(), { status: savedStatus, reason: 'Saved note', next: '' });
   const key = statusVitalsKey(false);

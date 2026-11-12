@@ -79,6 +79,8 @@
 .lv-attention-item:hover { color: var(--accent); }
 .lv-attention-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 5px; }
 .lv-attention-panel .lv-attention-empty { padding: 0; margin: 0; line-height: 1.6; }
+.lv-attention-asap { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 5px; margin-top: 8px; padding: 9px 10px; border-left: 2px solid var(--accent); border-radius: 4px; background: var(--accent-soft); color: var(--page-text); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.lv-attention-asap strong { font-size: 10px; letter-spacing: .06em; color: var(--accent); }
 @media (max-width: 1000px) { .lv-overview-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; } .lv-attention-panel { position: static; } }
 @media (prefers-reduced-motion: no-preference) {
   .lv-status-option { transition: background-color 150ms, border-color 150ms, color 150ms; }

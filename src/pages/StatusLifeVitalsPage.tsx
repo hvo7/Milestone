@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 're
 import NavBar from '../components/NavBar';
 import VitalChecklist from '../components/VitalChecklist';
 import { paceLabels, type Pace } from '../lib/lifeVitals';
-import { attentionReason, choosePriority, historyEntries, latestEntry, loadStatusVitals, newStatusVital, saveCheckIn, statusPace, statusVitalsKey,
+import { attentionReason, choosePriority, historyEntries, latestEntry, loadStatusVitals, newStatusVital, nextVitalAction, saveCheckIn, statusPace, statusVitalsKey,
   validStatusVitals, type StatusVital, type VitalEntry, type VitalStatus } from '../lib/statusVitals';
 import './lifeVitals.css';
 import './statusVitals.css';
@@ -228,13 +228,16 @@ export default function StatusLifeVitalsPage() {
       })}</div>
       {visible.length > 0 && <aside className="lv-attention-panel" aria-labelledby="lv-attention-title">
         <h2 id="lv-attention-title">Needs attention <span>{attention.length}</span></h2>
-        {attention.length === 0 ? <p className="lv-attention-empty">No areas need attention.</p> : <ul>{attention.slice().sort((a, b) => Number(!!b.priority) - Number(!!a.priority)).map(area => <li key={area.id}>
+        {attention.length === 0 ? <p className="lv-attention-empty">No areas need attention.</p> : <ul>{attention.slice().sort((a, b) => Number(!!b.priority) - Number(!!a.priority)).map(area => {
+          const asap = nextVitalAction(area);
+          return <li key={area.id}>
           <button type="button" className="lv-attention-item" aria-label={`Review ${area.name}`} aria-haspopup="dialog" onClick={event => { const r = event.currentTarget.getBoundingClientRect(); setSelected({ id: area.id, origin: { left: r.left, top: r.top, width: r.width, height: r.height } }); }}>
             <span className="lv-attention-name">{area.name}</span><span aria-hidden="true">&rarr;</span>
             <span className="lv-attention-reason">{attentionReason(area, now)}</span>
+            {asap && <span className="lv-attention-asap"><strong>ASAP</strong><span>{asap}</span></span>}
             {area.priority && <span className="lv-priority-badge">Current priority</span>}
           </button>
-        </li>)}</ul>}
+        </li>; })}</ul>}
       </aside>}
       </div>
       {visible.length === 0 && !initial.error && <div className="lv-empty-state"><button type="button" className="lv-primary" onClick={() => setEditing(newStatusVital())}>Create your first area</button></div>}

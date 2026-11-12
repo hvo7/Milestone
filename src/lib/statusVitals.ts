@@ -2,7 +2,7 @@ import { validAreas, type AreaIcon, type Pace } from './lifeVitals';
 import { lifeVitalsStorageKey } from './lifeVitalsStorage';
 import { simplePace, simpleVitalsKey, validSimpleVitals } from './simpleVitals';
 import { statusVitalsExamples } from '../testing/statusVitalsExamples';
-import { validPlans, type VitalPlans } from './vitalPlans';
+import { taskDone, validPlans, type VitalPlans } from './vitalPlans';
 
 export type VitalStatus = Exclude<Pace, 'unrated'>;
 export type VitalEntry = {
@@ -20,6 +20,15 @@ export const newStatusVital = (): StatusVital => ({ id: crypto.randomUUID(), nam
 export const historyEntries = (area: StatusVital) => [...area.entries].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
 export const latestEntry = (area: StatusVital) => historyEntries(area)[0];
 export const statusPace = (area: StatusVital): Pace => latestEntry(area)?.status ?? 'unrated';
+export function nextVitalAction(area: StatusVital): string | null {
+  if (area.archived) return null;
+  const status = statusPace(area);
+  const plan = status === 'behind' ? area.plans?.catchUp : status === 'on-pace' ? area.plans?.maintenance : undefined;
+  const task = plan?.tasks.find(t => !taskDone(t));
+  if (!task) return null;
+  const subtask = task.subtasks.find(s => !s.done);
+  return subtask ? `${task.title}: ${subtask.title}` : task.title;
+}
 export function attentionReason(area: StatusVital, now = Date.now()): string | null {
   if (area.archived) return null;
   const latest = latestEntry(area);
