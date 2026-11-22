@@ -3,8 +3,8 @@
  * pinned quest, a Vynues task. The page normalises all four into the props below,
  * which is what lets them sort, drag and reorder as a single list.
  */
-import { useId, useState, useRef } from 'react';
-import { AnimatePresence, motion, Reorder, useDragControls, useIsPresent, useReducedMotion, type PanInfo } from 'framer-motion';
+import { useState, useRef } from 'react';
+import { motion, Reorder, useDragControls, type PanInfo } from 'framer-motion';
 import SubtaskTree, { type SubNode, type SubtaskTreeHandlers } from '../SubtaskTree';
 import IconButton from '../IconButton';
 import PinButton from '../PinButton';
@@ -122,10 +122,9 @@ const SKIP_COLOR = '#fbbf24';
 
 /** Controls inside a task row that must keep working as controls — a pointer-down
  *  on one of these starts a click, not a drag. */
-const INTERACTIVE_SEL = 'button, input, textarea, select, a, label, summary, [contenteditable]';
+const INTERACTIVE_SEL = 'button, input, textarea, select, a, label, [contenteditable]';
 
 export interface TaskRowProps {
-  inline?: { expanded: boolean; toggle: () => void; onRemove: () => void };
   title: string;
   /** The whole task is finished (weekly goal hit 3/3, checkbox ticked…). */
   completed: boolean;
@@ -267,98 +266,11 @@ function TagMenu({ label, color, menu }: { label: string; color: string; menu: S
   );
 }
 
-function InlineContent({ row, dragControls }: { row: TaskRowProps; dragControls: ReturnType<typeof useDragControls> }) {
-  const { title, completed, todayDone, skipped, onSkip, onEdit, onUnpin, onToggle, drag, tag, systemMenu,
-    sourceLine, streak, subtasks, subHandlers, target, progress = 0, step = 1, unit, strip,
-    sessionGoal, onIncrement, readOnly, compact, inline } = row;
-  const { expanded, toggle, onRemove } = inline!;
-  const present = useIsPresent();
-  const panelId = useId();
-  const titleRef = useRef<HTMLButtonElement>(null);
-  const reduced = useReducedMotion();
-  const [adding, setAdding] = useState(false);
-  const checked = completed || !!(sessionGoal && todayDone);
-  function toggleDetail() {
-    setAdding(false);
-    toggle();
-  }
-  return <div className="inline-item" inert={!present} data-expanded={present && expanded} onKeyDown={event => {
-    if (event.key !== 'Escape' || !expanded) return;
-    if (event.target instanceof HTMLInputElement && event.target.type === 'text') return;
-    event.stopPropagation();
-    toggleDetail();
-    titleRef.current?.focus();
-  }}>
-    <div className="inline-row-head">
-      <label className="inline-check-target">
-        <input type="checkbox" className="rune-check" aria-label={title} checked={checked} disabled={readOnly}
-          onChange={() => sessionGoal && onIncrement ? onIncrement(checked ? -step : step) : onToggle()} />
-      </label>
-      <button ref={titleRef} className="inline-title" type="button" aria-expanded={expanded} aria-controls={panelId}
-        onClick={toggleDetail}><span>{title}</span><span className="inline-chevron" aria-hidden="true" /></button>
-      {target != null && <span className="inline-reading">{progress}/{target}{unit ? ` ${unit}` : ''}</span>}
-      {skipped && <span className="inline-reading">Skipped</span>}
-      {drag && <button type="button" className="inline-grip" aria-label={`Reorder ${title}. Press up or down arrow to move it.`}
-        title="Drag to reorder or use the arrow keys" onPointerDown={event => dragControls.start(event)}
-        onKeyDown={event => {
-          if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
-          event.preventDefault();
-          if (event.key === 'ArrowUp') drag.onMoveUp(); else drag.onMoveDown();
-        }}>⠿</button>}
-    </div>
-    <div id={panelId} inert={!expanded} aria-hidden={!expanded}>
-      <AnimatePresence initial={false}>
-        {expanded && <motion.div className="inline-reveal" key="detail"
-          initial={{ height: 0, opacity: 0, overflow: 'hidden' }}
-          animate={{ height: 'auto', opacity: 1, transitionEnd: { overflow: 'visible' } }}
-          exit={{ height: 0, opacity: 0, overflow: 'hidden' }} transition={{ duration: reduced ? 0 : .14, ease: 'easeOut' }}>
-          <div className="inline-detail">
-            <div className="inline-meta">
-              {tag && (systemMenu ? <TagMenu label={tag.label} color="inherit" menu={systemMenu} /> :
-                tag.label !== 'General' && <span>{tag.label}</span>)}
-              {sourceLine}
-              {!!streak && <span>{streak} day streak</span>}
-            </div>
-            <div className="inline-detail-layout">
-              <div className="inline-steps">
-                {!!subHandlers && (!!subtasks?.length || adding) &&
-                  <SubtaskTree nodes={subtasks ?? []} handlers={subHandlers} readOnly={readOnly} showRootAdd={adding}
-                    onDismissRootAdd={() => setAdding(false)} />}
-                {target != null && onIncrement && !strip && <CounterControl progress={progress} target={target} step={step}
-                  unit={unit} complete={completed} accentHex="var(--page-text)" onIncrement={onIncrement} readOnly={readOnly} />}
-                {target != null && strip?.kind === 'sessions' && <SessionStrip compact={compact} days={strip.days}
-                  logged={strip.logged} target={target} indent={0} onToggle={strip.onToggle} readOnly={readOnly} />}
-                {target != null && strip?.kind === 'checkpoints' && <CheckpointPips compact={compact} progress={progress}
-                  target={target} step={step} unit={unit} indent={0} onSet={strip.onSet} readOnly={readOnly} />}
-              </div>
-              {!readOnly && <div className="inline-actions">
-                {onEdit && <button type="button" onClick={onEdit}>Edit</button>}
-                <button type="button" onClick={onRemove} title="Remove from today’s list">Remove</button>
-                {(subHandlers?.onAdd || onSkip || onUnpin) && <details>
-                  <summary aria-label={`More actions for ${title}`}>···</summary>
-                  <div>
-                    {subHandlers?.onAdd && <button type="button" onClick={event => {
-                      event.currentTarget.closest('details')!.open = false; setAdding(true);
-                    }}>Add step</button>}
-                    {onSkip && <button type="button" onClick={onSkip}>{skipped ? 'Unskip' : 'Skip today'}</button>}
-                    {onUnpin && <button type="button" onClick={onUnpin}>Unpin from Today</button>}
-                  </div>
-                </details>}
-              </div>}
-            </div>
-          </div>
-        </motion.div>}
-      </AnimatePresence>
-    </div>
-  </div>;
-}
-
-export default function TaskRow(props: TaskRowProps) {
-  const {
+export default function TaskRow({
   title, completed, todayDone = false, skipped, onSkip, streak, accentHex, sourceLine, tag, systemMenu, onToggle, onDelete, onUnpin, onRename, onEdit, drag,
   subtasks, subHandlers,
   target, progress, step, unit, onIncrement, sessionGoal = false, strip, readOnly = false, compact = false,
-  } = props;
+}: TaskRowProps) {
   const [hovered, setHovered] = useState(false);
   const [addingSub, setAddingSub] = useState(false);
   // Always called (rules of hooks) but only wired up when `drag` is present —
@@ -475,7 +387,7 @@ export default function TaskRow(props: TaskRowProps) {
         ? `Done — fills to ${target}${unit ? ` ${unit}` : ''}`
         : subCount.total > 0 ? 'Completes every step too' : undefined;
 
-  const compactContent = !props.inline && compact && (
+  const compactContent = (
     <>
       <div className="task-compact-head" style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
         {/* Every row in the rail gets the tick, counters included — see the tick
@@ -638,7 +550,7 @@ export default function TaskRow(props: TaskRowProps) {
     </>
   );
 
-  const fullContent = !props.inline && !compact && (
+  const fullContent = (
     <>
       <div className="task-full-head" style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
         {drag && (
@@ -696,14 +608,14 @@ export default function TaskRow(props: TaskRowProps) {
             style={{ flexShrink: 0, marginTop: tag ? 18 : 0, ...(readOnly ? { cursor: 'default', opacity: 0.6 } : {}) }}
           />
         )}
-        <div className="task-row-copy" style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           {/* Above the task rather than in front of it. Inline, the questline was
               the first thing on every row and the same weight as the task, so a
               list of eight tasks read as eight questlines. On its own line it
               labels the row without competing with what the row is asking of you
               — and it stays put while the title is being renamed. */}
           {tag && (
-            <span className="task-row-category" style={{ display: 'block', fontSize: 12, lineHeight: 1.35, marginBottom: 1 }}>
+            <span style={{ display: 'block', fontSize: 12, lineHeight: 1.35, marginBottom: 1 }}>
               {systemMenu
                 ? <TagMenu label={tag.label} color={tag.color} menu={systemMenu} />
                 : <span style={{ fontWeight: 700, color: tag.color }}>{tag.label}</span>}
@@ -725,7 +637,7 @@ export default function TaskRow(props: TaskRowProps) {
               style={{ width: '100%', fontSize: 14, fontWeight: 500, padding: '4px 8px' }}
             />
           ) : (
-            <span className="task-row-title"
+            <span
               onDoubleClick={onEdit ? undefined : startEdit}
               title={onEdit ? 'Edit task' : onRename ? 'Double-click to rename' : undefined}
               style={{
@@ -845,13 +757,13 @@ export default function TaskRow(props: TaskRowProps) {
     </>
   );
 
-  const rowContent = props.inline ? <InlineContent row={props} dragControls={dragControls} /> : compact ? compactContent : fullContent;
+  const rowContent = compact ? compactContent : fullContent;
 
   const opacityTarget = completed ? 0.68 : skipped ? 0.55 : 1;
   const sharedMotionProps = {
     exit: { opacity: 0, height: 0, marginBottom: 0, paddingTop: 0, paddingBottom: 0 },
-    onMouseEnter: props.inline ? undefined : () => setHovered(true),
-    onMouseLeave: props.inline ? undefined : () => setHovered(false),
+    onMouseEnter: () => setHovered(true),
+    onMouseLeave: () => setHovered(false),
     className: 'task-row',
     style: rowStyle,
   };

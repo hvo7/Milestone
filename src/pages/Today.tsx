@@ -8,10 +8,9 @@
  * predicates live in lib/today.ts, where the reminder scheduler and the tests can
  * reach them without rendering a page.
  */
-import { atResetTime, useUIStore } from '../uiStore';
-import { useLayoutEffect, useRef, useState, Suspense, type ReactNode } from 'react';
-import { pushUndo } from '../lib/undo';
-import { AnimatePresence, Reorder } from 'framer-motion';
+import { atResetTime } from '../uiStore';
+import { useState, Suspense } from 'react';
+import { motion, AnimatePresence, Reorder } from 'framer-motion';
 import type { Routine, Schedule, Action, Questline, Quest, System } from '../types';
 import {
   useQuestStore, logicalDateKey, logicalDayStart, dateKey, periodExpired, skipActive,
@@ -37,15 +36,14 @@ const QuestCreateDrawer = lazyChunk(() => import('../components/QuestCreateDrawe
 // silently undoes the lazy() above.
 import type { EditTarget } from '../components/TaskEditDrawer';
 import type { SubNode, SubtaskTreeHandlers } from '../components/SubtaskTree';
-import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, hasCheckpoints, ANCHOR_LABEL, ANCHOR_CATEGORY } from '../lib/ui';
+import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, hasCheckpoints, ANCHOR_LABEL, ANCHOR_TAG, ANCHOR_ICON } from '../lib/ui';
+import { MenuSelect } from '../vynuesUi';
 import Heatmap from '../components/Heatmap';
 import FirstRunCard from '../components/FirstRunCard';
 import TaskRow, { type RowStrip, type SystemMenu } from '../components/today/TaskRow';
 import { useReorder } from '../components/today/useReorder';
 import { Caption, DueLabel, VynuesDueLabel } from '../components/today/labels';
-import { DayProgress, DaySwitcher } from '../components/today/chrome';
-import './todayAgenda.css';
-import './todayInline.css';
+import { ProgressSummary, Chip, DayFlipper } from '../components/today/chrome';
 
 /** A quest's visible actions mapped into Today check-off steps. `forceOpen`
  *  renders them unchecked (tomorrow preview of a quest that will have reset). */
@@ -129,24 +127,7 @@ interface TodoItem {
   systemMenu?: SystemMenu;
 }
 
-function AgendaDialog({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useLayoutEffect(() => {
-    const dialog = ref.current!;
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    dialog.showModal();
-    dialog.querySelector<HTMLInputElement>('input:not([type]), input[type="text"]')?.focus();
-    return () => { dialog.close(); if (opener?.isConnected) opener.focus(); };
-  }, []);
-  return <dialog ref={ref} className="inline-drawer" aria-label={label}
-    onCancel={event => { event.preventDefault(); onClose(); }}>{children}</dialog>;
-}
-
-export default function Today({ inlineAgenda = import.meta.env.MODE === 'testing' }: { inlineAgenda?: boolean }) {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [optionsOpen, setOptionsOpen] = useState(false);
-  const optionsButton = useRef<HTMLButtonElement>(null);
-  const hiddenRows = useUIStore(s => s.hiddenAgendaRows);
+export default function Today() {
   const questlines     = useQuestStore(s => s.questlines);
   const routines       = useQuestStore(s => s.routines);
   const systems        = useQuestStore(s => s.systems);
@@ -185,7 +166,7 @@ export default function Today({ inlineAgenda = import.meta.env.MODE === 'testing
   const deleteVynuesSubtask = useVynuesStore(s => s.deleteSubtask);
 
   const [filter, setFilter] = useState('all');
-  const [kind, setKind] = useState<'all' | 'system' | 'quest'>('all');
+  const [kind, setKind] = useState<RowKind | 'all'>('all');
   const [showSkipped, setShowSkipped] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerCategory, setDrawerCategory] = useState('');
@@ -472,24 +453,26 @@ export default function Today({ inlineAgenda = import.meta.env.MODE === 'testing
 
   // The Systems / Quests split is applied before everything else: the chips, the
   // counts and the list all describe the half you're looking at.
-  const removedIds = inlineAgenda && hiddenRows?.day === viewKey ? hiddenRows.ids : [];
-  const isListed = (it: TodoItem) => !removedIds.includes(it.id);
-  const listedItems = todoItems.filter(isListed);
-  const shownItems = listedItems.filter(it => showSkipped || !it.skipped);
-
+  const shownItems = todoItems.filter(it => showSkipped || !it.skipped);
+  const kindItems = kind === 'all' ? shownItems : shownItems.filter(it => it.category.kind === kind);
   const kindCounts = {
+    all: shownItems.length,
     system: shownItems.filter(it => it.category.kind === 'system').length,
     quest: shownItems.filter(it => it.category.kind === 'quest').length,
   };
 
-  const activeKind = kind !== 'all' && kindCounts[kind] > 0 ? kind : 'all';
-  const kindItems = activeKind === 'all' ? shownItems : shownItems.filter(it => it.category.kind === activeKind);
-
-  const categories = [...new Map(kindItems.map(it => [it.category.key, it.category]))
+  const chips = [...kindItems
+    .reduce((acc, it) => {
+      const c = acc.get(it.category.key) ?? { category: it.category, open: 0, total: 0 };
+      c.total += 1;
+      if (!settledOf(it) && !it.skipped) c.open += 1;
+      acc.set(it.category.key, c);
+      return acc;
+    }, new Map<string, { category: Category; open: number; total: number }>())
     .values()]
-    .sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label));
+    .sort((a, b) => a.category.rank - b.category.rank || a.category.label.localeCompare(b.category.label));
 
-  const activeExists = filter === 'all' || categories.some(c => c.key === filter);
+  const activeExists = filter === 'all' || chips.some(c => c.category.key === filter);
   const visible = filter === 'all' || !activeExists
     ? kindItems
     : kindItems.filter(it => it.category.key === filter);
@@ -514,7 +497,7 @@ export default function Today({ inlineAgenda = import.meta.env.MODE === 'testing
 
   // Drag-to-reorder only makes sense over the unfiltered (or trivially filtered) list —
   // reordering within a filtered subset would silently reshuffle items the user can't see.
-  const dragEnabled = !preview && activeKind === 'all' && (filter === 'all' || !activeExists);
+  const dragEnabled = filter === 'all' || !activeExists;
   const dragIds = todoOpen.map(x => x.id);
   const orderedIds = dragEnabled ? dragTodo.orderOf(dragIds) : dragIds;
   const byId = new Map(todoOpen.map(it => [it.id, it] as const));
@@ -532,84 +515,61 @@ export default function Today({ inlineAgenda = import.meta.env.MODE === 'testing
     reorderTodo(ids);
   };
 
-  function renderRow(it: TodoItem, placement: 'open' | 'done' | 'habit') {
-    const draggable = placement === 'open' && dragEnabled;
-    return (
-      <TaskRow
-        key={it.id}
-        inline={inlineAgenda ? {
-          expanded: expandedId === it.id,
-          toggle: () => setExpandedId(current => current === it.id ? null : it.id),
-          onRemove: () => {
-            const active = document.activeElement;
-            const row = active?.closest('.task-row');
-            const neighbor = row?.nextElementSibling ?? row?.previousElementSibling;
-            const focusTarget = neighbor?.querySelector<HTMLButtonElement>('.inline-title') ?? optionsButton.current;
-            setExpandedId(null);
-            useUIStore.setState(s => ({
-              hiddenAgendaRows: { day: viewKey, ids: [...new Set([...(s.hiddenAgendaRows?.day === viewKey ? s.hiddenAgendaRows.ids : []), it.id])] },
-            }));
-            pushUndo(`Removed “${it.title}” from Today`, () => restoreRow(it.id));
-            focusTarget?.focus();
-          },
-        } : undefined}
-        compact={placement === 'habit'}
-        title={it.title}
-        tag={placement === 'habit' ? undefined : { label: it.category.tagLabel ?? it.category.label, color: it.category.color }}
-        systemMenu={it.systemMenu}
-        completed={it.completed}
-        todayDone={it.todayDone}
-        skipped={it.skipped}
-        streak={it.streak}
-        accentHex={placement === 'done' ? 'var(--success)' : it.accentHex}
-        sourceLine={it.meta}
-        onToggle={it.onToggle}
-        onSkip={placement === 'done' ? undefined : it.onSkip}
-        onUnpin={it.onUnpin}
-        onDelete={placement === 'done' || preview ? undefined : it.onDelete}
-        onRename={it.onRename}
-        onEdit={it.editQuest ? () => setEditQuest(it.editQuest!) : it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
-        drag={draggable ? {
-          value: it.id,
-          onDragStart: dragTodo.onDragStart,
-          onDrag: dragTodo.onDrag,
-          onDragEnd: dragTodo.onDragEnd,
-          onMoveUp: () => moveTodo(it.id, -1),
-          onMoveDown: () => moveTodo(it.id, 1),
-        } : undefined}
-        target={it.target}
-        progress={it.progress}
-        step={it.step}
-        unit={it.unit}
-        onIncrement={it.onIncrement}
-        sessionGoal={it.sessionGoal}
-        strip={it.strip}
-        readOnly={preview}
-        subtasks={it.subtasks}
-        subHandlers={it.subHandlers}
-      />
-    );
-  }
+  const todoRows = orderedTodoOpen.map(it => (
+    <TaskRow
+      key={it.id}
+      title={it.title}
+      tag={{ label: it.category.tagLabel ?? it.category.label, color: it.category.color }}
+      systemMenu={it.systemMenu}
+      completed={false}
+      streak={it.streak}
+      accentHex={it.accentHex}
+      sourceLine={it.meta}
+      skipped={it.skipped}
+      onSkip={it.onSkip}
+      onToggle={it.onToggle}
 
-  const allHabits = anchorRoutines.map(routineItem);
-  const anchorItems = activeTasksFirst(allHabits.filter(isListed));
-  const removedItems = [...todoItems, ...allHabits].filter(it => !isListed(it));
-  const skippedCount = listedItems.filter(it => it.skipped).length;
-  const dayItems = [...listedItems, ...anchorItems].filter(it => !it.skipped);
-  const done = dayItems.filter(settledOf).length;
-  const openCount = todoOpen.filter(it => !it.skipped).length;
-  const hasFilters = kindCounts.system > 0 || kindCounts.quest > 0 || categories.length > 1 || skippedCount > 0 || showSkipped;
-  const isFresh = !questlines.length && !routines.length && !vynuesProjects.length;
-  const dayName = preview ? 'Tomorrow' : 'Today';
+      onUnpin={it.onUnpin}
+      onDelete={it.onDelete}
+      onRename={it.onRename}
+      onEdit={it.editQuest ? () => setEditQuest(it.editQuest!) : it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
+      drag={dragEnabled ? {
+        value: it.id,
+        onDragStart: dragTodo.onDragStart,
+        onDrag: dragTodo.onDrag,
+        onDragEnd: dragTodo.onDragEnd,
+        onMoveUp: () => moveTodo(it.id, -1),
+        onMoveDown: () => moveTodo(it.id, 1),
+      } : undefined}
+      target={it.target}
+      progress={it.progress}
+      step={it.step}
+      unit={it.unit}
+      onIncrement={it.onIncrement}
+      sessionGoal={it.sessionGoal}
+      strip={it.strip}
+      readOnly={preview}
+      subtasks={it.subtasks}
+      subHandlers={it.subHandlers}
+    />
+  ));
 
-  function restoreRow(id: string) {
-    useUIStore.setState(s => s.hiddenAgendaRows?.day === viewKey
-      ? { hiddenAgendaRows: { day: viewKey, ids: s.hiddenAgendaRows.ids.filter(item => item !== id) } }
-      : s);
-  }
+  // The anchor section, built through the same row builder as the list — so its
+  // tasks keep their streaks, skips, counters, steps and edit drawer rather than
+  // becoming a checkbox with a name beside it.
+  const allAnchorItems = anchorRoutines.map(routineItem);
+  // Batch 003: the spotlight keeps its settled habits visible at the bottom.
+  // The main list's skipped filter should not hide these dedicated rail rows.
+  const anchorItems = activeTasksFirst(allAnchorItems);
+  const skippedCount = todoItems.filter(it => it.skipped).length;
+  const anchorDone = anchorItems.filter(settledOf).length;
+  const done  = todoDone.length + anchorDone;
+  const total = visible.filter(it => !it.skipped).length + anchorItems.filter(it => !it.skipped).length;
+  const activeChip = chips.find(c => c.category.key === filter);
+  const progressLabel = activeChip ? activeChip.category.label : preview ? "Tomorrow's plan" : "Today's progress";
 
   function openDrawer() {
-    const key = categories.find(c => c.key === filter)?.key;
+    const key = activeChip?.category.key;
     const firstProject = vynuesProjects.find(p => p.status === 'active');
     // A system chip is not a questline: filing the new task under `key` would
     // hand a system id to the questline field. It presets the system instead.
@@ -624,140 +584,259 @@ export default function Today({ inlineAgenda = import.meta.env.MODE === 'testing
     setDrawerOpen(true);
   }
 
-  function openHabitDrawer() {
-    setDrawerCategory(ANCHOR_CATEGORY);
-    setDrawerSystem('');
-    setDrawerOpen(true);
-  }
-
-  function changeDay(next: boolean) {
-    if (next === preview) return;
-    setPreview(next);
-    setFilter('all');
-    setKind('all');
-    setShowSkipped(false);
-    setExpandedId(null);
-  }
-
   const dateHeading = viewStart.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
-  const rows = orderedTodoOpen.map(it => renderRow(it, 'open'));
-  const drawers = <>
-    {drawerOpen && <TaskCreateDrawer open initialCategory={drawerCategory} initialSystem={drawerSystem} initialDueDate={preview ? viewKey : ''} onClose={() => setDrawerOpen(false)} />}
-    {editTarget && <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />}
-    {editQuest && <QuestCreateDrawer open editing={editQuest} onClose={() => setEditQuest(null)} />}
-  </>;
 
   return (
-    <div className={`page-shell agenda-page${inlineAgenda ? ' agenda-inline' : ''}`}>
-      <NavBar hideCover />
-      <main className="agenda">
-        {!inlineAgenda && <header className="agenda-masthead">
-          <div>
-            <time dateTime={viewKey}>{dateHeading}</time>
-            <h1>{dayName}</h1>
-          </div>
-          <DaySwitcher preview={preview} onChange={changeDay} />
-        </header>}
+    <div className="page-shell" style={{ paddingBottom: 80 }}>
+      <NavBar cover={{ title: preview ? 'Tomorrow' : 'Today', subtitle: dateHeading }} />
 
-        <div className="agenda-layout">
-          <section className="agenda-list" aria-labelledby="agenda-tasks">
-            <div className="agenda-section-head">
-              {inlineAgenda ? <h1 id="agenda-tasks">{dayName}</h1> : <h2 id="agenda-tasks">Task list</h2>}
-              {!inlineAgenda && openCount > 0 && <span className="agenda-count">{openCount} open</span>}
-              <button type="button" className={inlineAgenda ? 'agenda-new inline-text' : 'btn-gold agenda-new'} onClick={openDrawer}>
-                <span aria-hidden="true">+</span> New task
-              </button>
-              {inlineAgenda && <button ref={optionsButton} type="button" className="inline-options" aria-label="List options"
-                aria-controls="agenda-options" aria-expanded={optionsOpen} onClick={() => setOptionsOpen(v => !v)}>···</button>}
-            </div>
-            <div id="agenda-options" hidden={inlineAgenda && !optionsOpen}
-              onKeyDown={e => { if (inlineAgenda && e.key === 'Escape') { setOptionsOpen(false); optionsButton.current?.focus(); } }}>
-            {inlineAgenda && <div className="inline-day"><time dateTime={viewKey}>{dateHeading}</time><DaySwitcher preview={preview} onChange={changeDay} /></div>}
-            {hasFilters && (
-              <div className="agenda-filters" role="group" aria-label="Task filters">
-                {(['all', 'system', 'quest'] as const).map(k =>
-                  (k === 'all' || kindCounts[k] > 0) && (
-                    <button type="button" className="agenda-filter" key={k}
-                      aria-pressed={activeKind === k}
-                      onClick={() => { setKind(k); setFilter('all'); }}>
-                      {{ all: 'All', system: 'Systems', quest: 'Quests' }[k]}
-                    </button>
-                  )
-                )}
-                {categories.length > 1 && (
-                  <select className="agenda-category" aria-label="Filter by category"
-                    value={activeExists ? filter : 'all'} onChange={event => setFilter(event.target.value)}>
-                    <option value="all">All categories</option>
-                    {categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-                  </select>
-                )}
-                {(skippedCount > 0 || showSkipped) && (
-                  <button type="button" className="agenda-filter agenda-skipped" aria-pressed={showSkipped}
-                    onClick={() => setShowSkipped(!showSkipped)}>
-                    {showSkipped ? 'Hide skipped' : 'Show skipped'} · {skippedCount}
-                  </button>
-                )}
+      <div className="today-shell">
+
+        {/* ── The anchor group, as a place rather than a category ──────────────
+            Off to the side and always in view: the few things you want in front
+            of you every day, whatever else the day turned out to hold. */}
+        {anchorRoutines.length > 0 && (
+          <aside className="today-rail">
+            <div className="parchment" style={{ borderRadius: 14, padding: '14px 16px' }}>
+              <h2 style={{ margin: '0 0 10px', fontSize: 12.5, fontWeight: 700, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 7 }}>
+                <span>{ANCHOR_ICON}</span>
+                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{ANCHOR_LABEL}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 600, color: 'var(--page-text-dim)', fontVariantNumeric: 'tabular-nums' }}>
+                  {anchorDone}/{allAnchorItems.filter(it => !it.skipped).length}
+                </span>
+              </h2>
+              {/* The same row as the list below — no tag, because the box it sits
+                  in is the label. Everything else it can do, it still does. */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {anchorItems.map(it => (
+                  <TaskRow
+                    key={it.id}
+                    compact
+                    title={it.title}
+                    completed={it.completed}
+                    todayDone={it.todayDone}
+                    streak={it.streak}
+                    accentHex={it.accentHex}
+                    sourceLine={it.meta}
+                    skipped={it.skipped}
+                    onSkip={it.onSkip}
+                    onToggle={it.onToggle}
+
+                    onUnpin={it.onUnpin}
+                    onDelete={it.onDelete}
+                    onRename={it.onRename}
+                    onEdit={it.editQuest ? () => setEditQuest(it.editQuest!) : it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
+                    target={it.target}
+                    progress={it.progress}
+                    step={it.step}
+                    unit={it.unit}
+                    onIncrement={it.onIncrement}
+                    sessionGoal={it.sessionGoal}
+                    strip={it.strip}
+                    readOnly={preview}
+                    subtasks={it.subtasks}
+                    subHandlers={it.subHandlers}
+                  />
+                ))}
               </div>
-            )}
-            {inlineAgenda && <DayProgress done={done} total={dayItems.length} />}
-            {removedItems.length > 0 && <div className="inline-removed"><h2>Removed from today</h2>
-              {removedItems.map(it => <button type="button" className="inline-text" key={it.id} onClick={() => restoreRow(it.id)}>Restore {it.title}</button>)}
-            </div>}
             </div>
-
-            {dragEnabled ? (
-              <Reorder.Group as="div" axis="y" className="agenda-rows" values={orderedIds} onReorder={dragTodo.onReorder}>
-                <AnimatePresence initial={false}>{rows}</AnimatePresence>
-              </Reorder.Group>
-            ) : <div className="agenda-rows">{rows}</div>}
-
-            {todoOpen.length === 0 && (
-              isFresh && !preview ? <FirstRunCard /> : (
-                <p className="agenda-empty">
-                  {todoDone.length ? 'All tasks in this list are complete.' :
-                    skippedCount > 0 && !showSkipped ? 'No open tasks. Skipped tasks are hidden.' :
-                    `No tasks scheduled for ${dayName.toLowerCase()}.`}
-                </p>
-              )
-            )}
-            {todoDone.length > 0 && (
-              <details className="agenda-completed">
-                <summary>Completed <span className="agenda-count">{todoDone.length}</span></summary>
-                <div className="agenda-rows">{todoDone.map(it => renderRow(it, 'done'))}</div>
-              </details>
-            )}
-          </section>
-
-          <aside className="agenda-side" aria-label="Habits and progress">
-            <section className="agenda-habits" aria-labelledby="agenda-habits-title">
-              <header className="agenda-habits-head">
-                <h2 id="agenda-habits-title">Daily habits</h2>
-                {!inlineAgenda && anchorItems.length > 0 && <p>{ANCHOR_LABEL}</p>}
-              </header>
-              <div className="agenda-habit-body">
-                {anchorItems.length > 0
-                  ? anchorItems.map(it => renderRow(it, 'habit'))
-                  : <p className="agenda-habits-empty">No habits scheduled.</p>}
-                {!preview && <button type="button" className="agenda-text-action" onClick={openHabitDrawer}>
-                  + Add habit
-                </button>}
-              </div>
-            </section>
-            {!inlineAgenda && <DayProgress done={done} total={dayItems.length} />}
           </aside>
+        )}
+
+        <div className="today-main">
+        <AnimatePresence mode="wait" initial={false} custom={preview ? 1 : -1}>
+        <motion.div
+          key={preview ? 'tomorrow' : 'today'}
+          custom={preview ? 1 : -1}
+          variants={{
+            enter:  (dir: number) => ({ x: dir * 90, opacity: 0 }),
+            center: { x: 0, opacity: 1 },
+            exit:   (dir: number) => ({ x: dir * -90, opacity: 0 }),
+          }}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+        >
+
+
+
+        {preview && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16,
+            padding: '10px 14px', borderRadius: 12,
+            border: '1px dashed var(--accent-border)', background: 'var(--accent-soft)',
+          }}>
+            <span style={{ fontSize: 16 }}>🌅</span>
+            <p style={{ margin: 0, fontSize: 12.5, color: 'var(--page-text)' }}>
+              <strong>Tomorrow, previewed</strong>
+            </p>
+          </div>
+        )}
+
+        {/* Shows only on a genuinely empty app, and takes the place of the
+            progress bar — "0/0 done" is not a useful first impression. */}
+        <FirstRunCard onCreate={openDrawer} />
+        {(questlines.length > 0 || routines.length > 0) && (
+          <ProgressSummary label={progressLabel} done={done} total={total} />
+        )}
+
+        {/* ── One list, everything in it ──────────────────────────────────── */}
+        <section style={{ marginBottom: 36 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--page-text)' }}>{preview ? 'To Do — tomorrow' : 'To Do'}</h2>
+            <button
+              onClick={openDrawer}
+              className="btn-gold"
+              style={{ marginLeft: 'auto', padding: '7px 15px', fontSize: 12.5 }}
+            >
+              ＋ New task
+            </button>
+          </div>
+
+          {/* One row of filters: everything, or one of the two halves — a system
+              is a process you run, a quest is a goal or a one-off to finish —
+              and a dropdown for a single questline or system. The per-category
+              chips used to be spelled out here, which by seven questlines was
+              three lines of chrome above a list of five tasks. */}
+          <div className="chip-row" style={{ alignItems: 'center' }}>
+            <Chip
+              label="All"
+              open={shownItems.filter(it => !settledOf(it) && !it.skipped).length}
+              total={shownItems.length}
+              active={kind === 'all' && (filter === 'all' || !activeExists)}
+              onClick={() => { setKind('all'); setFilter('all'); }}
+            />
+            {([['system', 'Systems'], ['quest', 'Quests']] as const).map(([k, label]) => (
+              kindCounts[k] > 0 && (
+                <button
+                  key={k}
+                  type="button"
+                  className="chip"
+                  data-active={kind === k}
+                  onClick={() => { setKind(kind === k ? 'all' : k); setFilter('all'); }}
+                >
+                  <span>{label}</span>
+                  <span className="chip-count">{kindCounts[k]}</span>
+                </button>
+              )
+            ))}
+            <button type="button" className="chip" data-active={showSkipped} aria-pressed={showSkipped}
+              onClick={() => setShowSkipped(!showSkipped)}>
+              {showSkipped ? 'Hide skipped' : 'Show skipped'}{skippedCount > 0 ? ` · ${skippedCount}` : ''}
+            </button>
+            {chips.length > 1 && (
+              <span style={{ minWidth: 170, marginLeft: 'auto' }}>
+                <MenuSelect
+                  label="Filter"
+                  value={activeExists ? filter : 'all'}
+                  onChange={(v: string) => setFilter(v)}
+                  options={[
+                    { key: 'all', label: kind === 'all' ? 'Everything' : `All ${kind === 'system' ? 'systems' : 'quests'}` },
+                    ...chips.map(c => ({ key: c.category.key, label: `${c.category.label} · ${c.open}` })),
+                  ]}
+                />
+              </span>
+            )}
+          </div>
+
+          <div style={{ height: 1, background: 'var(--card-border)', marginBottom: 14 }} />
+
+          {dragEnabled ? (
+            <Reorder.Group
+              as="div"
+              axis="y"
+              values={orderedIds}
+              onReorder={dragTodo.onReorder}
+              // Rows are spaced with `gap` rather than their own margin so that
+              // the boxes framer measures sit flush against each other.
+              style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 8 }}
+            >
+              <AnimatePresence initial={false}>
+                {todoRows}
+              </AnimatePresence>
+            </Reorder.Group>
+          ) : (
+            <AnimatePresence initial={false}>
+              {todoRows}
+            </AnimatePresence>
+          )}
+
+          {todoDone.length > 0 && (
+            <>
+              <p style={{ margin: '18px 0 8px', fontSize: 11, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase', color: 'var(--page-text-dim)' }}>
+                Done for today · {todoDone.length}
+              </p>
+              <AnimatePresence initial={false}>
+                {todoDone.map(it => (
+                  <TaskRow
+                    key={it.id}
+                    title={it.title}
+                    tag={{ label: it.category.tagLabel ?? it.category.label, color: it.category.color }}
+                    systemMenu={it.systemMenu}
+                    completed={it.completed}
+                    todayDone={it.todayDone}
+                    streak={it.streak}
+                    accentHex="var(--success)"
+                    sourceLine={it.meta}
+                    onToggle={it.onToggle}
+
+                    onUnpin={it.onUnpin}
+                    onRename={it.onRename}
+                    onEdit={it.editQuest ? () => setEditQuest(it.editQuest!) : it.editTarget ? () => setEditTarget(it.editTarget!) : undefined}
+                    target={it.target}
+                    progress={it.progress}
+                    step={it.step}
+                    unit={it.unit}
+                    onIncrement={it.onIncrement}
+                    sessionGoal={it.sessionGoal}
+                    strip={it.strip}
+                    readOnly={preview}
+                  />
+                ))}
+              </AnimatePresence>
+            </>
+          )}
+
+          {/* Suppressed on a first run, where FirstRunCard above already explains
+              the empty screen — two "nothing here yet" messages read as a fault. */}
+          {todoItems.length === 0 && (questlines.length > 0 || routines.length > 0) && (
+            <p style={{ fontSize: 13, color: 'var(--page-text-dim)', padding: '14px 0', lineHeight: 1.7 }}>
+              {preview
+                ? <>Nothing on tomorrow’s plate yet. Hit <strong>＋ New task</strong> to plan ahead.</>
+                : <>A clear day ahead. Hit <strong>＋ New task</strong> to add one — General by default, or file it under a questline, Vynues project, or your {ANCHOR_TAG} habits.</>}
+            </p>
+          )}
+
+          {shownItems.length > 0 && todoOpen.length === 0 && (
+            <motion.p
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              style={{ fontSize: 13, color: 'var(--success)', textAlign: 'center', padding: '18px 0 4px', margin: 0, fontWeight: 600 }}
+            >
+              {preview ? 'Tomorrow is already squared away. 🌅' : 'Everything here is done. 🔥'}
+            </motion.p>
+          )}
+        </section>
+
+        </motion.div>
+        </AnimatePresence>
+
+        <Heatmap />
         </div>
-        <details className="agenda-history">
-          <summary>Activity history</summary>
-          <Heatmap />
-        </details>
-      </main>
+      </div>
+
+      {/* ── Day flipper ──────────────────────────────────────────────────────── */}
+      <AnimatePresence initial={false}>
+        <DayFlipper key={preview ? 'flip-back' : 'flip-fwd'} forward={!preview} onClick={() => setPreview(!preview)} />
+      </AnimatePresence>
 
       {/* No fallback: a drawer slides in over the page, so an empty frame for the
           moment it takes to arrive is exactly the right thing to show. */}
       <Suspense fallback={null}>
-        {inlineAgenda && (drawerOpen || editTarget || editQuest) ?
-          <AgendaDialog label={drawerOpen ? (drawerCategory === ANCHOR_CATEGORY ? 'New habit' : 'New task') : 'Edit task'}
-            onClose={() => { setDrawerOpen(false); setEditTarget(null); setEditQuest(null); }}>{drawers}</AgendaDialog> : drawers}
+        {drawerOpen && <TaskCreateDrawer open={drawerOpen} initialCategory={drawerCategory} initialSystem={drawerSystem} onClose={() => setDrawerOpen(false)} />}
+        {editTarget && <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />}
+        {editQuest && <QuestCreateDrawer open editing={editQuest} onClose={() => setEditQuest(null)} />}
       </Suspense>
     </div>
   );

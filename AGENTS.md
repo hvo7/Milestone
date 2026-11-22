@@ -2,6 +2,8 @@
 
 ## Interface preferences
 
+- Never request control of the user's desktop. Use workspace checks for verification when the conversation preview is unavailable.
+
 - Keep the interface concise. Do not add generic gray subtitles, motivational descriptions, or implementation explanations throughout the platform. Retain necessary labels, validation, and user-entered content.
 - Production Life Vitals starts empty and lets the user define every area and factor. Never copy testing examples into production.
 - Life Vitals should favor a manually chosen status, optional reason and next step, and a personal definition of On pace. Keep setup small; do not reintroduce numeric targets, tolerances, or tracking modes.

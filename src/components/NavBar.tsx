@@ -77,7 +77,7 @@ export default function NavBar({ cover, hideCover = false }: { cover?: { title: 
   return (
     <>
       {import.meta.env.MODE === 'testing' && <div data-testing-banner style={{ background: '#edc16f', color: '#372b16', padding: '9px 18px', display: 'flex', gap: 14, justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 12, borderRadius: 10, marginBottom: 12 }}>
-        <strong>{pathname === '/' ? 'TESTING · Today redesign' : 'TESTING · Milestone'}</strong>
+        <strong>TESTING · Batch 015 · Life Vitals check-ins</strong>
         <span>Separate data · Sync off · Pending review</span>
       </div>}
       <nav className="app-nav" aria-label="Main navigation">
