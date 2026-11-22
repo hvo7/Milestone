@@ -29,6 +29,8 @@ export interface ReminderSettings {
 export const DEFAULT_REMINDERS: ReminderSettings = { enabled: false, time: '19:00', keepInTray: false };
 
 interface UIStore {
+  /** Items dismissed from the testing agenda for one logical day. */
+  hiddenAgendaRows?: { day: string; ids: string[] };
   resetTime: string;
   setResetTime: (time: string) => void;
   editMode: boolean;

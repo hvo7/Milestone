@@ -8,8 +8,9 @@
  * predicates live in lib/today.ts, where the reminder scheduler and the tests can
  * reach them without rendering a page.
  */
-import { atResetTime } from '../uiStore';
-import { useState, Suspense } from 'react';
+import { atResetTime, useUIStore } from '../uiStore';
+import { useLayoutEffect, useRef, useState, Suspense, type ReactNode } from 'react';
+import { pushUndo } from '../lib/undo';
 import { AnimatePresence, Reorder } from 'framer-motion';
 import type { Routine, Schedule, Action, Questline, Quest, System } from '../types';
 import {
@@ -44,6 +45,7 @@ import { useReorder } from '../components/today/useReorder';
 import { Caption, DueLabel, VynuesDueLabel } from '../components/today/labels';
 import { DayProgress, DaySwitcher } from '../components/today/chrome';
 import './todayAgenda.css';
+import './todayInline.css';
 
 /** A quest's visible actions mapped into Today check-off steps. `forceOpen`
  *  renders them unchecked (tomorrow preview of a quest that will have reset). */
@@ -127,7 +129,24 @@ interface TodoItem {
   systemMenu?: SystemMenu;
 }
 
-export default function Today() {
+function AgendaDialog({ label, onClose, children }: { label: string; onClose: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const dialog = ref.current!;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialog.showModal();
+    dialog.querySelector<HTMLInputElement>('input:not([type]), input[type="text"]')?.focus();
+    return () => { dialog.close(); if (opener?.isConnected) opener.focus(); };
+  }, []);
+  return <dialog ref={ref} className="inline-drawer" aria-label={label}
+    onCancel={event => { event.preventDefault(); onClose(); }}>{children}</dialog>;
+}
+
+export default function Today({ inlineAgenda = import.meta.env.MODE === 'testing' }: { inlineAgenda?: boolean }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const optionsButton = useRef<HTMLButtonElement>(null);
+  const hiddenRows = useUIStore(s => s.hiddenAgendaRows);
   const questlines     = useQuestStore(s => s.questlines);
   const routines       = useQuestStore(s => s.routines);
   const systems        = useQuestStore(s => s.systems);
@@ -453,7 +472,10 @@ export default function Today() {
 
   // The Systems / Quests split is applied before everything else: the chips, the
   // counts and the list all describe the half you're looking at.
-  const shownItems = todoItems.filter(it => showSkipped || !it.skipped);
+  const removedIds = inlineAgenda && hiddenRows?.day === viewKey ? hiddenRows.ids : [];
+  const isListed = (it: TodoItem) => !removedIds.includes(it.id);
+  const listedItems = todoItems.filter(isListed);
+  const shownItems = listedItems.filter(it => showSkipped || !it.skipped);
 
   const kindCounts = {
     system: shownItems.filter(it => it.category.kind === 'system').length,
@@ -515,6 +537,22 @@ export default function Today() {
     return (
       <TaskRow
         key={it.id}
+        inline={inlineAgenda ? {
+          expanded: expandedId === it.id,
+          toggle: () => setExpandedId(current => current === it.id ? null : it.id),
+          onRemove: () => {
+            const active = document.activeElement;
+            const row = active?.closest('.task-row');
+            const neighbor = row?.nextElementSibling ?? row?.previousElementSibling;
+            const focusTarget = neighbor?.querySelector<HTMLButtonElement>('.inline-title') ?? optionsButton.current;
+            setExpandedId(null);
+            useUIStore.setState(s => ({
+              hiddenAgendaRows: { day: viewKey, ids: [...new Set([...(s.hiddenAgendaRows?.day === viewKey ? s.hiddenAgendaRows.ids : []), it.id])] },
+            }));
+            pushUndo(`Removed “${it.title}” from Today`, () => restoreRow(it.id));
+            focusTarget?.focus();
+          },
+        } : undefined}
         compact={placement === 'habit'}
         title={it.title}
         tag={placement === 'habit' ? undefined : { label: it.category.tagLabel ?? it.category.label, color: it.category.color }}
@@ -553,14 +591,22 @@ export default function Today() {
     );
   }
 
-  const anchorItems = activeTasksFirst(anchorRoutines.map(routineItem));
-  const skippedCount = todoItems.filter(it => it.skipped).length;
-  const dayItems = [...todoItems, ...anchorItems].filter(it => !it.skipped);
+  const allHabits = anchorRoutines.map(routineItem);
+  const anchorItems = activeTasksFirst(allHabits.filter(isListed));
+  const removedItems = [...todoItems, ...allHabits].filter(it => !isListed(it));
+  const skippedCount = listedItems.filter(it => it.skipped).length;
+  const dayItems = [...listedItems, ...anchorItems].filter(it => !it.skipped);
   const done = dayItems.filter(settledOf).length;
   const openCount = todoOpen.filter(it => !it.skipped).length;
   const hasFilters = kindCounts.system > 0 || kindCounts.quest > 0 || categories.length > 1 || skippedCount > 0 || showSkipped;
   const isFresh = !questlines.length && !routines.length && !vynuesProjects.length;
   const dayName = preview ? 'Tomorrow' : 'Today';
+
+  function restoreRow(id: string) {
+    useUIStore.setState(s => s.hiddenAgendaRows?.day === viewKey
+      ? { hiddenAgendaRows: { day: viewKey, ids: s.hiddenAgendaRows.ids.filter(item => item !== id) } }
+      : s);
+  }
 
   function openDrawer() {
     const key = categories.find(c => c.key === filter)?.key;
@@ -590,32 +636,43 @@ export default function Today() {
     setFilter('all');
     setKind('all');
     setShowSkipped(false);
+    setExpandedId(null);
   }
 
   const dateHeading = viewStart.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
   const rows = orderedTodoOpen.map(it => renderRow(it, 'open'));
+  const drawers = <>
+    {drawerOpen && <TaskCreateDrawer open initialCategory={drawerCategory} initialSystem={drawerSystem} initialDueDate={preview ? viewKey : ''} onClose={() => setDrawerOpen(false)} />}
+    {editTarget && <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />}
+    {editQuest && <QuestCreateDrawer open editing={editQuest} onClose={() => setEditQuest(null)} />}
+  </>;
 
   return (
-    <div className="page-shell agenda-page">
+    <div className={`page-shell agenda-page${inlineAgenda ? ' agenda-inline' : ''}`}>
       <NavBar hideCover />
       <main className="agenda">
-        <header className="agenda-masthead">
+        {!inlineAgenda && <header className="agenda-masthead">
           <div>
             <time dateTime={viewKey}>{dateHeading}</time>
             <h1>{dayName}</h1>
           </div>
           <DaySwitcher preview={preview} onChange={changeDay} />
-        </header>
+        </header>}
 
         <div className="agenda-layout">
           <section className="agenda-list" aria-labelledby="agenda-tasks">
             <div className="agenda-section-head">
-              <h2 id="agenda-tasks">Task list</h2>
-              {openCount > 0 && <span className="agenda-count">{openCount} open</span>}
-              <button type="button" className="btn-gold agenda-new" onClick={openDrawer}>
+              {inlineAgenda ? <h1 id="agenda-tasks">{dayName}</h1> : <h2 id="agenda-tasks">Task list</h2>}
+              {!inlineAgenda && openCount > 0 && <span className="agenda-count">{openCount} open</span>}
+              <button type="button" className={inlineAgenda ? 'agenda-new inline-text' : 'btn-gold agenda-new'} onClick={openDrawer}>
                 <span aria-hidden="true">+</span> New task
               </button>
+              {inlineAgenda && <button ref={optionsButton} type="button" className="inline-options" aria-label="List options"
+                aria-controls="agenda-options" aria-expanded={optionsOpen} onClick={() => setOptionsOpen(v => !v)}>···</button>}
             </div>
+            <div id="agenda-options" hidden={inlineAgenda && !optionsOpen}
+              onKeyDown={e => { if (inlineAgenda && e.key === 'Escape') { setOptionsOpen(false); optionsButton.current?.focus(); } }}>
+            {inlineAgenda && <div className="inline-day"><time dateTime={viewKey}>{dateHeading}</time><DaySwitcher preview={preview} onChange={changeDay} /></div>}
             {hasFilters && (
               <div className="agenda-filters" role="group" aria-label="Task filters">
                 {(['all', 'system', 'quest'] as const).map(k =>
@@ -642,6 +699,11 @@ export default function Today() {
                 )}
               </div>
             )}
+            {inlineAgenda && <DayProgress done={done} total={dayItems.length} />}
+            {removedItems.length > 0 && <div className="inline-removed"><h2>Removed from today</h2>
+              {removedItems.map(it => <button type="button" className="inline-text" key={it.id} onClick={() => restoreRow(it.id)}>Restore {it.title}</button>)}
+            </div>}
+            </div>
 
             {dragEnabled ? (
               <Reorder.Group as="div" axis="y" className="agenda-rows" values={orderedIds} onReorder={dragTodo.onReorder}>
@@ -670,7 +732,7 @@ export default function Today() {
             <section className="agenda-habits" aria-labelledby="agenda-habits-title">
               <header className="agenda-habits-head">
                 <h2 id="agenda-habits-title">Daily habits</h2>
-                {anchorItems.length > 0 && <p>{ANCHOR_LABEL}</p>}
+                {!inlineAgenda && anchorItems.length > 0 && <p>{ANCHOR_LABEL}</p>}
               </header>
               <div className="agenda-habit-body">
                 {anchorItems.length > 0
@@ -681,7 +743,7 @@ export default function Today() {
                 </button>}
               </div>
             </section>
-            <DayProgress done={done} total={dayItems.length} />
+            {!inlineAgenda && <DayProgress done={done} total={dayItems.length} />}
           </aside>
         </div>
         <details className="agenda-history">
@@ -693,9 +755,9 @@ export default function Today() {
       {/* No fallback: a drawer slides in over the page, so an empty frame for the
           moment it takes to arrive is exactly the right thing to show. */}
       <Suspense fallback={null}>
-        {drawerOpen && <TaskCreateDrawer open={drawerOpen} initialCategory={drawerCategory} initialSystem={drawerSystem} initialDueDate={preview ? viewKey : ''} onClose={() => setDrawerOpen(false)} />}
-        {editTarget && <TaskEditDrawer target={editTarget} onClose={() => setEditTarget(null)} />}
-        {editQuest && <QuestCreateDrawer open editing={editQuest} onClose={() => setEditQuest(null)} />}
+        {inlineAgenda && (drawerOpen || editTarget || editQuest) ?
+          <AgendaDialog label={drawerOpen ? (drawerCategory === ANCHOR_CATEGORY ? 'New habit' : 'New task') : 'Edit task'}
+            onClose={() => { setDrawerOpen(false); setEditTarget(null); setEditQuest(null); }}>{drawers}</AgendaDialog> : drawers}
       </Suspense>
     </div>
   );

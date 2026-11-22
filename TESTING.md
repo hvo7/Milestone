@@ -333,3 +333,35 @@ Existing stores and date keys supply all state. The batch adds no schema, migrat
 - For review, use the same loopback address with `npm run testing -- --browser`, or open the repository's `Open Testing.cmd` for the isolated desktop app. Check a populated day with long titles, counters and daily habits in both themes, then narrow the window and check the list-first order. Verify the first visible task still matches the saved order after reloading.
 
 The testing branch contains only source versioning. The three remote deployment workflows use manual dispatch. Local Git metadata is read-only and stays at `c218de8`. The unrelated Life Vitals testing batch stays on its own branch. For rollback, revert this batch on its testing branch and rebuild with `npm run testing -- --build-only`. Saved data needs no conversion.
+
+## 2026-11-22 — Today reference layout in the testing app
+
+The user approved the warm-white Today reference for testing and selected the thin vertical line beside expanded subtasks. The screen uses compact navigation, a single list with fine horizontal dividers, circular completion controls, a text New task action and a narrower Daily habits column. At widths of 720 CSS pixels and below, the current layout places habits after the task list. The mobile comparison also shows a Tasks / Habits switch for design review. Both comparison images use illustrative tasks.
+
+### Behavior and data
+
+- The testing landing route uses the real task, project, quest and habit stores. One title at a time opens in place. Its category, schedule, applicable counter or session controls, steps and Edit and Remove actions appear underneath. Pressing Escape in the expanded row returns focus to its title. Reordering still uses the grip and arrow keys. The reveal uses 140 ms and skips the transition when reduced motion is requested.
+- Edit opens the existing editor inside a native modal dialog on the testing route. Save, Cancel and Escape return to the list. New task and Add habit use the same dialog shell and existing creation forms. The Tomorrow preview offers planning and keeps row actions read-only.
+- Remove dismisses an item from the selected logical day. Undo restores the latest removal, and List options offers a Restore button for each dismissed item, including after reload. Dismissal, completion and unpinning are distinct actions. List options also provides Today/Tomorrow, filters and total progress. Completed items and activity history retain their disclosures.
+- Changes live in `src/pages/Today.tsx`, `src/pages/todayInline.css`, `src/components/today/TaskRow.tsx` and `src/uiStore.ts`. The new layout defaults on only for Vite testing mode. The optional `hiddenAgendaRows` preference contains one logical date and a list of IDs in the testing UI store. Existing profiles need no conversion. No profile, seed, credentials, screenshots or build output belong in the commit.
+- Use `npm run testing` or `Open Testing.cmd` for the desktop testing profile, which seeds from a read-only backup. Use `npm run testing -- --browser` at `http://127.0.0.1:4174/` for the separate conversation-review profile. Revert this batch on the testing branch and rebuild to roll back. Older code ignores the optional preference.
+
+### Controls and verification
+
+| Area | Automated checks and remaining observations |
+| --- | --- |
+| Tasks, habits and steps | Open a task, switch to a habit, collapse with Escape, verify focus and reopen. Toggle a subtask, add a step, add/rename/delete a nested step, edit/save/cancel, complete and reopen an item. Verify creation from New task and Add habit and rejection of an empty task. |
+| Other task sources | Open a pinned quest, open/cancel its editor, unpin it, edit a standalone quest action, dismiss it and check its source record. Toggle a project subtask and open/close the project task editor. |
+| Recovery and persistence | Remove, Undo, remove again, unmount and rehydrate the persisted UI store. Verify Tomorrow still has the task. Restore the item through List options and verify its original order. |
+| Organization and progress | Move a task via the grip’s arrow key, select a quantity checkpoint, assign a system, filter by system, skip/unskip, inspect whole-day progress, and close List options with Escape. Increment/decrement a continuous counter, toggle today’s session pip and open/close activity history. |
+| Navigation and shared controls | In the full app, visit each visible navigation destination and return using Milestone. Toggle themes, activate Reload tasks, open/close Manage spaces and Settings, and open/close reminders and data settings. The reload event is asserted with a simulated animation API. |
+| Visual, motion and devices | The conversation panel timed out on the loopback preview even though the testing server reported listening. An independent local HTTP request returned EACCES. Both desktop launch modes built the app but yielded no fresh desktop capture. Thus live appearance in either theme, touch and pointer drag, actual focus trapping/tab traversal and perceived motion remain unverified. The comparison images are design mockups. |
+| Remaining interaction coverage | A live pass should include the category selector, all options inside the create/edit drawers, onboarding examples and archive/space-management changes. Existing domain tests and jsdom results do not establish physical-device behavior. |
+
+Historical validation for the preceding implementation and the standalone design study appears in earlier sections. This batch remains testing-only and awaits visual review. The three remote workflows for Pages, relay and desktop release accept manual dispatch only. Local Git metadata remains at `c218de8`. Source publication uses the testing branch with an expected-head check.
+
+Validation in the shared checkout:
+
+- `npm run testing -- --browser` built the TypeScript/Vite testing bundle and reported a listening server on 4174. `npm run testing` and `npm run testing -- --attached` completed the build and ran the isolated desktop launcher. `npm run testing -- --build-only` rebuilt the final bundle.
+- `npm test -- --maxWorkers=6 --reporter=dot` passed 541 cases across 52 files before the final nested-step/session journey was added. The final targeted run, `npm test -- src/pages/Today.test.tsx src/pages/Today.navigation.test.tsx --maxWorkers=2 --reporter=dot`, passed all 12 cases. jsdom reported its unimplemented scrollTo API. Native dialog open/close and the reload glyph animation were simulated in DOM tests.
+- `node node_modules/eslint/bin/eslint.js src/pages/Today.tsx src/components/today/TaskRow.tsx src/pages/Today.test.tsx src/pages/Today.navigation.test.tsx src/uiStore.ts` passed. A cold all-route test initially timed out while loading lazy routes. The test now waits for route modules and checks the destination shell. A rapid-switch test exposed an exiting row still advertising itself as selected. Exiting rows are now inert and no longer advertise selection.

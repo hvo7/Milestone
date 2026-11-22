@@ -1,0 +1,124 @@
+/* The approved Today reference, scoped to the isolated testing route. */
+.agenda-inline {
+  --paper: #fcfbf9;
+  --page-text: #262522;
+  --page-text-dim: #68655f;
+  --text-dim: var(--page-text-dim);
+  --page-border: #e5e2dd;
+  --page-surface: var(--paper);
+  --accent: var(--page-text);
+  --accent-soft: #eeece8;
+  --inline-gutter: clamp(18px, 4.5vw, 72px);
+  background: var(--paper);
+  color: var(--page-text);
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+[data-theme="dark"] .agenda-inline {
+  --paper: #242422;
+  --page-text: #eeece7;
+  --page-text-dim: #b6b3ab;
+  --page-border: #40403c;
+  --accent-soft: #363633;
+}
+.agenda-inline .app-nav {
+  justify-content: flex-start;
+  min-height: 54px;
+  padding: calc(7px + var(--safe-top, 0px)) var(--inline-gutter) 7px;
+  gap: clamp(10px, 2vw, 36px);
+  border: 0;
+  background: var(--paper);
+}
+.agenda-inline .brand-name { font-family: inherit; font-size: 17px; font-weight: 680; line-height: 1.2; letter-spacing: -.055em; }
+.agenda-inline :is(.brand-mark, .build-label, .nav-count, .nav-link[aria-current="page"]::after) { display: none; }
+.agenda-inline .nav-tools { margin-inline-start: auto; }
+.agenda-inline .nav-link { padding: 6px 12px; font-size: 13px; }
+.agenda-inline .nav-link[aria-current="page"] { background: var(--accent-soft); }
+.agenda-inline .agenda {
+  max-width: 1680px;
+  padding: clamp(24px, 3.6vw, 55px) var(--inline-gutter) 64px;
+}
+.agenda-inline .agenda-layout { grid-template-columns: minmax(0, 3fr) minmax(195px, 1fr); gap: clamp(24px, 4.5vw, 75px); margin: 0; align-items: start; }
+.agenda-inline .agenda-side { display: block; }
+.agenda-inline :is(.agenda-list, .agenda-habits) { padding: 0; background: transparent; border: 0; border-radius: 0; }
+.agenda-inline :is(.agenda h1, .agenda h2) { font-family: inherit; font-weight: 650; }
+.agenda-inline :is(.agenda-section-head, .agenda-habits-head) { min-height: 44px; margin: 0 0 7px; padding: 0; border: 0; background: none; color: inherit; }
+.agenda-inline .agenda-section-head { flex-wrap: nowrap; gap: 4px; }
+.agenda-inline .agenda-section-head h1 { font-size: clamp(26px, 2.4vw, 38px); line-height: 1.15; letter-spacing: -.055em; }
+.agenda-inline .agenda-habits-head { justify-content: center; }
+.agenda-inline .agenda-habits h2 { font-size: clamp(18px, 1.5vw, 24px); letter-spacing: -.045em; }
+.agenda-inline .agenda-habit-body { padding: 0; }
+.agenda-inline :is(.inline-text, .inline-options, .inline-actions button, .inline-title, .inline-grip) {
+  appearance: none; border: 0; background: transparent; color: var(--page-text-dim); font: inherit; cursor: pointer;
+}
+.agenda-inline .agenda-new { font-size: 13px; padding: 7px; border-radius: 5px; }
+.agenda-inline .inline-options { width: 30px; height: 32px; font-size: 18px; line-height: 1; border-radius: 5px; }
+.agenda-inline :is(.agenda-new, .inline-options):hover, .agenda-inline .inline-options[aria-expanded="true"] { color: var(--page-text); background: var(--accent-soft); }
+.agenda-inline #agenda-options:not([hidden]) { padding: 10px 0 16px; margin-bottom: 8px; border-block: 1px solid var(--page-border); }
+.inline-day { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.agenda-inline .agenda-progress { padding: 12px 0 0; max-width: 350px; }
+.agenda-inline .agenda-progress h2, .agenda-inline .inline-removed h2 { font-size: 14px; }
+.inline-removed { display: grid; justify-items: start; margin-top: 12px; }
+.agenda-inline .agenda .task-row { padding: 0 !important; background: transparent !important; border-bottom-color: var(--page-border) !important; }
+.inline-row-head { display: flex; align-items: center; min-height: 52px; gap: 9px; }
+.inline-check-target { display: grid; place-items: center; align-self: stretch; width: 34px; flex-shrink: 0; cursor: pointer; }
+.agenda-inline .rune-check { margin: 0; border: 1px solid var(--page-text-dim); box-shadow: none; }
+.agenda-inline .rune-check:checked { background: var(--page-text); border-color: var(--page-text); }
+.agenda-inline .rune-check:checked::after { border-color: var(--paper); }
+.agenda-inline .inline-title {
+  display: inline-flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px;
+  text-align: start; padding: 4px 0; color: var(--page-text); font-size: 16px; line-height: 1.4; font-weight: 510;
+}
+.inline-title > span:first-child { overflow-wrap: anywhere; }
+.inline-row-head:has(input:checked) .inline-title > span:first-child { text-decoration: line-through; color: var(--page-text-dim); }
+.inline-chevron {
+  width: 6px; height: 6px; border-right: 1px solid currentColor; border-bottom: 1px solid currentColor;
+  flex: none; opacity: 0; transform: rotate(-45deg); transition: opacity .12s, transform .14s;
+}
+.inline-item:is(:hover, :focus-within) .inline-chevron, .inline-title[aria-expanded="true"] .inline-chevron { opacity: .8; }
+.inline-title[aria-expanded="true"] .inline-chevron { transform: rotate(45deg); }
+.inline-reading { color: var(--page-text-dim); font-size: 12px; overflow-wrap: anywhere; }
+.agenda-inline .inline-grip { margin-left: auto; min-width: 28px; height: 32px; touch-action: none; cursor: grab; opacity: 0; }
+.inline-item:is(:hover, :focus-within) .inline-grip { opacity: .75; }
+.inline-reveal { overflow: clip; }
+.inline-detail { padding: 0 6px 14px 43px; }
+.inline-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--page-text-dim); }
+.inline-meta:not(:empty) { margin-bottom: 6px; }
+.inline-detail-layout { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 12px; }
+.inline-steps { flex: 1 1 190px; min-width: 0; }
+.inline-steps:not(:empty) { border-inline-start: 1px solid var(--page-border); padding-left: 14px; }
+.inline-steps:empty { flex-basis: 0; }
+.inline-steps .rune-check-sm { border-radius: 3px; }
+.inline-steps .subtask-row > span { overflow-wrap: anywhere; }
+.inline-actions { display: flex; gap: 8px; align-items: start; flex-wrap: wrap; margin-inline-start: auto; }
+.agenda-inline .inline-actions :is(button, summary) { min-height: 28px; padding: 4px; color: var(--page-text-dim); font-size: 12px; font-weight: 500; }
+.inline-actions button:hover, .inline-removed button:hover { color: var(--page-text); text-decoration: underline; }
+.inline-actions summary { display: block; list-style: none; text-align: center; }
+.inline-actions details > div { display: grid; }
+.agenda-inline .agenda-history { margin-top: 30px; border-color: var(--page-border); }
+.agenda-inline .agenda-history > summary, .agenda-inline .agenda-text-action { font-size: 12px; font-weight: 500; color: var(--page-text-dim); }
+.agenda-inline .agenda-habits .inline-detail { padding-left: 12px; }
+.agenda-inline .agenda-habits .inline-detail-layout { display: grid; }
+.agenda-inline .agenda-habits .inline-title { font-size: 15px; }
+.agenda-inline .inline-drawer {
+  position: fixed; inset: 0; margin: 0; padding: 0; width: 100%; height: 100%;
+  max-width: none; max-height: none; border: 0; background: transparent; color: var(--page-text);
+}
+.inline-drawer::backdrop { background: transparent; }
+.agenda-inline .subtask-row:focus-within .icon-btn { opacity: 1 !important; }
+@media (max-width: 720px) {
+  .agenda-inline .app-nav { flex-wrap: wrap; gap: 2px 10px; }
+  .agenda-inline .app-tabs { order: 3; flex-basis: 100%; }
+  .agenda-inline .agenda-layout, .agenda-inline .agenda-side { grid-template-columns: minmax(0, 1fr); }
+  .agenda-inline .agenda-layout { gap: 26px; }
+  .agenda-inline .agenda-habits-head { margin-bottom: 0; }
+}
+@media (pointer: coarse) {
+  .agenda-inline :is(.inline-options, .inline-grip, .inline-actions button, .inline-actions summary, .inline-check-target) { min-width: 44px; min-height: 44px; }
+  .agenda-inline .inline-grip { opacity: .55; }
+  .agenda-inline .subtask-row .icon-btn { opacity: .8 !important; }
+  .inline-chevron { opacity: .55; }
+  .inline-detail { padding-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .agenda-inline *, .agenda-inline *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
