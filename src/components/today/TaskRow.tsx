@@ -608,14 +608,14 @@ export default function TaskRow({
             style={{ flexShrink: 0, marginTop: tag ? 18 : 0, ...(readOnly ? { cursor: 'default', opacity: 0.6 } : {}) }}
           />
         )}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="task-row-copy" style={{ flex: 1, minWidth: 0 }}>
           {/* Above the task rather than in front of it. Inline, the questline was
               the first thing on every row and the same weight as the task, so a
               list of eight tasks read as eight questlines. On its own line it
               labels the row without competing with what the row is asking of you
               — and it stays put while the title is being renamed. */}
           {tag && (
-            <span style={{ display: 'block', fontSize: 12, lineHeight: 1.35, marginBottom: 1 }}>
+            <span className="task-row-category" style={{ display: 'block', fontSize: 12, lineHeight: 1.35, marginBottom: 1 }}>
               {systemMenu
                 ? <TagMenu label={tag.label} color={tag.color} menu={systemMenu} />
                 : <span style={{ fontWeight: 700, color: tag.color }}>{tag.label}</span>}
@@ -637,7 +637,7 @@ export default function TaskRow({
               style={{ width: '100%', fontSize: 14, fontWeight: 500, padding: '4px 8px' }}
             />
           ) : (
-            <span
+            <span className="task-row-title"
               onDoubleClick={onEdit ? undefined : startEdit}
               title={onEdit ? 'Edit task' : onRename ? 'Double-click to rename' : undefined}
               style={{
