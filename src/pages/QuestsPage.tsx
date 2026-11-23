@@ -12,11 +12,15 @@ import type { EditTarget } from '../components/TaskEditDrawer';
 import NavBar from '../components/NavBar';
 import { routineIsArchived } from '../lib/archive';
 import { lazyChunk } from '../lib/lazyChunk';
-import QuestlineSidebar from '../components/QuestlineSidebar';
+import QuestlineColdList from '../components/QuestlineColdList';
+import PageBanner from '../components/PageBanner';
+import Icon from '../components/Icon';
+import { questlineMomentum, rankByNeglect } from '../lib/momentum';
 import RoutineTaskRow from '../components/RoutineTaskRow';
 import { questlineHref, readQuestlineSelection, routineServesQuestline, selectionParams, systemServesQuestline } from '../lib/questlineNavigation';
 import { systemRoutines } from '../lib/systems';
 import '../components/questlineWorkspace.css';
+import './questsPondside.css';
 
 // Opened on demand, so it stays out of the page's own chunk.
 const TaskEditDrawer = lazyChunk(() => import('../components/TaskEditDrawer'));
@@ -53,18 +57,17 @@ function GeneralPanel({ onEdit }: { onEdit: (t: EditTarget) => void }) {
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
-      className="parchment"
-      style={{ borderRadius: 14, padding: '18px 20px', marginBottom: 18 }}
+      className="questline-panel"
     >
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 4, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--page-text)' }}>General</h2>
-        <span style={{ fontSize: 12, color: 'var(--page-text-dim)' }}>
-          tasks, errands & commitments
-        </span>
-        <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 600, color: open.length === 0 && general.length > 0 ? 'var(--success)' : 'var(--page-text-dim)', fontVariantNumeric: 'tabular-nums' }}>
-          {done.length}/{general.length}
-        </span>
-      </div>
+      <header className="questline-panel-head">
+        <div className="questline-panel-title"><h2>General</h2></div>
+        <div className="questline-panel-progress">
+          <div className="progress-track" role="progressbar" aria-label="General tasks complete" aria-valuemin={0} aria-valuemax={general.length} aria-valuenow={done.length}>
+            <div className="progress-fill" style={{ width: `${general.length ? Math.round(100 * done.length / general.length) : 0}%` }} />
+          </div>
+          <span>{done.length} of {general.length}</span>
+        </div>
+      </header>
 
       <AnimatePresence initial={false}>
         {open.map(r => (
@@ -76,10 +79,11 @@ function GeneralPanel({ onEdit }: { onEdit: (t: EditTarget) => void }) {
         <>
           <button
             onClick={() => setShowDone(v => !v)}
-            className="btn-ghost"
-            style={{ marginTop: 10, fontSize: 11.5, padding: '4px 10px', border: 'none' }}
+            className="btn-quiet"
+            aria-expanded={showDone}
+            style={{ marginTop: 10 }}
           >
-            {showDone ? '▾' : '▸'} Completed history · {done.length}
+            Completed · {done.length}
           </button>
           <AnimatePresence initial={false}>
             {showDone && done.map(r => (
@@ -100,7 +104,7 @@ function GeneralPanel({ onEdit }: { onEdit: (t: EditTarget) => void }) {
             onKeyDown={e => { if (e.key === 'Enter') submit(); }}
             style={{ flex: 1 }}
           />
-          <button className="btn-gold" onClick={submit} disabled={!value.trim()} style={{ opacity: value.trim() ? 1 : 0.35, padding: '6px 16px' }}>
+          <button type="button" className="btn-gold" onClick={submit} disabled={!value.trim()}>
             Add
           </button>
         </div>
@@ -119,6 +123,7 @@ export default function QuestsPage() {
 
   const systems = useQuestStore(s => s.systems);
   const routines = useQuestStore(s => s.routines);
+  const taskHistory = useQuestStore(s => s.taskHistory);
   const [params, setParams] = useSearchParams();
   const [addingQuestline, setAdding] = useState(false);
   const [questDrawerOpen, setQuestDrawerOpen] = useState(false);
@@ -126,70 +131,60 @@ export default function QuestsPage() {
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
 
   const visible = questlines.filter(ql => !ql.hidden);
-  const selection = readQuestlineSelection(params, visible);
+  // Coldest first. With nothing chosen, the coldest questline is the one shown.
+  const ranked = rankByNeglect(visible.map(ql => questlineMomentum(ql, routines, taskHistory)));
+  const selection = readQuestlineSelection(params, ranked.map(m => m.questline));
   const selected = selection.kind === 'questline' ? visible.find(ql => ql.id === selection.id) : undefined;
   const serving = selected ? systems.filter(s => !s.hidden && systemServesQuestline(s, selected)) : [];
   // A direct task link remains visible even if its system serves another goal.
   const linked = selected ? routines.filter(r => !routineIsArchived(r, questlines, systems) && routineServesQuestline(r, selected)
     && !routineSystemIds(r).some(id => serving.some(sys => sys.id === id))) : [];
+  const generalOpen = routines.filter(r => isGeneralTask(r) && !r.hidden && !r.completed).length;
+  // On a phone the panes stack: the list first, and a chosen questline as its own
+  // view with Back. "Chosen" means the address says so, not the desktop default.
+  const chosen = params.has('questline') || params.has('view');
 
   return (
     <>
-      <div className="page-shell" style={{ paddingBottom: 80 }}>
-        <NavBar />
+      <div className="page-shell quests-page" style={{ paddingBottom: 80 }}>
+        <NavBar hideCover />
 
-        <div className="questline-workspace">
-          <QuestlineSidebar questlines={visible} systems={systems} selection={selection} mode="quests" onSelect={next => setParams(selectionParams(next))} />
-          <div className="questline-main">
-
-          {/* Header row */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, gap: 12, flexWrap: 'wrap' }}>
-            <h2 className="page-title" style={{ margin: 0 }}>{selected ? 'Your quests' : 'General'}</h2>
-            <div className="questline-toolbar-actions">
-              {selected && !selected.hidden && (
-                <button className="btn-gold" onClick={() => setQuestDrawerOpen(true)} style={{ fontSize: 13, padding: '6px 14px' }}>
-                  ＋ New Quest
-                </button>
-              )}
-              <button className="btn-ghost" onClick={() => setAdding(true)} style={{ fontSize: 13, padding: '6px 14px' }}>
-                + New Questline
-              </button>
-              <button
-                onClick={toggleEditMode}
-                style={{
-                  fontFamily: 'inherit',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  padding: '6px 14px',
-                  borderRadius: 8,
-                  cursor: 'pointer',
-                  border: editMode ? '1px solid var(--accent-border)' : '1px solid var(--card-border)',
-                  background: editMode ? 'var(--accent-soft)' : 'transparent',
-                  color: editMode ? 'var(--accent)' : 'var(--text-dim)',
-                  transition: 'all 0.2s',
-                }}
-              >
-                {editMode ? 'Done' : 'Edit'}
-              </button>
+        <main className="quests-shell" data-chosen={chosen || undefined}>
+          <PageBanner pathname="/quests" />
+          <header className="quests-head">
+            <h1 className="page-title">Quests</h1>
+            <div className="quests-actions">
+              <button type="button" className="btn-quiet" aria-pressed={editMode} onClick={toggleEditMode}>{editMode ? 'Done' : 'Edit'}</button>
+              <button type="button" className="btn-ghost" onClick={() => setAdding(true)}>New questline</button>
+              <button type="button" className="btn-gold" disabled={!selected} onClick={() => setQuestDrawerOpen(true)}>New quest</button>
             </div>
-          </div>
+          </header>
 
-          {!selected ? <GeneralPanel onEdit={setEditTarget} /> : <>
-            <QuestlineAccordionItem key={selected.id} questline={selected} isOpen onToggle={() => {}} detail
-              onEditQuest={(questlineId, quest) => setEditingQuest({ questlineId, quest })} />
-            <section className="parchment questline-section" style={{ marginTop: 18 }}>
-              <div className="questline-section-header"><h2>Supporting systems</h2><Link className="btn-ghost" to={questlineHref('systems', selected.id)}>Manage systems →</Link></div>
-              {serving.length ? serving.map(sys => <Link key={sys.id} className="questline-support-link" to={`${questlineHref('systems', selected.id)}&system=${encodeURIComponent(sys.id)}`}>
-                <span>{sys.title}<small>{systemRoutines(routines, sys.id).map(r => r.title).join(' · ') || 'No habits yet'}</small></span><span aria-hidden="true">→</span>
-              </Link>) : <p>No systems linked yet. Add a practice from Systems when you're ready.</p>}
+          <div className="quests-panes">
+            <QuestlineColdList ranked={ranked} selection={selection} generalOpen={generalOpen}
+              onSelect={next => setParams(selectionParams(next))} />
+
+            <section className="quests-detail" aria-label={selected ? selected.title : 'General'}>
+              <button type="button" className="btn-quiet quests-back" onClick={() => setParams(new URLSearchParams())}>
+                <Icon name="back" size={16} />Back
+              </button>
+              {!selected ? <GeneralPanel onEdit={setEditTarget} /> : <>
+                <QuestlineAccordionItem key={selected.id} questline={selected} isOpen onToggle={() => {}} detail
+                  onEditQuest={(questlineId, quest) => setEditingQuest({ questlineId, quest })} />
+                <section className="quests-section">
+                  <div className="questline-section-header"><h2>Supporting systems</h2><Link className="btn-ghost" to={questlineHref('systems', selected.id)}>Manage systems</Link></div>
+                  {serving.length ? serving.map(sys => <Link key={sys.id} className="questline-support-link" to={`${questlineHref('systems', selected.id)}&system=${encodeURIComponent(sys.id)}`}>
+                    <span>{sys.title}<small>{systemRoutines(routines, sys.id).map(r => r.title).join(' · ') || 'No habits yet'}</small></span><Icon name="chevron" size={16} />
+                  </Link>) : <p>No systems linked yet.</p>}
+                </section>
+                {linked.length > 0 && <section className="quests-section"><h2>Linked tasks</h2>
+                  {linked.map(r => <RoutineTaskRow key={r.id} routine={r} onEdit={() => setEditTarget({ kind: 'routine', id: r.id })} />)}
+                </section>}
+              </>}
+              {questlines.length > 0 && <details className="questline-insights"><summary>Momentum across questlines</summary><MomentumPanel /></details>}
             </section>
-            {linked.length > 0 && <section className="parchment questline-section"><h2>Linked tasks</h2>
-              {linked.map(r => <RoutineTaskRow key={r.id} routine={r} onEdit={() => setEditTarget({ kind: 'routine', id: r.id })} />)}
-            </section>}
-          </>}
-          {questlines.length > 0 && <details className="questline-insights"><summary>Momentum across questlines</summary><MomentumPanel /></details>}
           </div>
-        </div>
+        </main>
       </div>
 
       {addingQuestline && (

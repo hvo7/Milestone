@@ -23,8 +23,11 @@ import EditTitle from './EditTitle';
 import { automaticOrder } from '../lib/completionOrder';
 import { questShowsOnDay } from '../lib/today';
 import { logicalDateKey } from '../domain/schedule';
-import { categoryColor, cleanQuest } from '../lib/ui';
-import { questlineMomentum, movedLabel, etaLabel, momentumHex, STATE_LABEL } from '../lib/momentum';
+import { cleanQuest } from '../lib/ui';
+import { questlineMomentum, movedLabel, etaLabel, etaChip, quietSignal, momentumHex, STATE_LABEL, MOMENTUM_WINDOW_DAYS } from '../lib/momentum';
+import { questlineArt } from '../lib/questComplete';
+import { motionSeconds } from '../lib/motion';
+import Icon from './Icon';
 import { useHoldToReorder, type HoldReorder, type RowHandlers } from '../lib/useHoldToReorder';
 
 /** Tooltip for the quest-level pin. Pinning puts the quest on the Today list as a
@@ -43,19 +46,6 @@ function questPinTitle(quest: Quest): string {
  * row-action placement the Today tab uses.
  */
 
-/** The red ✕ at the right edge of every quest row — one click deletes the quest
- *  (its tasks go with it; any linked Today routines are detached, not deleted). */
-function DeleteQuestX({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
-  return (
-    <IconButton
-      onClick={onClick} title="Delete quest" stopPropagation
-      rest="var(--danger)" hover="var(--danger)" size={12} fade={0.65}
-    >
-      ✕
-    </IconButton>
-  );
-}
-
 /**
  * A quest other than the active one: a compact row that expands to reveal its
  * tasks, so any task can be checked off or pinned to Today without leaving the
@@ -63,7 +53,7 @@ function DeleteQuestX({ onClick }: { onClick: (e: React.MouseEvent) => void }) {
  * quest showed its tasks, so everything else could only be pinned by opening
  * the questline's own page.
  */
-function CompactQuestRow({ questline, quest, locked, subdued, active = false, drag, registerRow, dragging, shiftY, onEditQuest, onDelete }: {
+function CompactQuestRow({ questline, quest, locked, active = false, drag, registerRow, dragging, shiftY, onEditQuest, onDelete }: {
   questline: Questline;
   quest: Quest;
   locked: boolean;
@@ -109,18 +99,13 @@ function CompactQuestRow({ questline, quest, locked, subdued, active = false, dr
       data-quest-row={quest.id}
       data-reorder-offset={shiftY}
       ref={rowRef}
+      className="quest-row"
+      data-state={complete ? 'done' : locked ? 'locked' : active ? 'current' : 'open'}
+      data-dragging={dragging ? true : undefined}
       style={{
-        background: 'var(--input-bg)',
-        borderRadius: 8,
-        border: `1px solid ${dragging ? 'var(--accent)' : pinned ? 'var(--accent-border)' : 'var(--card-border)'}`,
-        opacity: dragging ? 1 : locked ? 0.5 : subdued ? 0.9 : 1,
-        overflow: 'hidden',
-        // The lifted row follows the pointer above its neighbours; everything else
-        // eases back into place as the list settles.
-        boxShadow: dragging ? '0 10px 24px rgba(0,0,0,0.45)' : undefined,
+        boxShadow: dragging ? 'var(--shadow-pop)' : undefined,
         zIndex: dragging ? 5 : undefined,
         position: dragging ? 'relative' : undefined,
-        transition: 'border-color 0.18s',
         // Vertical panning stays with the scroller until a row actually lifts.
         touchAction: 'pan-y',
       }}
@@ -132,35 +117,19 @@ function CompactQuestRow({ questline, quest, locked, subdued, active = false, dr
         onPointerDown={drag.onPointerDown}
         onClickCapture={drag.onClickCapture}
         onClick={() => canExpand && setExpanded(v => !v)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10, padding: active ? '16px 18px' : '7px 12px', flexWrap: 'wrap',
-          cursor: canExpand ? 'pointer' : 'default', userSelect: 'none',
-        }}
+        style={{ cursor: canExpand ? 'pointer' : 'default', userSelect: 'none' }}
       >
-        <QuestDoneToggle questlineId={questline.id} quest={quest} locked={locked} small />
-        <QuestArtwork kind="quest" title={quest.title} id={quest.id} context={questline.title} />
-        <span className="quest-mobile-title" style={{
-          flex: 1, fontSize: 13, fontWeight: 500, minWidth: 0,
-          color: complete ? 'var(--text-dim)' : active ? categoryColor(questline.color) : 'var(--text-parchment)',
-          textDecoration: complete && !quest.recurring ? 'line-through' : 'none',
-        }}>
+        <QuestDoneToggle questlineId={questline.id} quest={quest} locked={locked} />
+        <span className="quest-mobile-title quest-row-title">
           <EditTitle reorderHandle={!completedLast} onEdit={() => onEditQuest?.(questline.id, quest)}>{cleanQuest(quest.title)}</EditTitle>
         </span>
 
         {quest.recurring && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)', flexShrink: 0 }}>
+          <span className="quest-row-count">
             {quest.recurring === 'daily' ? 'Daily' : quest.recurring === 'weekly' ? 'Weekly' : 'Monthly'}
           </span>
         )}
-        {!complete && !locked && at > 0 && (
-          <span style={{ fontSize: 11, color: 'var(--text-dim)', flexShrink: 0 }}>{ad}/{at}</span>
-        )}
-        {complete && !quest.recurring && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--success)', flexShrink: 0 }}>DONE</span>
-        )}
-        {locked && (
-          <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--text-dim)', flexShrink: 0 }}>LOCKED</span>
-        )}
+        {at > 0 && <span className="quest-row-count">{ad} of {at}</span>}
 
         {!locked && (
           <PinButton
@@ -170,7 +139,8 @@ function CompactQuestRow({ questline, quest, locked, subdued, active = false, dr
             title={questPinTitle(quest)}
           />
         )}
-        <DeleteQuestX onClick={onDelete} />
+        <button type="button" className="icon-btn-round quest-row-delete" aria-label="Delete quest" title="Delete quest"
+          onClick={e => { e.stopPropagation(); onDelete(); }}><Icon name="close" size={14} /></button>
       </div>
 
       <AnimatePresence initial={false}>
@@ -180,11 +150,10 @@ function CompactQuestRow({ questline, quest, locked, subdued, active = false, dr
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+            transition={{ duration: motionSeconds('expand'), ease: 'easeOut' }}
             style={{ overflow: 'hidden' }}
           >
-            <div style={{ padding: '2px 12px 6px 38px' }}>
-              {active && at > 0 && <ProgressBar done={ad} total={at} color={questline.color} size="sm" showLabel={false} />}
+            <div className="quest-row-steps">
               {quest.description && <p className="questline-description">{quest.description}</p>}
               {actions.map(action => (
                 <ActionItem
@@ -196,7 +165,7 @@ function CompactQuestRow({ questline, quest, locked, subdued, active = false, dr
                   parentRecurring={!!quest.recurring}
                 />
               ))}
-              {!locked && <button type="button" className="btn-ghost" onClick={() => setAddingStep(true)} style={{ fontSize: 12, margin: '8px 0' }}>＋ Add step</button>}
+              {!locked && <button type="button" className="btn-quiet quest-add-step" onClick={() => setAddingStep(true)}><Icon name="plus" size={14} />Add step</button>}
             </div>
           </motion.div>
         )}
@@ -274,26 +243,56 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
   // Hidden questline in edit mode — compact dimmed row
   if (questline.hidden && editMode) {
     return (
-      <div className="parchment" style={{ borderRadius: 12, overflow: 'hidden', opacity: 0.4, borderTop: `2px solid ${categoryColor(questline.color)}` }}>
+      <div className="parchment" style={{ borderRadius: 12, overflow: 'hidden', opacity: 0.4, }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 22px' }}>
           <QuestArtwork kind="questline" title={questline.title} id={questline.id} icon={questline.icon} size={22} />
           <h2 style={{ margin: 0, fontSize: 14, fontWeight: 600, flex: 1, color: 'var(--text-dim)', textDecoration: 'line-through' }}>
             {questline.title}
           </h2>
-          <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', color: 'var(--text-dim)' }}>HIDDEN</span>
-          <button onClick={() => toggleQuestlineHidden(questline.id)} title="Restore questline" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--text-dim)', padding: '0 2px' }}>👁</button>
+          <span className="quest-row-count">Hidden</span>
+          <button type="button" className="btn-quiet" onClick={() => toggleQuestlineHidden(questline.id)}>Restore</button>
         </div>
       </div>
     );
   }
 
+  const signal = quietSignal(momentum);
+  const eta30 = etaChip(momentum.pace);
+
   return (
     <>
       <div
-        className="parchment"
-        style={{ borderRadius: 12, overflow: 'hidden', transition: 'box-shadow 0.3s', borderTop: `2px solid ${categoryColor(questline.color)}` }}
+        className={detail ? 'questline-panel' : 'parchment'}
+        style={detail ? undefined : { overflow: 'hidden' }}
       >
         {/* ── Header ── */}
+        {detail ? (
+          <header className="questline-panel-head">
+            <div className="questline-panel-title">
+              <img className="questline-panel-art" src={questlineArt(questline)} alt="" width={64} height={64} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h2><EditTitle onEdit={() => setEditing(true)}>{questline.title}</EditTitle></h2>
+                <div className="momentum-chips">
+                  <span className="momentum-chip" data-tone={signal.tone}>{signal.text}</span>
+                  <span className="momentum-chip">{momentum.movement.moves} {momentum.movement.moves === 1 ? 'task' : 'tasks'} in {MOMENTUM_WINDOW_DAYS} days</span>
+                  {eta30 && <span className="momentum-chip">{eta30}</span>}
+                  {questline.sequential && <span className="momentum-chip">Sequential</span>}
+                  {questline.recurring && <span className="momentum-chip">
+                    {questline.recurring === 'daily' ? 'Daily' : questline.recurring === 'weekly' ? 'Weekly' : 'Monthly'}</span>}
+                  {questline.targetDate && <span className="momentum-chip">Target {new Date(`${questline.targetDate}T12:00:00`).toLocaleDateString()}</span>}
+                </div>
+              </div>
+              <button type="button" className="icon-btn-round" aria-label="Edit questline" title="Edit questline" onClick={() => setEditing(true)}><Icon name="edit" size={16} /></button>
+              <button type="button" className="icon-btn-round quest-row-delete" aria-label="Delete questline" title="Delete questline" onClick={() => deleteQuestline(questline.id)}><Icon name="trash" size={16} /></button>
+            </div>
+            <div className="questline-panel-progress">
+              <div className="progress-track" role="progressbar" aria-label="Quests complete" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done}>
+                <div className="progress-fill" style={{ width: `${total ? Math.round(100 * done / total) : 0}%` }} />
+              </div>
+              <span>{done} of {total}</span>
+            </div>
+          </header>
+        ) : (
         <div
           onClick={detail ? undefined : onToggle}
           style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '18px 22px', cursor: detail ? 'default' : 'pointer', flexWrap: 'wrap' }}
@@ -345,6 +344,7 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
             {!detail && <motion.span animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.3, ease: 'easeInOut' }} style={{ color: 'var(--text-dim)', fontSize: 11, display: 'inline-block' }}>▼</motion.span>}
           </div>
         </div>
+        )}
 
         {/* ── Expanded body ── */}
         <AnimatePresence initial={false}>
@@ -357,16 +357,15 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
               transition={{ duration: 0.32, ease: [0.4, 0, 0.2, 1] }}
               style={{ overflow: 'hidden' }}
             >
-              <div style={{ padding: '0 22px 22px' }}>
+              <div style={{ padding: detail ? 0 : '0 22px 22px' }}>
                 {detail && questline.description && <p className="questline-description">{questline.description}</p>}
-                {detail && questline.targetDate && <p className="questline-description">Target: {new Date(`${questline.targetDate}T12:00:00`).toLocaleDateString()}</p>}
-                <div className="rune-divider" style={{ marginBottom: 16 }}>
+                {!detail && <div className="rune-divider" style={{ marginBottom: 16 }}>
                   {editMode ? 'Quests' : isComplete ? 'Complete' : activeQuest ? 'Active quest' : 'Quests'}
-                </div>
+                </div>}
 
                 {/* ── Edit mode: draggable quest list ── */}
                 {editMode ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
+                  <div className="quest-rows">
                     {sorted.length === 0 && (
                       <p style={{ fontSize: 12, color: 'var(--text-dim)', marginBottom: 8 }}>No quests yet.</p>
                     )}
@@ -384,18 +383,11 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                           onDragOver={e => { if (completedLast) return; e.preventDefault(); setDragOverIndex(i); }}
                           onDrop={() => handleDrop(i)}
                           onDragEnd={() => { dragIndex.current = null; setDragOverIndex(null); }}
-                          style={{
-                            display: 'flex', alignItems: 'center', gap: 10,
-                            padding: '8px 12px',
-                            background: isDragOver ? 'var(--accent-soft)' : 'var(--input-bg)',
-                            borderRadius: 8,
-                            border: isDragOver ? '1px solid var(--accent-border)' : '1px solid var(--card-border)',
-                            opacity: isHiddenInEdit ? 0.35 : 1,
-                            cursor: completedLast ? 'default' : 'grab',
-                            transition: 'background 0.12s, border-color 0.12s',
-                          }}
+                          className="quest-row quest-row-edit"
+                          data-drop={isDragOver || undefined}
+                          style={{ opacity: isHiddenInEdit ? 0.45 : 1, cursor: completedLast ? 'default' : 'grab' }}
                         >
-                          {!completedLast && <span style={{ fontSize: 14, color: 'var(--text-dim)', cursor: 'grab', flexShrink: 0, userSelect: 'none', lineHeight: 1 }} title="Drag to reorder">⠿</span>}
+                          {!completedLast && <span style={{ color: 'var(--ink-dim)', cursor: 'grab', flexShrink: 0 }} title="Drag to reorder"><Icon name="grip" size={16} /></span>}
 
                           {/* Edit mode was the one surface on this tab where a quest
                               could be renamed, moved, hidden and deleted but not
@@ -404,9 +396,8 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                               where you fix the list, including a quest that was
                               actually done before the one ahead of it. */}
                           {!isHiddenInEdit && (
-                            <QuestDoneToggle questlineId={questline.id} quest={quest} small />
+                            <QuestDoneToggle questlineId={questline.id} quest={quest} />
                           )}
-                          <QuestArtwork kind="quest" title={quest.title} id={quest.id} context={questline.title} />
 
                           <span style={{
                             flex: 1, fontSize: 13, fontWeight: 500,
@@ -418,26 +409,27 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
 
                           {isHiddenInEdit ? (
                             <>
-                              <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', color: 'var(--text-dim)' }}>HIDDEN</span>
-                              <button onClick={() => useQuestStore.getState().toggleQuestHidden(questline.id, quest.id)} title="Restore quest" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--text-dim)', padding: '0 2px' }}>👁</button>
+                              <span className="quest-row-count">Hidden</span>
+                              <button type="button" className="btn-quiet" onClick={() => useQuestStore.getState().toggleQuestHidden(questline.id, quest.id)}>Restore</button>
                             </>
                           ) : (
                             <>
                               {quest.recurring && (
-                                <span style={{ fontSize: 10, fontWeight: 600, color: 'var(--accent)' }}>
+                                <span className="quest-row-count">
                                   {quest.recurring === 'daily' ? 'Daily' : quest.recurring === 'weekly' ? 'Weekly' : 'Monthly'}
                                 </span>
                               )}
                               {/* The ✓ that used to sit here said what the checkbox
                                   now shows, one control to its left. */}
-                              <button className="btn-ghost" onClick={() => setAddingQuestTo(quest)} style={{ fontSize: 11, padding: '3px 8px' }}>+ Task</button>
+                              <button type="button" className="btn-quiet" onClick={() => setAddingQuestTo(quest)}>Add step</button>
                               <PinButton
                                 state={questShowsOnDay(quest, logicalDateKey()) ? 'all' : 'none'}
                                 hovered
                                 onClick={() => toggleQuestTracked(questline.id, quest.id)}
                                 title={questPinTitle(quest)}
                               />
-                              <DeleteQuestX onClick={() => deleteQuest(questline.id, quest.id)} />
+                              <button type="button" className="icon-btn-round quest-row-delete" aria-label="Delete quest" title="Delete quest"
+                                onClick={() => deleteQuest(questline.id, quest.id)}><Icon name="close" size={14} /></button>
                             </>
                           )}
                         </div>
@@ -447,14 +439,15 @@ export default function QuestlineAccordionItem({ questline, isOpen, onToggle, on
                 ) : (
                   // ── Normal mode: active quest + compact others ──
                   <>
-                    {isComplete && (
+                    {isComplete && !detail && (
                       <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--success)', padding: '8px 0 16px' }}>
                         All quests complete.
                       </p>
                     )}
+                    {detail && sorted.length === 0 && <p className="empty-state" style={{ background: 'var(--sunken)' }}>No quests yet.</p>}
 
                     {sorted.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
+                      <div className="quest-rows">
                         {sorted.map((quest, i) => {
                           return (
                               <CompactQuestRow

@@ -1,0 +1,100 @@
+/* Quests in the Pondside style (board: Approved · Quests, two-pane).
+   Left: questlines coldest first. Right: the selected questline. Presentation
+   only — quests, steps, pins, ordering and edit mode are unchanged. */
+
+.quests-shell { max-width: 1160px; margin: 0 auto; padding: 8px 40px 0; }
+.quests-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-top: 30px; }
+.quests-head .page-title { margin: 0; }
+.quests-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.quests-actions :is(.btn-gold, .btn-ghost, .btn-quiet) { min-height: 42px; padding: 0 18px; font-size: 14px; font-weight: 700; }
+.quests-actions .btn-quiet[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+
+.quests-panes { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 24px; align-items: start; margin-top: 24px; }
+.quests-detail { min-width: 0; display: grid; gap: 16px; }
+.quests-back { display: none; justify-self: start; }
+
+/* Left pane. */
+.cold-list { min-width: 0; }
+.cold-list-label { margin: 0; padding: 0 4px 10px; font-family: var(--font-ui); font-size: 12.5px; font-weight: 700; color: var(--ink-dim); }
+.cold-list ul { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.cold-card { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 64px; padding: 10px 14px 10px 10px; border: 0; border-radius: var(--radius-card); background: var(--surface); color: var(--ink); font: inherit; text-align: start; cursor: pointer; }
+.cold-card:hover { background: var(--raised); }
+.cold-card[aria-current="true"] { background: var(--raised); box-shadow: inset 0 0 0 2px var(--water); }
+.cold-card-art { flex: none; width: 44px; height: 44px; border-radius: var(--radius-tile); object-fit: cover; }
+.cold-card-copy { flex: 1; min-width: 0; display: grid; gap: 2px; padding-left: 2px; }
+.cold-card-name { font-weight: 700; overflow-wrap: anywhere; }
+.cold-card-signal { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink-dim); }
+.quiet-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.cold-card-count { flex: none; font-size: 12.5px; font-weight: 600; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+
+/* Right pane: the questline panel. */
+.questline-panel, .quests-section { padding: 24px; border-radius: var(--radius-banner); background: var(--surface); }
+.questline-panel-title { display: flex; align-items: center; gap: 16px; }
+.questline-panel-art { flex: none; width: 64px; height: 64px; border-radius: 20px; object-fit: cover; }
+.questline-panel-title h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-optical-sizing: auto; font-size: 28px; line-height: 1.15; overflow-wrap: anywhere; }
+.momentum-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.momentum-chip { padding: 4px 10px; border-radius: var(--radius-pill); background: var(--raised); color: var(--ink-dim); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.momentum-chip[data-tone="today"] { color: var(--leaf); font-weight: 700; }
+.momentum-chip[data-tone="quiet"] { color: var(--gold); font-weight: 700; }
+.questline-panel-progress { display: flex; align-items: center; gap: 12px; margin-top: 20px; }
+.questline-panel-progress .progress-track { flex: 1; }
+.questline-panel-progress > span { font-size: 13px; font-weight: 600; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.questline-panel .questline-description { margin: 16px 0 0; }
+
+/* Quests as nested rows on the sunken tone. */
+.quest-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
+.quest-row { border-radius: 16px; background: var(--sunken); overflow: hidden; }
+.quest-row[data-state="locked"], .quest-row[data-state="done"] { color: var(--ink-dim); }
+.quest-row > .quest-mobile-row, .quest-row-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; min-height: 52px; padding: 8px 8px 8px 14px; }
+.quest-row-edit[data-drop] { box-shadow: inset 0 0 0 2px var(--water); }
+.quest-row .quest-row-title { flex: 1 1 120px !important; min-width: 0; font-size: 14px; font-weight: 600; }
+.quest-row[data-state="current"] .quest-row-title { font-weight: 700; }
+.quest-row[data-state="done"] .quest-row-title { color: var(--ink-dim); }
+/* Current quest: a gold ring. Done: the water check the control already draws. */
+.quest-row[data-state="current"] > .quest-mobile-row > .rune-check:not(:checked) { border-color: var(--gold); }
+.quest-lock { display: grid; place-items: center; flex: none; color: var(--ink-dim); }
+.quest-row-count { flex: none; font-size: 12.5px; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.quest-row-delete { width: 36px; height: 36px; color: var(--ink-dim); }
+.quest-row-delete:hover { color: var(--danger); }
+.quest-row-steps { padding: 0 12px 10px 50px; }
+.quest-step { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.quest-step-title { flex: 1; min-width: 0; font-size: 14px; color: var(--ink); overflow-wrap: anywhere; }
+.quest-step[data-done] .quest-step-title { color: var(--ink-dim); text-decoration: line-through; }
+.quest-add-step { margin-top: 4px; min-height: 32px; padding: 0 10px; font-size: 12.5px; }
+
+/* "On Today" chip, and the pin that sets it. */
+.pin-button { display: inline-flex; align-items: center; gap: 4px; flex: none; min-height: 28px; padding: 0 6px; border: 0; border-radius: var(--radius-pill); background: none; color: var(--ink-dim); font-family: inherit; font-weight: 700; line-height: 1.5; cursor: pointer; }
+.pin-button[aria-pressed="true"] { padding: 0 10px; background: color-mix(in srgb, var(--gold) 20%, var(--sunken)); color: var(--gold); font-size: 12px !important; }
+.pin-button:disabled { cursor: default; }
+
+.quests-section h2 { margin: 0; font-family: var(--font-display); font-weight: 600; font-size: 18px; color: var(--ink); }
+.quests-section p { margin: 8px 0 0; color: var(--ink-dim); font-size: 13px; }
+.quests-section .questline-support-link { border: 0; color: var(--ink); }
+.quests-page .questline-insights summary { font-size: 13px; font-weight: 600; }
+
+@media (max-width: 900px) {
+  .quests-panes { grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 16px; }
+}
+
+/* Phone: the panes stack. The list is the page; a chosen questline is its own view with Back. */
+@media (max-width: 760px) {
+  .quests-shell { padding-inline: 16px; }
+  .quests-head { margin-top: 20px; }
+  .quests-panes { grid-template-columns: minmax(0, 1fr); margin-top: 16px; }
+  .quests-shell:not([data-chosen]) .quests-detail { display: none; }
+  .quests-shell[data-chosen] :is(.cold-list, .page-banner, .quests-head .page-title) { display: none; }
+  .quests-shell[data-chosen] .quests-back { display: inline-flex; min-height: 44px; }
+  .questline-panel, .quests-section { padding: 16px; border-radius: 20px; }
+  .questline-panel-title { flex-wrap: wrap; gap: 8px 12px; }
+  .questline-panel-title > div { order: 3; flex: 1 1 100% !important; }
+  .questline-panel-title > .icon-btn-round:first-of-type { margin-left: auto; }
+  .questline-panel-art { width: 52px; height: 52px; border-radius: 16px; }
+  .questline-panel-title h2 { font-size: 24px; }
+  .quest-row-steps { padding-left: 14px; }
+  .quests-actions { width: 100%; }
+  .quests-actions :is(.btn-gold, .btn-ghost) { flex: 1; min-height: 44px; }
+  .quests-actions .btn-quiet { min-height: 44px; }
+  .cold-card { min-height: 68px; }
+  .quest-row-delete, .quests-page .icon-btn-round { width: 44px; height: 44px; }
+  .pin-button { min-width: 44px; min-height: 44px; justify-content: center; }
+}

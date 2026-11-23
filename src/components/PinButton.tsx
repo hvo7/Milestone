@@ -1,6 +1,8 @@
 /** How much of a thing is pinned to Today: nothing, part of it, or all of it.
  *  A single task is only ever 'none' or 'all'; 'some' is for a quest whose
  *  tasks are partly pinned. */
+import Icon from './Icon';
+
 export type PinState = 'none' | 'some' | 'all';
 
 /**
@@ -30,21 +32,10 @@ export default function PinButton({
       onClick={e => { e.stopPropagation(); if (!disabled) onClick(e); }}
       title={title}
       disabled={disabled}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0,
-        background: on ? 'var(--accent-soft)' : 'none',
-        border: `1px solid ${on ? 'var(--accent-border)' : 'transparent'}`,
-        borderRadius: 6, padding: label ? '2px 7px' : '2px 4px',
-        cursor: disabled ? 'default' : 'pointer',
-        fontFamily: 'inherit', fontSize: size, fontWeight: 600, lineHeight: 1.5,
-        color: on ? 'var(--accent)' : 'var(--text-dim)',
-        // An unpinned item still needs a discoverable control without hovering.
-        opacity: disabled ? 0.25 : on ? 1 : hovered ? 0.75 : 0.5,
-        transition: 'opacity 0.18s, color 0.18s, background 0.18s',
-      }}
+      className="pin-button"
+      style={{ fontSize: size, opacity: disabled ? 0.25 : on ? 1 : hovered ? 0.9 : 0.6 }}
     >
-      <span style={{ filter: on ? 'none' : 'grayscale(1)', fontSize: size }}>📌</span>
-      {label && <span>{state === 'some' ? `${label} · some` : on ? 'Pinned' : label}</span>}
+      {on ? <span>{state === 'some' ? 'Some on Today' : 'On Today'}</span> : <><Icon name="pin" size={15} />{label && <span>{label}</span>}</>}
     </button>
   );
 }

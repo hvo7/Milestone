@@ -367,13 +367,36 @@ export const needsAttention = (m: QuestlineMomentum): boolean =>
  */
 export function momentumHex(state: MomentumState): string {
   switch (state) {
-    case 'done':    return 'var(--success)';
-    case 'moving':  return '#34d399';
-    case 'slowing': return '#fbbf24';
-    case 'cold':    return '#94a3b8';
-    case 'idle':    return 'var(--text-dim)';
+    case 'done':    return 'var(--leaf)';
+    case 'moving':  return 'var(--leaf)';
+    case 'slowing': return 'var(--ink-dim)';
+    case 'cold':    return 'var(--gold)';
+    case 'idle':    return 'var(--ink-dim)';
   }
 }
+
+/** How a questline's movement reads in the Quests list. */
+export type QuietTone = 'quiet' | 'today' | 'plain';
+
+/**
+ * The quiet-goal reading: a dot and a few factual words. Gold once a goal has
+ * gone quiet, leaf when it moved today, and plain otherwise. Never red, never a
+ * reproach — it says how long, and nothing about what that means.
+ */
+export function quietSignal(m: Pick<QuestlineMomentum, 'state' | 'movement'>): { text: string; tone: QuietTone } {
+  const n = m.movement.daysSince;
+  if (m.state === 'done') return { text: 'Complete', tone: 'plain' };
+  if (n === 0) return { text: 'Moved today', tone: 'today' };
+  if (m.state === 'cold') return { text: n === null ? 'Quiet so far' : `Quiet ${n} days`, tone: 'quiet' };
+  if (n === null) return { text: 'Not started', tone: 'plain' };
+  const moved = movedLabel(m.movement);
+  return { text: moved.charAt(0).toUpperCase() + moved.slice(1), tone: 'plain' };
+}
+
+/** The token each tone is drawn in. */
+export const QUIET_TONE_COLOR: Record<QuietTone, string> = {
+  quiet: 'var(--gold)', today: 'var(--leaf)', plain: 'var(--ink-dim)',
+};
 
 export const STATE_LABEL: Record<MomentumState, string> = {
   done: 'complete',
@@ -411,4 +434,10 @@ export function spanLabel(days: number): string {
 export function etaLabel(pace: Pace): string | null {
   if (pace.remaining === 0 || !pace.meaningful || pace.etaDays === null) return null;
   return `about ${spanLabel(pace.etaDays)} left at this rate`;
+}
+
+/** The same estimate as a short chip: "~7 weeks left". */
+export function etaChip(pace: Pace): string | null {
+  if (pace.remaining === 0 || !pace.meaningful || pace.etaDays === null) return null;
+  return `~${spanLabel(pace.etaDays)} left`;
 }

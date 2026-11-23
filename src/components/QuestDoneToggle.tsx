@@ -1,5 +1,6 @@
 import type { Quest } from '../types';
 import { isQuestComplete, useQuestStore } from '../store';
+import Icon from './Icon';
 
 interface Props {
   questlineId: string;
@@ -37,14 +38,9 @@ export default function QuestDoneToggle({ questlineId, quest, locked = false, sm
 
   if (locked) {
     return (
-      <span
-        title="Complete the previous quest to unlock"
-        style={{
-          fontSize: small ? 12 : 13, width: small ? 15 : 19,
-          textAlign: 'center', flexShrink: 0, opacity: 0.6,
-        }}
-      >
-        🔒
+      <span className="quest-lock" role="img" aria-label="Locked" title="Complete the previous quest to unlock"
+        style={{ width: small ? 18 : 24 }}>
+        <Icon name="lock" size={small ? 16 : 18} />
       </span>
     );
   }
@@ -52,7 +48,7 @@ export default function QuestDoneToggle({ questlineId, quest, locked = false, sm
   return (
     <input
       type="checkbox"
-      className={small ? 'rune-check rune-check-sm' : 'rune-check'}
+      className="rune-check"
       checked={complete}
       aria-label={`${toggleTitle(quest, complete)}: ${quest.title}`}
       title={toggleTitle(quest, complete)}

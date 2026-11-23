@@ -46,7 +46,7 @@ describe('consistent task controls', () => {
     const html = renderToStaticMarkup(createElement(PinButton, { state: 'none', title: 'Pin to Today', onClick: () => {} }));
     expect(html).toContain('aria-pressed="false"');
     expect(html).toContain('aria-label="Pin to Today"');
-    expect(html).toContain('opacity:0.5');
+    expect(html).toContain('opacity:0.6');
   });
   it('unpins a quest due today and restores it on the next click', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 8, 25, 12));

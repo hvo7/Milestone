@@ -2,7 +2,61 @@
 
 ## Current testing status — November 23, 2026
 
-**One batch is pending review: Pondside · Batch 1 (foundation + Today)** on `testing/pondside-foundation`. Testing only. Production is unchanged at 3.3.15 and nothing has been promoted, released or installed. The November 22 status below still describes `main` and the earlier branches.
+**Two batches are pending review on `testing/pondside-foundation`: Pondside · Batch 1 (foundation + Today) and Pondside · Batch 2 (Quests).** Testing only. Production is unchanged at 3.3.15 and nothing has been promoted, released or installed. The November 22 status below still describes `main` and the earlier branches.
+
+## Pondside · Batch 2: Quests two-pane (2026-11-23) — pending review
+
+### Request and scope
+
+After Batch 1 the user asked for the Quests tab revamp in the same run. This applies the approved board "Approved · Quests (Pondside, two-pane)" to `/quests`. Presentation only; quests, steps, pins, edit mode, the General bucket, supporting systems and linked tasks keep their behavior. Batch 1 has not been reviewed yet; the two batches are separate commits so either can be judged on its own.
+
+### What to review
+
+- **Header.** Bridge banner, "Quests", then Edit (quiet), New questline (secondary), New quest (gold). New quest is disabled while General is selected.
+- **Left pane, coldest first.** Questlines as cards: art tile, name, quiet-goal dot with a factual reading, and `done / total`. Gold "Quiet 19 days" once a goal is cold (21+ days, or never moved after its first week: "Quiet so far"); leaf "Moved today"; plain otherwise ("Moved 6 days ago", "Not started", "Complete"). The selected card has a 2px water inset ring. General is the last card with its open-task count. With nothing chosen the coldest questline is shown.
+- **Right pane.** Large art tile, title (click to edit, plus Edit and Delete icon buttons), momentum chips (last moved · tasks in 30 days · time left at current pace when there is enough history · Sequential · cadence · target date), water progress bar with "4 of 12". Quests are nested rows: done shows the water check, the current quest of a sequential questline has a gold ring and is open with its steps, locked shows a lock icon. A pinned quest or step shows an "On Today" chip (the chip is the unpin control); an unpinned one shows a pin icon. Supporting systems, Linked tasks and "Momentum across questlines" follow below.
+- **Phone (760px and below).** The panes stack: the list is the page; choosing a questline or General opens it as its own view with Back.
+- Momentum is never red and carries no guilt copy.
+
+### Implementation and affected files
+
+- New: `components/QuestlineColdList.tsx`, `pages/questsPondside.css`, `pages/QuestsPage.pondside.test.tsx`.
+- Changed: `pages/QuestsPage.tsx` (layout, coldest-first selection, phone view), `components/QuestlineAccordionItem.tsx` (detail-mode panel header and row classes; the accordion used on Space pages keeps its structure), `components/ActionItem.tsx`, `QuestDoneToggle.tsx` (lock icon), `PinButton.tsx` ("On Today" chip / pin icon, replacing the emoji everywhere it is used), `Icon.tsx`, `lib/momentum.ts` (`quietSignal`, `etaChip`; `momentumHex` now returns tokens), `lib/controlConsistency.test.ts`.
+- `QuestlineSidebar.tsx` is unchanged and still used by Systems.
+
+### Decisions and differences
+
+- **Manual questline order is not editable from Quests.** The list is sorted by momentum, so "Edit order" is no longer on this tab. The saved order is untouched and still shown and editable on Systems.
+- "Tasks in 30 days" counts completions credited to the questline in the trailing 30 days (the existing `movement.moves`).
+- The "current" gold ring applies to sequential questlines only; in a flexible questline every unlocked quest is equal, as before.
+- Uppercase DONE / LOCKED labels became the check, the lock icon and "n of m".
+
+### Storage and compatibility
+
+None. No store, key, schema or preference changes.
+
+### Validation (cloud workspace, 2026-11-23)
+
+- `npm test`: **54 files, 551 tests passed** (5 new in `QuestsPage.pondside.test.tsx`: quiet-goal wording and tones; coldest-first order, default selection and saved order untouched; chips, progress and re-sort after a step is checked; done/current/locked and the On Today chip; General, Back, edit mode and the New quest gate). Two existing tests were updated for intended changes (pin resting opacity, Search in the toolbar order from Batch 1).
+- `npx tsc -b`, `npm run testing -- --build-only`: passed. `npm run lint`: the same 13 pre-existing problems outside this work; changed files are clean apart from that pre-existing warning. `node scripts/check-contrast.mjs`: all pairings pass.
+
+### Visual check: what was actually seen
+
+Headless Chrome against the testing build, synthetic fixture, no console errors.
+
+- **Seen:** 1280px dark and light (sequential questline, current quest open, locked quest, On Today chip, supporting systems, linked tasks); 1024px dark in edit mode; 720px light (stacked list); 390px dark list and 390px light detail with Back; General selected at 1280px dark.
+- **Captured but not inspected:** empty state light; Space page dark.
+- **Not verified:** a "Quiet n days" gold card on screen (the fixture had no history that old; covered by tests); hold-to-reorder of quests; the Electron window; physical touch; create/edit drawers opened from this page.
+
+### Known limitations
+
+- General and Linked tasks rows use the older `RoutineTaskRow`, which keeps its outlined card and puts its pin and delete on a second line at narrow widths.
+- Space pages show the same accordion in its older layout with the new palette.
+- The questline page route (`/questline/:id`) is unchanged.
+
+### Approval
+
+Testing only. **Awaiting the user's review. Not approved for production.**
 
 ## Pondside · Batch 1: foundation + Today (2026-11-23) — pending review
 

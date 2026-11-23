@@ -3,6 +3,7 @@ import type { Action } from '../types';
 import { useQuestStore, useUIStore } from '../store';
 import PinButton from './PinButton';
 import EditTitle from './EditTitle';
+import Icon from './Icon';
 import TaskEditDrawer from './TaskEditDrawer';
 import { actionOnToday } from '../domain/schedule';
 
@@ -16,12 +17,12 @@ export default function ActionItem({ action, questlineId, questId, locked }: Pro
   const [editing, setEditing] = useState(false);
   if (action.hidden) return editMode ? <div style={{ padding: 8 }}>{action.title} · Hidden <button className="btn-ghost" onClick={() => restore(questlineId, questId, action.id)}>Restore task</button></div> : null;
   return <>
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: '1px solid var(--card-border)' }}>
-      <input type="checkbox" className="rune-check" aria-label={action.title} checked={action.completed} disabled={locked} onChange={() => toggle(questlineId, questId, action.id)} />
-      <span style={{ flex: 1, minWidth: 0, fontSize: 14, color: 'var(--page-text)', textDecoration: action.completed ? 'line-through' : undefined }}><EditTitle onEdit={() => setEditing(true)}>{action.title}</EditTitle></span>
+    <div className="quest-step" data-done={action.completed || undefined}>
+      <input type="checkbox" className="rune-check rune-check-sm" aria-label={action.title} checked={action.completed} disabled={locked} onChange={() => toggle(questlineId, questId, action.id)} />
+      <span className="quest-step-title"><EditTitle onEdit={() => setEditing(true)}>{action.title}</EditTitle></span>
       {action.recurring && <small style={{ color: 'var(--page-text-dim)' }}>{action.recurring}</small>}
       {!locked && <PinButton state={actionOnToday(action) ? 'all' : 'none'} onClick={() => pin(questlineId, questId, action.id)} title={actionOnToday(action) ? 'Remove from Today' : 'Pin to Today'} />}
-      <button type="button" className="btn-ghost" aria-label={`Delete ${action.title}`} style={{ color: 'var(--danger)' }} onClick={() => remove(questlineId, questId, action.id)}>✕</button>
+      <button type="button" className="icon-btn-round quest-row-delete" aria-label={`Delete ${action.title}`} title="Delete step" onClick={() => remove(questlineId, questId, action.id)}><Icon name="close" size={14} /></button>
     </div>
     {editing && <TaskEditDrawer target={{ kind: 'action', qlId: questlineId, qId: questId, aId: action.id }} onClose={() => setEditing(false)} />}
   </>;

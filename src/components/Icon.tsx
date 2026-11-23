@@ -17,6 +17,11 @@ const PATHS = {
   grip: <><circle cx="9" cy="6" r="1" /><circle cx="15" cy="6" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="9" cy="18" r="1" /><circle cx="15" cy="18" r="1" /></>,
   chevron: <path d="m9 6 6 6-6 6" />,
   leaf: <><path d="M12 21v-9" /><path d="M12 12q-1-6-7-6 0 6 7 6Zm0 0q1-7 8-7 0 7-8 7Z" /></>,
+  lock: <><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></>,
+  pin: <><path d="M9 4h6l-1 6 3 3H7l3-3Z" /><path d="M12 13v7" /></>,
+  edit: <path d="M4 20h4L19 9l-4-4L4 16Z" />,
+  back: <path d="m15 6-6 6 6 6" />,
+  trash: <><path d="M4 7h16M10 11v6m4-6v6M6 7l1 13h10l1-13M9 7V4h6v3" /></>,
   pond: <><path d="M3 18q3-3 6 0t6 0 6 0" /><path d="M8 14q1-8 8-9-1 7-8 9Z" /></>,
 } as const;
 
