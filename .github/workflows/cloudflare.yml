@@ -1,0 +1,57 @@
+# Deploys the phone app and the private sync relay to Cloudflare.
+#
+# The iPhone installs Milestone from the Cloudflare address and syncs through the
+# relay at the same address. pages.yml and release.yml never touched it, so the
+# phone stayed on whichever build was last deployed by hand (3.3.10, from
+# October) while the desktops moved on. Running this alongside those two is what
+# keeps all three devices on one version.
+#
+# The relay's stored documents and its MILESTONE_TOKEN secret live in Cloudflare
+# and are not changed by a deploy.
+#
+# One-time setup: add two repository secrets (Settings › Secrets and variables ›
+# Actions) — CLOUDFLARE_API_TOKEN (a token with "Edit Cloudflare Workers") and
+# CLOUDFLARE_ACCOUNT_ID. See docs/relay-cloudflare.md.
+name: Deploy the phone app and relay
+
+on:
+  # Publish a feature batch only after explicit user approval.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The same gate as pages.yml: never ship a build whose tests fail.
+      - run: npm test
+
+      - run: npm run generate-icons
+
+      # Code-only bundle into .testing/cloudflare-app, the one directory wrangler
+      # is configured to upload.
+      - run: npm run cloudflare:prepare
+
+      - run: npm --prefix deploy/cloudflare ci
+      - run: npm --prefix deploy/cloudflare test
+
+      - name: Deploy
+        run: npm --prefix deploy/cloudflare run deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

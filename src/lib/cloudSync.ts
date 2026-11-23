@@ -51,12 +51,13 @@ import { APP_VERSION } from '../buildInfo';
 import { withoutHistory, clearHistory } from './history';
 import { httpBridge, compositeBridge, servedByMilestone, identity, rememberToken, type SyncBridge } from './phoneTransport';
 import { loadRelay, relayConfigured, provisionSharedRelay } from './relay';
+import { applyVitalsSlot, parseVitalsSlot, readVitalsSlot, subscribeVitals } from './vitalsSync';
 
 export type Clock = Record<string, number>;
-export type Slot = 'quest' | 'vynues' | 'ui';
+export type Slot = 'quest' | 'vynues' | 'ui' | 'vitals';
 type Version = { at: string; deviceId: string };
 
-export const SLOT_NAMES: Slot[] = ['quest', 'vynues', 'ui'];
+export const SLOT_NAMES: Slot[] = ['quest', 'vynues', 'ui', 'vitals'];
 
 export interface SyncDoc {
   _milestoneSync: 1;
@@ -64,6 +65,9 @@ export interface SyncDoc {
   deviceName: string;
   /** Informational, and the tiebreak when two versions are genuinely concurrent. */
   updatedAt: string;
+  /** The build that wrote this. Absent on documents from before 3.4.1. Shown in
+   *  the sync card so a device left on an old build is visible, not a mystery. */
+  appVersion?: string;
   /** Doc-level clock. Kept for builds that predate `slotClocks`, and written as
    *  the union of the slot clocks so those builds still converge. */
   clock: Clock;
@@ -92,6 +96,7 @@ export function isSyncDoc(value: unknown): value is SyncDoc {
       if (typeof raw !== 'string') return false;
       const parsed = JSON.parse(raw);
       if (!parsed?.state || typeof parsed.state !== 'object' || Array.isArray(parsed.state)) return false;
+      if (slot === 'vitals') { if (!parseVitalsSlot(raw)) return false; continue; }
       const store = SLOTS.find(item => item.slot === slot)!.store as unknown as { getState: () => Record<string, unknown> };
       const live = store.getState();
       if (Object.keys(parsed.state).some(key => ['__proto__', 'constructor', 'prototype'].includes(key) || typeof live[key] === 'function')) return false;
@@ -108,7 +113,7 @@ interface SyncConfig { enabled: boolean; folderEnabled?: boolean; folder: string
  *  without dragging each store's full state type across module boundaries. */
 interface Settable { setState: (partial: object) => void }
 
-const SLOTS: { slot: Slot; key: string; store: Settable }[] = [
+const SLOTS: { slot: Exclude<Slot, 'vitals'>; key: string; store: Settable }[] = [
   { slot: 'quest',  key: QUEST_STORE_KEY,  store: useQuestStore  as unknown as Settable },
   { slot: 'vynues', key: VYNUES_STORE_KEY, store: useVynuesStore as unknown as Settable },
   { slot: 'ui',     key: UI_STORE_KEY,     store: useUIStore     as unknown as Settable },
@@ -128,12 +133,15 @@ export interface SyncStatus {
   folderEnabled: boolean;
   folder: string;
   deviceName: string;
-  peers: { deviceName: string; updatedAt: string }[];
+  peers: { deviceName: string; updatedAt: string; appVersion?: string }[];
   lastSyncedAt: string | null;
   busy: boolean;
   error: string | null;
   /** Something the user should read once — a conflict, or a first-run adoption. */
   notice: string | null;
+  /** A standing problem that is not stopping sync: a device whose data was
+   *  skipped. Re-evaluated on every exchange, so it clears itself when fixed. */
+  warning: string | null;
   /** True in a browser rather than the desktop app — a phone, or a tab. The
    *  reconciliation is identical; the wording isn't. */
   overWifi: boolean;
@@ -144,7 +152,7 @@ export interface SyncStatus {
 
 export const useSyncStatus = create<SyncStatus>(() => ({
   available: false, enabled: false, folderEnabled: false, folder: '', deviceName: '',
-  peers: [], lastSyncedAt: null, busy: false, error: null, notice: null, overWifi: false, linked: false,
+  peers: [], lastSyncedAt: null, busy: false, error: null, notice: null, warning: null, overWifi: false, linked: false,
 }));
 
 const setStatus = (patch: Partial<SyncStatus>) => useSyncStatus.setState(patch);
@@ -280,7 +288,7 @@ interface Meta {
   versions?: Partial<Record<Slot, Version>>;
 }
 
-const emptyMeta = (): Meta => ({ slots: { quest: {}, vynues: {}, ui: {} }, published: {} });
+const emptyMeta = (): Meta => ({ slots: { quest: {}, vynues: {}, ui: {}, vitals: {} }, published: {} });
 
 function loadMeta(): Meta {
   try {
@@ -319,6 +327,8 @@ function snapshot(): Partial<Record<Slot, string>> {
     const raw = localStorage.getItem(key);
     if (raw !== null) stores[slot] = raw;
   }
+  const vitals = readVitalsSlot();
+  if (vitals !== undefined) stores.vitals = vitals;
   return stores;
 }
 
@@ -343,6 +353,7 @@ function applyStores(stores: Partial<Record<Slot, string>>) {
         if (parsed && typeof parsed.state === 'object' && parsed.state) store.setState(parsed.state);
       } catch { /* leave the store as-is; the raw value is still on disk for next launch */ }
     }
+    if (typeof stores.vitals === 'string') applyVitalsSlot(stores.vitals);
     // Theme is applied to <html> imperatively on toggle, so adopting a different
     // theme has to re-assert it — setState alone won't repaint the attribute.
     const theme = useUIStore.getState().theme;
@@ -356,7 +367,7 @@ function applyStores(stores: Partial<Record<Slot, string>>) {
 
 const backupBundle = () => {
   const stores = snapshot();
-  return { _milestone: 2, appVersion: APP_VERSION, exportedAt: new Date().toISOString(), quest: stores.quest, vynues: stores.vynues, ui: stores.ui };
+  return { _milestone: 2, appVersion: APP_VERSION, exportedAt: new Date().toISOString(), quest: stores.quest, vynues: stores.vynues, ui: stores.ui, vitals: stores.vitals };
 };
 
 // ── Publish ───────────────────────────────────────────────────────────────────
@@ -385,7 +396,7 @@ async function publish(bump: boolean) {
       meta.versions = { ...meta.versions, [slot]: { at: new Date().toISOString(), deviceId: config.deviceId } };
     }
   }
-  const signature = JSON.stringify({ stores, slots: meta.slots, versions: meta.versions });
+  const signature = JSON.stringify({ stores, slots: meta.slots, versions: meta.versions, app: APP_VERSION });
   if (!meta.pending && signature === deliveredSnapshot) return;
   meta.published = { ...stores };
   meta.pending = true;
@@ -396,13 +407,30 @@ async function publish(bump: boolean) {
     deviceId: config.deviceId,
     deviceName: config.deviceName,
     updatedAt: new Date().toISOString(),
+    appVersion: APP_VERSION,
     clock: unionClocks(meta.slots),
     slotClocks: meta.slots,
     slotVersions: meta.versions,
     stores,
   };
 
-  const res = await api.write(doc);
+  let res = await api.write(doc);
+  // The relay refuses a document whose clock is behind the one it already holds
+  // for this device. That happens when this device's bookkeeping went backwards
+  // — a restored profile, cleared site data — and without help it is permanent:
+  // every later write is refused too. Take back the clock the relay remembers,
+  // and send again.
+  if (!res.ok && res.stale && api.readSelf) {
+    const mine = await api.readSelf().catch(() => null);
+    if (mine && isSyncDoc(mine) && mine.deviceId === config.deviceId) {
+      for (const slot of SLOT_NAMES) meta.slots[slot] = mergeClocks(meta.slots[slot], slotClock(mine, slot));
+      saveMeta(meta);
+      doc.clock = unionClocks(meta.slots);
+      doc.slotClocks = meta.slots;
+      res = await api.write(doc);
+      if (res.ok) setStatus({ notice: 'This device\'s sync record was behind the relay\'s copy and has been repaired. Syncing has resumed.' });
+    }
+  }
   if (res.ok) {
     deliveredSnapshot = signature;
     meta.pending = false;
@@ -463,7 +491,7 @@ async function adoptSlots(plans: SlotPlan[], conflicted: SlotPlan[]) {
       const peer = plan.source;
       const saved = await api.writeBackup(`${peer.deviceId}-${plan.slot}-${stamp}.json`, {
         _milestone: 2, appVersion: APP_VERSION, exportedAt: new Date().toISOString(),
-        quest: peer.stores.quest, vynues: peer.stores.vynues, ui: peer.stores.ui,
+        quest: peer.stores.quest, vynues: peer.stores.vynues, ui: peer.stores.ui, vitals: peer.stores.vitals,
       });
       if (!saved.ok) { setStatus({ error: 'Sync paused: could not back up the other device. Both versions were kept.' }); return; }
     }
@@ -500,6 +528,7 @@ async function adoptSlots(plans: SlotPlan[], conflicted: SlotPlan[]) {
 
 /** Human names for the notice text — "quests", not "quest". */
 const SLOT_LABEL: Record<Slot, string> = {
+  vitals: 'Life Vitals',
   quest: 'quests and tasks',
   vynues: 'Vynues projects',
   ui: 'display settings',
@@ -530,13 +559,20 @@ async function pullOnce() {
     if (JSON.stringify(snapshot()) !== JSON.stringify(current)) { void pull(); return; }
   }
 
-  if (!Array.isArray(res.peers) || res.peers.some(doc => !isSyncDoc(doc))) {
-    setStatus({ error: 'A device sent invalid sync data. Local data was kept; repair or update that device before syncing.' });
+  if (!Array.isArray(res.peers)) {
+    setStatus({ error: 'The sync route returned an unreadable answer. Local data was kept.' });
     return;
   }
+  // One unreadable document must not stop this device syncing with the others:
+  // it is left out and named, and everything else carries on.
+  const unreadable = res.peers.filter(doc => !isSyncDoc(doc)) as { deviceName?: unknown }[];
   const peers = res.peers.filter(isSyncDoc).filter(doc => doc.deviceId !== config?.deviceId);
+  const skipped = unreadable.map(doc => typeof doc?.deviceName === 'string' && doc.deviceName ? doc.deviceName.slice(0, 40) : 'an unnamed device');
   setStatus({
-    peers: peers.map(p => ({ deviceName: p.deviceName, updatedAt: p.updatedAt })),
+    peers: peers.map(p => ({ deviceName: p.deviceName, updatedAt: p.updatedAt, appVersion: p.appVersion })),
+    warning: skipped.length
+      ? `Skipped unreadable sync data from ${[...new Set(skipped)].join(', ')}. Update Milestone on that device; the other devices are still syncing.`
+      : null,
   });
 
   if (peers.length === 0) { await publish(Object.keys(previous).length === 0); return; }
@@ -610,6 +646,7 @@ async function connect() {
 
   const offs = SLOTS.map(({ store }) =>
     (store as unknown as { subscribe: (fn: () => void) => () => void }).subscribe(scheduleWrite));
+  offs.push(subscribeVitals(scheduleWrite));
 
   offs.push(api.onChanged(() => { void pull(); }));
 

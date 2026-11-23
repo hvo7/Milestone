@@ -4,6 +4,7 @@ import VitalChecklist from '../components/VitalChecklist';
 import { paceLabels, type Pace } from '../lib/lifeVitals';
 import { attentionReason, choosePriority, historyEntries, latestEntry, loadStatusVitals, newStatusVital, saveCheckIn, statusPace, statusVitalsKey,
   validStatusVitals, type StatusVital, type VitalEntry, type VitalStatus } from '../lib/statusVitals';
+import { noteVitalsChanged, VITALS_SYNCED } from '../lib/vitalsSync';
 import './lifeVitals.css';
 import './statusVitals.css';
 
@@ -191,6 +192,12 @@ export default function StatusLifeVitalsPage() {
     window.addEventListener('focus', refresh);
     return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
   }, []);
+  // Another device's check-ins arrive through sync while this page is open.
+  useEffect(() => {
+    const reload = () => { try { setAreas(loadStatusVitals(localStorage, isTesting)); } catch { /* keep what is shown */ } };
+    window.addEventListener(VITALS_SYNCED, reload);
+    return () => window.removeEventListener(VITALS_SYNCED, reload);
+  }, []);
   const visible = areas.filter(a => !a.archived);
   const attention = visible.filter(a => attentionReason(a, now));
   const priority = visible.find(a => a.priority);
@@ -200,7 +207,7 @@ export default function StatusLifeVitalsPage() {
     if (initial.error || !validStatusVitals(next)) return false;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      setAreas(next); setError(''); return true;
+      setAreas(next); setError(''); noteVitalsChanged(); return true;
     } catch { setError('Could not save. Try again.'); return false; }
   };
   const save = (area: StatusVital) => {

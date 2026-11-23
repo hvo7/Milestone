@@ -16,6 +16,47 @@ read a desktop profile, copy Testing data, provision credentials, or deploy when
 built or tested. The desktop stays authoritative for the first pairing requested
 by the user. After pairing, edits travel in both directions.
 
+## Keeping the phone on the current version
+
+The iPhone installs Milestone from the Cloudflare address, so it only ever gets
+the build that was last deployed *there*. `pages.yml` (GitHub Pages) and
+`release.yml` (desktop) do not update it. On 2026-11-23 the Worker was found
+still serving 3.3.10 (built 2026-10-19) while the desktops were on 3.4.0.
+
+Deploy all three together for every release:
+
+1. `release.yml` — desktop and laptop update themselves from the GitHub Release.
+2. `pages.yml` — the GitHub Pages copy of the web app.
+3. `cloudflare.yml` — the phone app and relay. **This is the one the phone uses.**
+
+`cloudflare.yml` needs two repository secrets, added once under Settings ›
+Secrets and variables › Actions:
+
+- `CLOUDFLARE_API_TOKEN`: Cloudflare dashboard › My Profile › API Tokens ›
+  Create Token › "Edit Cloudflare Workers" template, limited to this account.
+- `CLOUDFLARE_ACCOUNT_ID`: shown on the Workers & Pages overview page.
+
+Without the workflow, the same deploy from a clone on Windows is:
+
+```powershell
+npm ci
+npm run generate-icons
+npm run cloudflare:prepare
+npm --prefix deploy/cloudflare ci
+npm --prefix deploy/cloudflare run login
+npm --prefix deploy/cloudflare run deploy
+```
+
+A deploy replaces the app files and the Worker code only. The relay's stored
+device documents and the `MILESTONE_TOKEN` secret are untouched, so devices stay
+paired. After a deploy, `https://<worker>/version.json` shows the new version;
+the phone picks it up the next time the app is opened with a connection (it
+shows an update notice, or applies it when the app is next sent to the
+background).
+
+Check which devices are current from any device: Settings › Data & connections.
+From 3.4.1 each device reports the version it last synced from.
+
 ## Prepared components
 
 - `deploy/cloudflare/worker.mjs`: authenticated HTTP snapshot exchange, SQLite

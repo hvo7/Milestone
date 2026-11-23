@@ -28,7 +28,10 @@ import { reserveSyncRequest } from './syncBudget';
 export interface SyncBridge {
   getConfig: () => Promise<{ enabled: boolean; folderEnabled?: boolean; folder: string; deviceId: string; deviceName: string; sharedRelay?: { url: string; token: string } }>;
   readPeers: () => Promise<{ ok: boolean; peers?: unknown[]; error?: string }>;
-  write: (doc: unknown) => Promise<{ ok: boolean; at?: string; error?: string }>;
+  write: (doc: unknown) => Promise<{ ok: boolean; at?: string; error?: string; stale?: boolean }>;
+  /** This device's own document as the route holds it, for repairing a clock that
+   *  went backwards. Only routes that can refuse a stale write need it. */
+  readSelf?: () => Promise<unknown | null>;
   writeBackup: (name: string, bundle: unknown) => Promise<{ ok: boolean; error?: string }>;
   onChanged: (callback: () => void) => () => void;
 }
@@ -178,6 +181,11 @@ export function httpBridge({ base = '', token, me }: {
         body: JSON.stringify(body),
       });
       if (res.status === 401) return { ok: false, error: 'This device is not paired — open the link again.' };
+      if (res.status === 409) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        const stale = /older snapshot/i.test(body?.error ?? '');
+        return { ok: false, stale, error: body?.error ?? 'The sync server refused this update.' };
+      }
       if (res.ok === false) return { ok: false, error: `Sync server returned ${res.status}. Changes remain on this device.` };
       return await res.json();
     } catch (err) {
@@ -230,6 +238,14 @@ export function httpBridge({ base = '', token, me }: {
       return cached && Date.now() - cached.at < 1000 ? Promise.resolve(cached.body) : fetchPeers();
     },
     write: doc => post('write', doc),
+    // Asking for peers as nobody returns every document, this device's included.
+    readSelf: async () => {
+      try {
+        const res = await syncFetch(url('peers', { deviceId: '-' }), { cache: 'no-store' });
+        const body = res.ok ? await res.json() : null;
+        return Array.isArray(body?.peers) ? body.peers.find((doc: { deviceId?: string } | null) => doc?.deviceId === me.deviceId) ?? null : null;
+      } catch { return null; }
+    },
     writeBackup: (name, bundle) => post('backup', { name, bundle }),
 
     onChanged: callback => {
@@ -307,7 +323,16 @@ export function compositeBridge(parts: SyncBridge[]): SyncBridge {
       const good = results.find(r => r.ok);
       // A local acknowledgement is not delivery to the remote device.
       if (good && results.every(r => r.ok)) return good;
-      return { ok: false, error: good ? 'Saved locally; some devices are still waiting. Retrying automatically.' : 'Unable to upload. Changes remain on this device; retrying automatically.' };
+      const stale = results.some(r => 'stale' in r && r.stale);
+      return { ok: false, stale, error: good ? 'Saved locally; some devices are still waiting. Retrying automatically.' : 'Unable to upload. Changes remain on this device; retrying automatically.' };
+    },
+
+    readSelf: async () => {
+      for (const part of parts) {
+        const mine = await part.readSelf?.().catch(() => null);
+        if (mine) return mine;
+      }
+      return null;
     },
 
     writeBackup: async (name, bundle) => {

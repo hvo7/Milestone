@@ -1,5 +1,63 @@
 # Milestone Testing
 
+## Current testing status — November 23, 2026 (later)
+
+**One batch is pending review: Sync repair** on `testing/sync-repair`, cut from `main` at `dbb4659` (3.4.0, released earlier today). Testing only. No version bump, no deploy, no production change.
+
+## Sync repair: phone on a stale build, Life Vitals not syncing, sync stalls (2026-11-23) — pending review
+
+### Request and scope
+
+The user reported that the iPhone app "does not work anymore" and asked for the mobile code to be analyzed, for the phone to follow app updates, look like the desktop, and sync live with the desktop and laptop. The exact symptom on the phone was not available. This batch fixes what the investigation could establish and adds the visibility needed to diagnose the rest.
+
+### Findings
+
+1. **The phone's app host was never updated.** `https://milestone-sync.henryhuyvo74.workers.dev/version.json` returned `3.3.10`, built `2026-10-19`, on 2026-11-23, while GitHub Pages returned `3.4.0`. The Cloudflare Worker serves the phone app and is deployed only by a manual `wrangler deploy`; no workflow did it. The phone therefore had none of 3.3.11–3.4.0 (Life Vitals check-ins, Today pin fixes, Pondside). `/api/health` on the Worker was healthy (`configured: true`, `push: websocket`), so the relay itself was up.
+2. **Life Vitals never synced.** It is saved under its own storage key (`milestone-status-vitals-v1`), outside the three synced stores, and was also missing from conflict backups.
+3. **One unreadable device stopped all syncing.** `pullOnce` returned early with "A device sent invalid sync data" if any peer document failed validation, including documents from devices that are no longer used.
+4. **A clock that went backwards stalled a device permanently.** The Worker answers 409 "older snapshot" when a device's document clock is behind the one it holds. Nothing recovered from that, so every later write was refused too. This can follow a restored profile or cleared site data.
+5. **No way to see which build a device is on.** Sync documents carried no version, so a stale device was indistinguishable from a healthy one.
+6. Desktop releases 3.3.9–3.3.15 have no GitHub Release tag (tags go 3.3.8 → 3.4.0), so a second computer could only have updated through 3.4.0's release. Not a code defect; noted because it explains a laptop that was behind.
+
+Not established: what the phone actually shows. The deployed 3.4.0 web build was loaded at phone width in desktop Chromium and booted with no errors, so 3.4.0 itself is not obviously broken; iOS Safari was not tested.
+
+### Changes
+
+- **Life Vitals is a fourth sync slot (`vitals`)** with its own clock: `lib/vitalsSync.ts`, `lib/cloudSync.ts`, `pages/StatusLifeVitalsPage.tsx`. Saving a check-in publishes it; an open Life Vitals page reloads when another device's check-ins arrive. An empty list is never published, so a device that has not used Life Vitals cannot replace real check-ins with nothing. Included in conflict backups. Builds before this ignore the slot.
+- **Unreadable peers are skipped, not fatal.** The device is named in a standing warning that clears itself once fixed.
+- **Stale-clock recovery.** On a 409 "older snapshot" the client reads its own document back from the relay, merges that clock and retries once. Works against the Worker already deployed (it asks `/api/peers` with no matching device id). `lib/phoneTransport.ts`, `lib/cloudSync.ts`.
+- **Versions are visible.** Each sync document carries `appVersion`; the sync cards list each device with its version and say when they differ. `components/PhoneCard.tsx`, `CloudSyncCard.tsx`.
+- **`.github/workflows/cloudflare.yml`** (manual dispatch) builds, tests and deploys the phone app and relay. Needs repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. `docs/relay-cloudflare.md` documents it and the by-hand equivalent.
+- Install colors match Pondside: `theme_color` and `background_color` in `public/manifest.webmanifest` and the `theme-color` meta in `index.html` are `#12201e`.
+
+### Storage and compatibility
+
+No migration. New local key use: none (Life Vitals keeps its key). Sync documents gain an optional `appVersion` and an optional `stores.vitals` / `slotClocks.vitals`; older builds and the deployed relay accept and ignore both. The Worker code is unchanged. First exchange after updating: a device with Life Vitals publishes them; a device without adopts them; if two devices both hold different Life Vitals, the most recently published wins and the other is saved as a sync backup, as for any other slot.
+
+### Validation (cloud workspace)
+
+- `npm test`: **55 files, 561 tests passed** (10 new in `lib/syncRepair.test.ts`: Life Vitals publish, republish on save, adoption with page event, empty list never published, malformed slot rejected, bad peer skipped and named, peer versions reported, stale-clock recovery and its failure path, 409 handling and own-document read over HTTP).
+- `npm run test:sync`: 50 vitest + 9 node tests passed. `npm --prefix deploy/cloudflare test`: 1 passed (Miniflare runtime). `npm --prefix deploy/cloudflare run check` (dry run): passed, no deploy.
+- `npx tsc -b`, `npm run build`, `npm run cloudflare:prepare`, `npm run testing -- --build-only`: passed. `npm run lint`: unchanged, 13 pre-existing problems outside this work.
+
+### Not verified
+
+- Anything on the real iPhone, laptop or desktop, or against the live relay with real data. No device was paired, no real document was read.
+- The new workflow has never run; the Cloudflare secrets are not set.
+- Two real devices exchanging Life Vitals end to end through the Worker (covered by unit tests with a mocked route only).
+- iOS Safari rendering of 3.4.0.
+
+### Known limitations
+
+- Devices that are no longer used stay on the relay as documents (limit 16). There is no control to remove one yet.
+- Sync replaces a whole slot; two devices editing tasks at the same moment still resolve to one side plus a backup.
+- The phone only receives changes while the app is open; iOS suspends it in the background and it catches up on reopen.
+- GitHub Pages and the Cloudflare address are separate installs with separate storage on the phone. Only one should be on the home screen.
+
+### Approval
+
+Testing only. **Awaiting the user's review.** Releasing it means a version bump (3.4.1), then `release.yml`, `pages.yml` and `cloudflare.yml`.
+
 ## Current release status — November 23, 2026
 
 **Pondside Batches 1 and 2 were approved for production by the user on November 23, 2026 ("Push both into production") and are prepared as release 3.4.0.** The sections below were written while the batches were pending review and are kept as the record of that review.

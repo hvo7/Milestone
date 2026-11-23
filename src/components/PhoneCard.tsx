@@ -1,3 +1,4 @@
+import { APP_VERSION } from '../buildInfo';
 /**
  * "Open Milestone on my phone" — the desktop half of electron/phone.cjs.
  *
@@ -96,6 +97,16 @@ function SyncHealth() {
       ? `Last successful exchange: ${new Date(status.lastSyncedAt).toLocaleString()}`
       : 'Changes stay saved on this device until a connection is available.')}</p>
     {status.notice && <p>{status.notice}</p>}
+    {status.warning && <p style={{ color: 'var(--gold)' }}>{status.warning}</p>}
+    {/* Which devices this one can see, and which build each last wrote from. A
+        device stuck on an old build is the usual reason a change never arrives. */}
+    {status.peers.length > 0 && <p style={{ margin: '4px 0', color: 'var(--ink-dim)' }}>
+      This device v{APP_VERSION}. Also syncing: {status.peers.map(p =>
+        `${p.deviceName}${p.appVersion ? ` v${p.appVersion}` : ' (older version)'}`).join(', ')}.
+    </p>}
+    {status.peers.some(p => p.appVersion !== APP_VERSION) && <p style={{ margin: '4px 0', color: 'var(--gold)' }}>
+      Not every device is on the same version. Update the others so new features sync.
+    </p>}
     {status.enabled && <button className="btn-ghost" disabled={status.busy} onClick={() => void syncNow()}>Sync now</button>}
   </div>;
 }

@@ -111,7 +111,7 @@ export default function CloudSyncCard() {
             {status.peers.length > 0 && (
               <>
                 <br />
-                Also here: {status.peers.map(p => `${p.deviceName} (${agoLabel(p.updatedAt)})`).join(', ')}
+                Also here: {status.peers.map(p => `${p.deviceName}${p.appVersion ? ` v${p.appVersion}` : ''} (${agoLabel(p.updatedAt)})`).join(', ')}
               </>
             )}
           </p>
@@ -144,6 +144,7 @@ export default function CloudSyncCard() {
         </p>
       )}
 
+      {status.warning && <p style={{ margin: '8px 0 0', fontSize: 12, color: 'var(--gold)', lineHeight: 1.5 }}>{status.warning}</p>}
       {status.notice && (
         <div style={{
           marginTop: 10, padding: '10px 12px', borderRadius: 8,
