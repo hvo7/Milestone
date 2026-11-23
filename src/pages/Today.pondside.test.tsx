@@ -40,7 +40,7 @@ afterEach(() => {
 const today = () => dateKey(logicalDayStart());
 const daily = (id: string, more: Partial<Routine> = {}): Routine =>
   ({ id, title: id, recurring: 'daily', trackedToday: false, completed: false, ...more });
-const render = () => act(() => root.render(<MemoryRouter><Today inlineAgenda /><UndoToast /></MemoryRouter>));
+const render = () => act(() => root.render(<MemoryRouter><Today /><UndoToast /></MemoryRouter>));
 const click = (element: Element) => act(() => (element as HTMLElement).click());
 const check = (name: string) => host.querySelector<HTMLInputElement>(`.inline-check-target input[aria-label="${name}"]`)!;
 const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === label)!;

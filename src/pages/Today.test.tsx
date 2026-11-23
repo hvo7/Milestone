@@ -37,13 +37,13 @@ afterEach(() => {
 
 const daily = (id: string, more: Partial<Routine> = {}): Routine =>
   ({ id, title: id, recurring: 'daily', trackedToday: false, completed: false, ...more });
-const render = () => act(() => root.render(<MemoryRouter><Today inlineAgenda={false} /></MemoryRouter>));
+const render = () => act(() => root.render(<MemoryRouter><Today /></MemoryRouter>));
 const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === label)!;
 const checks = (selector: string) =>
   [...host.querySelectorAll<HTMLInputElement>(selector + ' input[type="checkbox"]')].map(c => c.getAttribute('aria-label'));
 const click = (element: HTMLElement) => act(() => element.click());
 
-const renderInline = () => act(() => root.render(<MemoryRouter><Today inlineAgenda /><UndoToast /></MemoryRouter>));
+const renderInline = () => act(() => root.render(<MemoryRouter><Today /><UndoToast /></MemoryRouter>));
 const titleButton = (name: string) => [...host.querySelectorAll<HTMLButtonElement>('.inline-title')].find(b => b.textContent === name)!;
 const optionButton = () => host.querySelector<HTMLButtonElement>('[aria-label="List options"]')!;
 const currentRow = () => host.querySelector<HTMLDivElement>('.inline-item[data-expanded="true"]')!;

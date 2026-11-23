@@ -1,16 +1,21 @@
 # Milestone Testing
 
-## Cleanup: unreferenced files (2026-11-23) — pending review
+## Cleanup: stale code and files (2026-11-23) — pending review
 
-On `chore/cleanup`, cut from `release/3.4.1` (`cc1d6af`). Requested by the user ("minimize the amount of unnecessary code and files"). Removes only files that no application code imports, found by scanning every `src` file for an importer:
+On `chore/cleanup`, cut from `release/3.4.1` (`cc1d6af`). The user asked to remove old stale code and unnecessary files while keeping current data. 39 files changed, about 4,600 lines removed. No behavior, storage, sync-format or version change; saved data is not read or written by any of this.
 
-- `src/assets/quests-riverside.png`, `systems-lily-pond.png`, `systems-water-garden.png` (8.3 MB; banners replaced by pond and bridge in 3.4.0).
-- `src/components/QuestCard.tsx`, `RoutineCard.tsx` (no importer).
-- `src/pages/LifeVitalsPage.tsx`, `SimpleLifeVitalsPage.tsx` with its test and `simpleVitals.css` (earlier Life Vitals pages; the route uses `StatusLifeVitalsPage`). Their data libraries stay, because the current page migrates saved data through them.
+**Removed**
 
-No behavior, storage or version change. Validation: `npm test` 54 files, 557 tests passed (4 fewer: the removed page's own tests); `npx tsc -b`, `npm run build`, `npm run testing -- --build-only` passed; lint unchanged at 13 pre-existing problems.
+- Unreferenced app files (found by scanning every `src` file for an importer): three banner PNGs replaced in 3.4.0 (8.3 MB); `QuestCard.tsx`, `RoutineCard.tsx`; the earlier Life Vitals pages `LifeVitalsPage.tsx` and `SimpleLifeVitalsPage.tsx` with its test and stylesheet. The Life Vitals data libraries stay: the current page migrates saved data through them.
+- The pre-Pondside Today page layout: the `inlineAgenda` switch in `Today.tsx`, its masthead, category select and `DayProgress`, and 53 lines of their CSS. Today now has one layout. Its four tests run against the current layout. `TaskRow`'s full row is **kept**: Systems, Quests and All still render it through `RoutineTaskRow`.
+- Self-hosted relay alternatives, unused since the Cloudflare relay: `server/relay.mjs` and its test, `Dockerfile`, `.dockerignore`, `fly.toml`, `render.yaml`, `deploy/oracle/`, `relay.yml`, `docs/relay.md`, `relay-oracle.md`, `relay-render.md`, `scripts/smoke-live-sync.cjs`, and the `relay` npm script. README points to `docs/relay-cloudflare.md`. The app can still talk to any relay that speaks the protocol; only the code to host one elsewhere is gone (it remains in git history).
+- Four stray root scripts from August: `.smoke-phone.cjs`, `.smoke-relay.cjs`, `.smoke-systems.cjs`, `.smoke3.cjs`.
 
-Left in place and listed for the user's decision: the older non-inline Today layout in `TaskRow.tsx`/`Today.tsx` (kept alive only by its tests), and the alternative relay hosts (`Dockerfile`, `fly.toml`, `render.yaml`, `deploy/oracle`, `server/relay.mjs`, `relay.yml`, three docs), unused since the Cloudflare relay. Testing only; awaiting review.
+**Validation:** `npm test` 54 files, 557 tests passed (4 fewer than 3.4.1: the deleted Life Vitals page's own tests); `npm run test:sync` 50 vitest + 8 node passed (1 fewer: the deleted Node relay's test); `npx tsc -b`, `npm run build`, `npm run cloudflare:prepare`, `npm run testing -- --build-only` passed; lint unchanged at 13 pre-existing problems. Today was re-checked in headless Chrome at 1280px dark with List options open and 390px light: unchanged, no console errors. Other routes were not re-inspected (no code they use changed).
+
+**Local folder cleanup (not a repo change), done the same day with the user's delete approval:** removed `release/Milestone-3.3.11…3.3.15-win32-x64`, `release/.patch-backup`, `Milestone-Mamba.exe`, `app-Mamba.asar`, `dist`, `dist-testing`, `design-studies`, delivered bundles and helper files in `Claude outputs`, and scratch logs/scripts in `.testing` (its `profile`, `session` and `seed.json` were kept). One exe remains: `release/Milestone-win32-x64/Milestone.exe`, carrying the 3.4.1 app archive, with the previous archive beside it as `app-3.3.15-backup.asar`. The checked folder held no production data; that lives in `%APPDATA%\Milestone` and was not touched.
+
+Testing only; awaiting review.
 
 ## Current release status — November 23, 2026 (later)
 

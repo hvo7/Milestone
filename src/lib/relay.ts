@@ -13,7 +13,7 @@
  * keeps the thing you have to trust small — it holds your data, but it cannot
  * quietly decide what your data is.
  *
- * Where it runs is your choice; server/relay.mjs is the whole implementation.
+ * It runs as a Cloudflare Worker; deploy/cloudflare/worker.mjs is the whole implementation.
  */
 import { syncFetch } from './phoneTransport';
 

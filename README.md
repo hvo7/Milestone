@@ -113,14 +113,10 @@ Two computers sharing a cloud folder sync through it. A phone can't read that
 folder, so it needs one of the other two routes:
 
 - **Over Wi-Fi**, from a desktop that's awake — Sync & Backup → *On your phone*.
-- **Through a relay**, for everything else. One small always-on address all three
-  devices reach, so an edit made on a train is on the desktop as it happens. See
-  **[docs/relay.md](docs/relay.md)** — `fly deploy` and pasting an address into
-  each device. To run the same relay for nothing:
-  **[docs/relay-render.md](docs/relay-render.md)** is five minutes on a free
-  tier that sleeps when idle, and
-  **[docs/relay-oracle.md](docs/relay-oracle.md)** is an always-free VM that
-  never does.
+- **Through the relay**, for everything else. One small always-on address all three
+  devices reach, so an edit made on a train is on the desktop as it happens. It
+  runs on Cloudflare and also serves the phone app: see
+  **[docs/relay-cloudflare.md](docs/relay-cloudflare.md)**.
 
 All three routes speak the same protocol and a device uses whichever are up at
 once, so the reconciler never has to care which one a change arrived by. Changes

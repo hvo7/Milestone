@@ -37,13 +37,13 @@ const QuestCreateDrawer = lazyChunk(() => import('../components/QuestCreateDrawe
 // silently undoes the lazy() above.
 import type { EditTarget } from '../components/TaskEditDrawer';
 import type { SubNode, SubtaskTreeHandlers } from '../components/SubtaskTree';
-import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, hasCheckpoints, ANCHOR_LABEL, ANCHOR_CATEGORY } from '../lib/ui';
+import { categoryColor, cleanQuest, routineSubNodes, vynuesSubNodes, hasCheckpoints, ANCHOR_CATEGORY } from '../lib/ui';
 import Heatmap from '../components/Heatmap';
 import FirstRunCard from '../components/FirstRunCard';
 import TaskRow, { type RowStrip, type SystemMenu } from '../components/today/TaskRow';
 import { useReorder } from '../components/today/useReorder';
 import { Caption, DueLabel, VynuesDueLabel } from '../components/today/labels';
-import { DayProgress, DaySwitcher, PondProgress } from '../components/today/chrome';
+import { DaySwitcher, PondProgress } from '../components/today/chrome';
 import PageBanner from '../components/PageBanner';
 import Icon from '../components/Icon';
 import { questArtwork } from '../lib/questArtwork';
@@ -149,9 +149,7 @@ function AgendaDialog({ label, onClose, children }: { label: string; onClose: ()
     onCancel={event => { event.preventDefault(); onClose(); }}>{children}</dialog>;
 }
 
-/** `inlineAgenda` is the Pondside Today, the released layout. The older agenda
- *  layout stays reachable with `inlineAgenda={false}` for its own tests. */
-export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean }) {
+export default function Today() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const optionsButton = useRef<HTMLButtonElement>(null);
@@ -481,7 +479,7 @@ export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean 
 
   // The Systems / Quests split is applied before everything else: the chips, the
   // counts and the list all describe the half you're looking at.
-  const removedIds = inlineAgenda && hiddenRows?.day === viewKey ? hiddenRows.ids : [];
+  const removedIds = hiddenRows?.day === viewKey ? hiddenRows.ids : [];
   const isListed = (it: TodoItem) => !removedIds.includes(it.id);
   const listedItems = todoItems.filter(isListed);
   const shownItems = listedItems.filter(it => showSkipped || !it.skipped);
@@ -546,7 +544,7 @@ export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean 
     return (
       <TaskRow
         key={it.id}
-        inline={inlineAgenda ? {
+        inline={{
           expanded: expandedId === it.id,
           toggle: () => setExpandedId(current => current === it.id ? null : it.id),
           onRemove: () => {
@@ -561,7 +559,7 @@ export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean 
             pushUndo(`Removed “${it.title}” from Today`, () => restoreRow(it.id));
             focusTarget?.focus();
           },
-        } : undefined}
+        }}
         compact={placement === 'habit'}
         title={it.title}
         tag={placement === 'habit' ? undefined : { label: it.category.tagLabel ?? it.category.label, color: it.category.color }}
@@ -607,7 +605,6 @@ export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean 
   const skippedCount = listedItems.filter(it => it.skipped).length;
   const dayItems = [...listedItems, ...anchorItems].filter(it => !it.skipped);
   const done = dayItems.filter(settledOf).length;
-  const openCount = todoOpen.filter(it => !it.skipped).length;
   const hasFilters = kindCounts.system > 0 || kindCounts.quest > 0 || categories.length > 1 || skippedCount > 0 || showSkipped;
   const isFresh = !questlines.length && !routines.length && !vynuesProjects.length;
   const dayName = preview ? 'Tomorrow' : 'Today';
@@ -661,34 +658,26 @@ export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean 
   </>;
 
   return (
-    <div className={`page-shell agenda-page${inlineAgenda ? ' agenda-inline' : ''}`}>
+    <div className="page-shell agenda-page agenda-inline">
       <NavBar hideCover />
       <main className="agenda">
-        {inlineAgenda && <PageBanner pathname="/" date={{
+        <PageBanner pathname="/" date={{
           key: viewKey, long: dateHeading,
           short: viewStart.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }),
-        }} />}
-        {!inlineAgenda && <header className="agenda-masthead">
-          <div>
-            <time dateTime={viewKey}>{dateHeading}</time>
-            <h1>{dayName}</h1>
-          </div>
-          <DaySwitcher preview={preview} onChange={changeDay} />
-        </header>}
+        }} />
 
         <div className="agenda-layout">
           <section className="agenda-list" aria-labelledby="agenda-tasks">
             <div className="agenda-section-head">
-              {inlineAgenda ? <h1 id="agenda-tasks">{dayName}</h1> : <h2 id="agenda-tasks">Task list</h2>}
-              {!inlineAgenda && openCount > 0 && <span className="agenda-count">{openCount} open</span>}
+              <h1 id="agenda-tasks">{dayName}</h1>
               <button type="button" className="btn-gold agenda-new" onClick={openDrawer}>
                 <span aria-hidden="true">+</span> New task
               </button>
-              {inlineAgenda && <button ref={optionsButton} type="button" className="inline-options icon-btn-round" aria-label="List options" title="List options"
-                aria-controls="agenda-options" aria-expanded={optionsOpen} onClick={() => setOptionsOpen(v => !v)}><Icon name="more" /></button>}
+              <button ref={optionsButton} type="button" className="inline-options icon-btn-round" aria-label="List options" title="List options"
+                aria-controls="agenda-options" aria-expanded={optionsOpen} onClick={() => setOptionsOpen(v => !v)}><Icon name="more" /></button>
             </div>
-            {inlineAgenda && <PondProgress done={done} total={dayItems.length} dayKey={viewKey} preview={preview} />}
-            {inlineAgenda && categories.length > 1 && (
+            <PondProgress done={done} total={dayItems.length} dayKey={viewKey} preview={preview} />
+            {categories.length > 1 && (
               <div className="pond-chips" role="group" aria-label="Filter by category">
                 <button type="button" className="chip" aria-pressed={filter === 'all' || !activeExists} onClick={() => setFilter('all')}>
                   All <span className="chip-count">{openIn('all')}</span>
@@ -700,9 +689,9 @@ export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean 
                 ))}
               </div>
             )}
-            <div id="agenda-options" hidden={inlineAgenda && !optionsOpen}
-              onKeyDown={e => { if (inlineAgenda && e.key === 'Escape') { setOptionsOpen(false); optionsButton.current?.focus(); } }}>
-            {inlineAgenda && <div className="inline-day"><DaySwitcher preview={preview} onChange={changeDay} /></div>}
+            <div id="agenda-options" hidden={!optionsOpen}
+              onKeyDown={e => { if (e.key === 'Escape') { setOptionsOpen(false); optionsButton.current?.focus(); } }}>
+            <div className="inline-day"><DaySwitcher preview={preview} onChange={changeDay} /></div>
             {hasFilters && (
               <div className="agenda-filters" role="group" aria-label="Task filters">
                 {(['all', 'system', 'quest'] as const).map(k =>
@@ -713,13 +702,6 @@ export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean 
                       {{ all: 'All', system: 'Systems', quest: 'Quests' }[k]}
                     </button>
                   )
-                )}
-                {!inlineAgenda && categories.length > 1 && (
-                  <select className="agenda-category" aria-label="Filter by category"
-                    value={activeExists ? filter : 'all'} onChange={event => setFilter(event.target.value)}>
-                    <option value="all">All categories</option>
-                    {categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
-                  </select>
                 )}
                 {(skippedCount > 0 || showSkipped) && (
                   <button type="button" className="agenda-filter agenda-skipped" aria-pressed={showSkipped}
@@ -761,7 +743,6 @@ export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean 
             <section className="agenda-habits" aria-labelledby="agenda-habits-title">
               <header className="agenda-habits-head">
                 <h2 id="agenda-habits-title">Daily habits</h2>
-                {!inlineAgenda && anchorItems.length > 0 && <p>{ANCHOR_LABEL}</p>}
               </header>
               <div className="agenda-habit-body">
                 {anchorItems.length > 0
@@ -772,11 +753,10 @@ export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean 
                 </button>}
               </div>
             </section>
-            {inlineAgenda && <section className="pond-panel" aria-labelledby="agenda-heat-title">
+            <section className="pond-panel" aria-labelledby="agenda-heat-title">
               <h2 id="agenda-heat-title">Last 12 weeks</h2>
               <Heatmap weeks={12} compact closedToday={dayClosed} />
-            </section>}
-            {!inlineAgenda && <DayProgress done={done} total={dayItems.length} />}
+            </section>
           </aside>
         </div>
         <details className="agenda-history">
@@ -788,7 +768,7 @@ export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean 
       {/* No fallback: a drawer slides in over the page, so an empty frame for the
           moment it takes to arrive is exactly the right thing to show. */}
       <Suspense fallback={null}>
-        {inlineAgenda && (drawerOpen || editTarget || editQuest) ?
+        {(drawerOpen || editTarget || editQuest) ?
           <AgendaDialog label={drawerOpen ? (drawerCategory === ANCHOR_CATEGORY ? 'New habit' : 'New task') : 'Edit task'}
             onClose={() => { setDrawerOpen(false); setEditTarget(null); setEditQuest(null); }}>{drawers}</AgendaDialog> : drawers}
       </Suspense>

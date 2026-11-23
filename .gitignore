@@ -18,11 +18,6 @@ dist-ssr
 # Rebuild with `npm run package`; never commit it.
 release
 
-# Sync documents written by a locally-run relay (server/relay.mjs). Same content
-# as the files in a cloud sync folder: one opaque document per device, holding
-# whatever that device last published.
-relay-data
-
 # PWA icons rendered from public/logo.svg by `npm run generate-icons`, which the
 # Pages workflow runs before every build. Committing them would let the installed
 # app icon drift from the source mark.
@@ -45,10 +40,7 @@ milestone-recovered-*.json
 *.sln
 *.sw?
 
-# The relay's key, written by deploy/oracle/setup.sh on the server. It is the
-# only thing standing between the internet and your whole profile, so it lives
-# on the machine that uses it and nowhere else — never in the repo.
+# The relay's key and local Cloudflare state never belong in the repo.
 .env
 .dev.vars*
 .wrangler/
-deploy/oracle/.env

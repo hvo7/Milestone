@@ -20,7 +20,7 @@
  * packaging and installation story to gain an update mechanism is a much larger
  * change than the one actually being asked for, so this is the small version of
  * it: three HTTPS requests, an Expand-Archive, and a copy on the way out. The
- * same reasoning that left sw.js and relay.mjs dependency-free.
+ * same reasoning that left sw.js dependency-free.
  *
  * ── What it will not do ─────────────────────────────────────────────────────
  * Nothing here touches %APPDATA%\Milestone, where the data lives. An update

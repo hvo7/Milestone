@@ -5,7 +5,7 @@
  * Two places speak this protocol, and they are the same protocol on purpose:
  *
  *   • the desktop itself, serving the app on your Wi-Fi (electron/phone.cjs)
- *   • a relay you run somewhere always-on (server/relay.mjs)
+ *   • a relay you run somewhere always-on (deploy/cloudflare/worker.mjs)
  *
  * Either way it adapts to the shape cloudSync.ts already talks to, so the phone
  * runs the identical reconciler — per-slot vector clocks, fast-forwards, conflict
@@ -50,7 +50,7 @@ const POLL_MS = 60_000;
  * How often to ask when the endpoint is *pushing* changes as they happen.
  *
  * With the event stream up (see `openStream` in electron/phone.cjs and
- * server/relay.mjs) the poll is no longer how anything is discovered — it is
+ * deploy/cloudflare/worker.mjs) the poll is no longer how anything is discovered — it is
  * the backstop for the one case the stream cannot cover: an event that arrived
  * while the socket was down and the reconnect missed. Rare enough to check
  * lazily, and every one of these on a phone is battery and radio.
