@@ -1,8 +1,11 @@
 # Milestone Testing
 
-## Current testing status — November 23, 2026 (later)
+## Current release status — November 23, 2026 (later)
 
-**One batch is pending review: Sync repair** on `testing/sync-repair`, cut from `main` at `dbb4659` (3.4.0, released earlier today). Testing only. No version bump, no deploy, no production change.
+**Sync repair was approved for production by the user on November 23, 2026 ("add these updates") and is prepared as release 3.4.1** on `release/3.4.1`: the `testing/sync-repair` commit plus the version bump and `CHANGELOG.md` entry. 3.4.0 (`dbb4659`) is on `main` with tag `v3.4.0`.
+
+- The work session cannot push or deploy. The user applies the bundle, pushes `main`, runs `release.yml` and `pages.yml`, and deploys the phone app and relay to Cloudflare (by hand, since the `cloudflare.yml` secrets are not set yet).
+- Validation of the release commit is the same as the testing commit below; the release commit changes only the version and release notes.
 
 ## Sync repair: phone on a stale build, Life Vitals not syncing, sync stalls (2026-11-23) — pending review
 
@@ -56,7 +59,7 @@ No migration. New local key use: none (Life Vitals keeps its key). Sync document
 
 ### Approval
 
-Testing only. **Awaiting the user's review.** Releasing it means a version bump (3.4.1), then `release.yml`, `pages.yml` and `cloudflare.yml`.
+Approved for production on 2026-11-23 as 3.4.1 (see the release status above).
 
 ## Current release status — November 23, 2026
 

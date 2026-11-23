@@ -7,6 +7,16 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.4.1 - 2026-11-23
+
+- Life Vitals now syncs between devices. An open Life Vitals page updates when another device saves a check-in. A device with no Life Vitals never replaces another device's.
+- A device whose sync data can't be read is skipped and named in the sync card, instead of stopping sync for every device.
+- A device whose sync record fell behind the relay's copy (after restoring a profile or clearing site data) repairs itself instead of being refused indefinitely.
+- The sync card lists each device with the version it last synced from, and says when they differ.
+- New `cloudflare.yml` workflow deploys the phone app and relay; previously only a manual deploy updated the phone.
+- Phone status bar and splash colors match the Pondside theme.
+- No data migration. Older versions ignore the new Life Vitals sync data.
+
 ## 3.4.0 - 2026-11-23
 
 - New look, "Pondside": a pond-green dark theme and a paper-cream light theme, Fraunces headings with Nunito Sans text (bundled, so they work offline), pill tabs and buttons, and soft cards in place of borders.
