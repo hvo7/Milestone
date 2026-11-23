@@ -49,7 +49,7 @@ function segBtn(active: boolean, onClick: () => void, label: string, key?: strin
         fontFamily: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer',
         padding: '5px 11px', border: 'none', whiteSpace: 'nowrap',
         background: active ? 'var(--accent-strong)' : 'transparent',
-        color: active ? '#fff' : 'var(--text-dim)',
+        color: active ? 'var(--on-water)' : 'var(--text-dim)',
         transition: 'background 0.15s, color 0.15s',
       }}
     >

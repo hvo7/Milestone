@@ -30,8 +30,8 @@ export const ANCHOR_CATEGORY = '__anchor__';
 /** Questline/project accent hexes — the fixed palette, mirrored from index.css
  *  `--color-*` for the places that need a raw value rather than a CSS var. */
 export const CATEGORY_HEX: Record<string, string> = {
-  crimson: '#fb7185', sapphire: '#38bdf8',
-  emerald: '#34d399', amber: '#fbbf24', violet: '#a78bfa',
+  crimson: 'var(--color-crimson)', sapphire: 'var(--color-sapphire)',
+  emerald: 'var(--color-emerald)', amber: 'var(--color-amber)', violet: 'var(--color-violet)',
 };
 
 /** Accent hex for a questline/project color — a legacy preset name, a raw hex

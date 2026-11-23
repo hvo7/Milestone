@@ -68,7 +68,7 @@ function TargetChip({ m }: { m: QuestlineMomentum }) {
             : 'At the rate of the last 30 days, this does not land before the target.'
       }
       style={{
-        fontSize: 10, fontWeight: 700, color, border: `1px solid ${color}55`,
+        fontSize: 10, fontWeight: 700, color, border: `1px solid color-mix(in srgb, ${color} 35%, transparent)`,
         borderRadius: 999, padding: '1px 8px', flexShrink: 0, whiteSpace: 'nowrap',
       }}
     >

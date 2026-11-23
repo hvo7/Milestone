@@ -100,7 +100,7 @@ export default function RoutineCard({ routine }: Props) {
             🔥 {streak}
           </span>
         )}
-        <span style={{ fontSize: 11, fontWeight: 600, color: accentHex, background: `${accentHex}1a`, borderRadius: 5, padding: '2px 7px' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: accentHex, background: `color-mix(in srgb, ${accentHex} 12%, transparent)`, borderRadius: 5, padding: '2px 7px' }}>
           {recurLabel}
         </span>
       </div>

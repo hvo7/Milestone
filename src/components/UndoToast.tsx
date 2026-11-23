@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence, useIsPresent } from 'framer-motion';
 import { useUndoStore, UNDO_WINDOW_MS, type UndoEntry } from '../lib/undo';
+import Icon from './Icon';
 
 export default function UndoToast() {
   const entry = useUndoStore(s => s.entry);
@@ -52,6 +53,7 @@ function Toast({ entry, onRun, onDismiss }: { entry: UndoEntry; onRun: () => voi
 
   return (
         <motion.div
+          className="toast"
           initial={{ opacity: 0, y: 20, scale: 0.96 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           // The entrance springs; the exit is a short tween. A spring settling
@@ -61,42 +63,33 @@ function Toast({ entry, onRun, onDismiss }: { entry: UndoEntry; onRun: () => voi
           exit={{ opacity: 0, y: 12, scale: 0.97, transition: { duration: 0.16 } }}
           transition={{ type: 'spring', stiffness: 460, damping: 34 }}
           role="status"
+          data-toast-kind={entry.art ? 'quest-complete' : undefined}
           style={{
-            position: 'fixed', left: '50%', bottom: 26, transform: 'translateX(-50%)',
-            zIndex: 200, maxWidth: 'min(560px, calc(100vw - 32px))',
-            display: 'flex', flexDirection: 'column',
-            borderRadius: 12, overflow: 'hidden',
-            background: 'var(--page-surface)', border: '1px solid var(--page-border)',
-            boxShadow: '0 14px 40px rgba(0,0,0,0.34)',
+            bottom: 'var(--toast-bottom, 26px)', zIndex: 200,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '12px 14px 12px 16px' }}>
-            <span style={{ fontSize: 13, color: 'var(--page-text)', lineHeight: 1.4, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {entry.label}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 10px 10px 14px' }}>
+            {/* A quest finishing gets its questline's art tile and what it unlocked. */}
+            {entry.art && <img className="toast-art" src={entry.art} alt="" width={44} height={44} />}
+            <span style={{ minWidth: 0, display: 'grid', gap: 2 }}>
+              <span className="toast-label" style={{ fontSize: 13.5, fontWeight: entry.art ? 700 : 400, lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {entry.label}
+              </span>
+              {entry.detail && <span className="toast-detail" style={{ fontSize: 12.5, color: 'var(--ink-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {entry.detail}
+              </span>}
             </span>
-            <button
-              className="btn-gold"
-              onClick={onRun}
-              style={{ marginLeft: 'auto', flexShrink: 0, padding: '5px 14px', fontSize: 12.5 }}
-            >
+            <button type="button" className="btn-gold" onClick={onRun} style={{ marginLeft: 'auto', flexShrink: 0 }}>
               {entry.action ?? 'Undo'}
             </button>
-            <button
-              onClick={onDismiss}
-              title="Dismiss"
-              aria-label="Dismiss"
-              style={{
-                flexShrink: 0, background: 'none', border: 'none', padding: '0 2px',
-                color: 'var(--text-dim)', cursor: 'pointer', fontSize: 13, lineHeight: 1,
-              }}
-            >
-              ✕
+            <button type="button" className="icon-btn-round" onClick={onDismiss} title="Dismiss" aria-label="Dismiss">
+              <Icon name="close" size={16} />
             </button>
           </div>
           {/* Drains rather than counting down in words: how long is left is worth
               showing, and reading "8… 7… 6…" is not. */}
-          <div style={{ height: 2, background: 'var(--track-bg)' }}>
-            <div style={{ width: `${Math.max(0, remaining) * 100}%`, height: '100%', background: 'var(--accent)' }} />
+          <div style={{ height: 3, background: 'var(--raised)' }}>
+            <div style={{ width: `${Math.max(0, remaining) * 100}%`, height: '100%', background: 'var(--water)' }} />
           </div>
         </motion.div>
   );

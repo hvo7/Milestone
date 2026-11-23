@@ -9,11 +9,9 @@ import { VERSION_LABEL, buildSummary } from '../buildInfo';
 import { lazyChunk } from '../lib/lazyChunk';
 import { REFRESH_DAY_EVENT } from '../lib/dayClock';
 import { routineIsArchived } from '../lib/archive';
-import pondCover from '../assets/pond.webp';
-import bridgeCover from '../assets/bridge.webp';
-import riversideCover from '../assets/quests-riverside.png';
-import lilyPondCover from '../assets/systems-lily-pond.png';
-import waterGardenCover from '../assets/systems-water-garden.png';
+import { motionMs } from '../lib/motion';
+import PageBanner from './PageBanner';
+import Icon from './Icon';
 
 // The nav bar is on every page, but these two panels open rarely — and the Data
 // panel drags in the whole sync/backup surface. Loaded when actually opened.
@@ -23,10 +21,10 @@ const RemindersModal = lazyChunk(() => import('./RemindersModal'));
 
 const isElectron = !!window.electronAPI;
 
-export default function NavBar({ cover, hideCover = false }: { cover?: { title: string; subtitle: string }; hideCover?: boolean } = {}) {
+export default function NavBar({ cover, hideCover = false }: { cover?: { title: string; subtitle?: string }; hideCover?: boolean } = {}) {
   const spaces = useQuestStore(s => s.spaces ?? DEFAULT_SPACES);
   const [spacesOpen, setSpacesOpen] = useState(false);
-  const { pathname, key: visitKey } = useLocation();
+  const { pathname } = useLocation();
   const routines     = useQuestStore(s => s.routines);
   const questlines   = useQuestStore(s => s.questlines);
   const systems     = useQuestStore(s => s.systems);
@@ -59,34 +57,23 @@ export default function NavBar({ cover, hideCover = false }: { cover?: { title: 
     { path: '/all',    label: 'All',    badge: 0 },
   ];
 
-  // Stable throughout a visit (including edits and recurring task updates),
-  // with both approved Systems scenes available on subsequent visits.
-  const systemsScene = [...visitKey].reduce((sum, char) => sum + char.charCodeAt(0), 0) % 2 === 0
-    ? lilyPondCover : waterGardenCover;
-  const scene = pathname === '/systems' ? systemsScene
-    : pathname === '/quests' || pathname.startsWith('/questline/') ? riversideCover
-    : pathname === '/' || pathname === '/all' ? pondCover : bridgeCover;
   const heading = cover ?? ({
-    '/': { title: 'Today', subtitle: 'Small steps, brighter days.' },
-    '/systems': { title: 'Systems', subtitle: 'A little progress, consistently.' },
-    '/quests': { title: 'Quests', subtitle: 'Make room for what matters.' },
-    '/vynues': { title: 'Vynues', subtitle: 'A place for your next idea.' },
-    '/all': { title: 'All tasks', subtitle: 'Everything in its own time.' },
-  }[pathname] ?? { title: 'Quests', subtitle: 'One step closer.' });
+    '/': { title: 'Today' },
+    '/systems': { title: 'Systems' },
+    '/quests': { title: 'Quests' },
+    '/vynues': { title: 'Vynues' },
+    '/all': { title: 'All tasks' },
+  }[pathname] ?? { title: 'Quests' });
 
   return (
     <>
-      {import.meta.env.MODE === 'testing' && <div data-testing-banner style={{ background: '#edc16f', color: '#372b16', padding: '9px 18px', display: 'flex', gap: 14, justifyContent: 'space-between', flexWrap: 'wrap', fontSize: 12, borderRadius: 10, marginBottom: 12 }}>
-        <strong>TESTING · Batch 015 · Life Vitals check-ins</strong>
+      {import.meta.env.MODE === 'testing' && <div data-testing-banner className="testing-banner">
+        <strong>TESTING · Pondside</strong>
         <span>Separate data · Sync off · Pending review</span>
       </div>}
       <nav className="app-nav" aria-label="Main navigation">
         <Link to="/" className="app-brand" aria-label="Milestone home">
-          <span className="brand-mark" aria-hidden="true">
-            <svg width="20" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 19V9l4-4 4 7 4-7 4 4v10M8 19v-5m8 5v-5" />
-            </svg>
-          </span>
+          <span className="brand-mark"><Icon name="pond" size={20} /></span>
           <span className="brand-name">Milestone</span>
           <span className="build-label" title={buildSummary()}>{VERSION_LABEL}</span>
         </Link>
@@ -102,32 +89,34 @@ export default function NavBar({ cover, hideCover = false }: { cover?: { title: 
           })}
         </div>
         <div className="nav-tools">
-          <button type="button" className="nav-tool" onClick={() => setSpacesOpen(true)} title="Add or manage space tabs" aria-label="Add new tab">＋</button>
-          <button type="button" className="nav-tool" onClick={toggleTheme} title={`Use ${theme === 'dark' ? 'light' : 'dark'} mode`} aria-label={`Use ${theme === 'dark' ? 'light' : 'dark'} mode`}>
-            <NavIcon name={theme === 'dark' ? 'sun' : 'moon'} />
+          <button type="button" className="nav-tool" onClick={() => window.dispatchEvent(new Event('milestone:open-search'))}
+            title="Search (Ctrl K or /)" aria-label="Search" aria-haspopup="dialog">
+            <Icon name="search" />
           </button>
-          <button type="button" className="nav-tool" onClick={event => {
-            {
-              const icon = event.currentTarget.querySelector('svg');
-              icon?.getAnimations().forEach(animation => animation.cancel());
-              const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-              icon?.animate(reduced ? [{ opacity: .4 }, { opacity: 1 }] : [{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }],
-                { duration: reduced ? 150 : 500, easing: 'ease-out' });
-            }
+          <button type="button" className="nav-tool" data-phone="hide" onClick={() => setSpacesOpen(true)} title="Add or manage space tabs" aria-label="Add new tab">
+            <Icon name="plus" />
+          </button>
+          <button type="button" className="nav-tool" data-phone="hide" onClick={toggleTheme} title={`Use ${theme === 'dark' ? 'light' : 'dark'} mode`} aria-label={`Use ${theme === 'dark' ? 'light' : 'dark'} mode`}>
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+          </button>
+          <button type="button" className="nav-tool" data-phone="hide" onClick={event => {
+            const icon = event.currentTarget.querySelector('svg');
+            icon?.getAnimations().forEach(animation => animation.cancel());
+            const spin = motionMs('day-closed');
+            if (spin > 0) icon?.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(360deg)' }], { duration: spin, easing: 'ease-out' });
             window.dispatchEvent(new Event(REFRESH_DAY_EVENT));
           }}
             title={`Reload tasks — new day starts at ${resetTime} local time`} aria-label="Reload tasks">
-            <NavIcon name="reload" />
+            <Icon name="reload" />
           </button>
           <button type="button" className="nav-tool" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings" aria-haspopup="dialog">
-            <NavIcon name="settings" />
+            <Icon name="settings" />
           </button>
         </div>
       </nav>
-      {!hideCover && <header className="water-cover" style={{ backgroundImage: `url("${scene}")` }}>
-        <div className="water-cover-content">
-          <h1>{heading.title}</h1>
-        </div>
+      {!hideCover && <header className="page-banner-wrap">
+        <PageBanner pathname={pathname} />
+        <h1 className="page-title">{heading.title}</h1>
       </header>}
 
       <Suspense fallback={null}>
@@ -135,7 +124,8 @@ export default function NavBar({ cover, hideCover = false }: { cover?: { title: 
           notifications={reminders?.enabled ? reminders.time : 'Off'} desktop={isElectron}
           onNotifications={() => { setSettingsOpen(false); setRemindOpen(true); }}
           onData={() => { setSettingsOpen(false); setDataOpen(true); }}
-          onNotion={() => { setSettingsOpen(false); setSyncOpen(true); }} />}
+          onNotion={() => { setSettingsOpen(false); setSyncOpen(true); }}
+          onSpaces={() => { setSettingsOpen(false); setSpacesOpen(true); }} />}
         {spacesOpen && <SpacesModal onClose={() => setSpacesOpen(false)} />}
         {syncOpen   && <NotionSyncModal onClose={() => setSyncOpen(false)} />}
         {dataOpen   && <DataModal       onClose={() => setDataOpen(false)} />}
@@ -143,14 +133,4 @@ export default function NavBar({ cover, hideCover = false }: { cover?: { title: 
       </Suspense>
     </>
   );
-}
-
-function NavIcon({ name }: { name: 'reload' | 'settings' | 'sun' | 'moon' }) {
-  const paths = {
-    moon: <path d="M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z" />,
-    sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2" /></>,
-    reload: <path d="M20 4v6h-6M20 10a8 8 0 1 0-1 7" />,
-    settings: <><circle cx="12" cy="12" r="3" /><path d="m10 3-1 3-2 1-3-1-2 4 2 2v2l-2 2 2 4 3-1 2 1 1 3h4l1-3 2-1 3 1 2-4-2-2v-2l2-2-2-4-3 1-2-1-1-3Z" transform="translate(0 -1) scale(1 .95)" /></>,
-  };
-  return <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
 }

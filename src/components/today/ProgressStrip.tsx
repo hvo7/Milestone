@@ -98,9 +98,9 @@ export function SessionStrip({ days, logged, target, indent, onToggle, readOnly,
             style={{
               ...pipBase,
               width: size, height: size,
-              background: on ? 'var(--success)' : 'var(--page-surface)',
-              borderColor: on ? 'var(--success)' : isToday ? 'var(--accent)' : 'var(--page-border)',
-              color: on ? '#0b1210' : isToday ? 'var(--accent)' : 'var(--page-text-dim)',
+              background: on ? 'var(--water)' : 'var(--raised)',
+              borderColor: on ? 'var(--water)' : isToday ? 'var(--accent)' : 'var(--page-border)',
+              color: on ? 'var(--on-water)' : isToday ? 'var(--accent)' : 'var(--page-text-dim)',
               cursor: disabled ? 'default' : 'pointer',
               opacity: future ? 0.3 : 1,
             }}
@@ -153,9 +153,9 @@ export function CheckpointPips({ progress, target, step, unit, indent, onSet, re
               width: compact ? 26 : PIP + 8,
               height: compact ? 19 : PIP,
               fontSize: compact ? 9.5 : 10,
-              background: on ? 'var(--accent-strong)' : 'var(--page-surface)',
+              background: on ? 'var(--water)' : 'var(--raised)',
               borderColor: on ? 'var(--accent)' : 'var(--page-border)',
-              color: on ? '#fff' : 'var(--page-text-dim)',
+              color: on ? 'var(--on-water)' : 'var(--page-text-dim)',
               cursor: readOnly ? 'default' : 'pointer',
             }}
           >

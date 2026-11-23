@@ -31,20 +31,17 @@ export default function UpdateToast() {
           exit={{ opacity: 0, y: 12, scale: 0.97, transition: { duration: 0.16 } }}
           transition={{ type: 'spring', stiffness: 460, damping: 34 }}
           role="status"
+          className="toast"
           style={{
-            position: 'fixed', left: '50%', bottom: undoOpen ? 104 : 26,
-            transform: 'translateX(-50%)',
-            zIndex: 190, maxWidth: 'min(560px, calc(100vw - 32px))',
-            display: 'flex', alignItems: 'center', gap: 14,
-            padding: '11px 12px 11px 16px', borderRadius: 12,
-            background: 'var(--page-surface)', border: '1px solid var(--page-border)',
-            boxShadow: '0 14px 40px rgba(0,0,0,0.34)',
+            bottom: undoOpen ? 'calc(var(--toast-bottom, 26px) + 78px)' : 'var(--toast-bottom, 26px)', zIndex: 190,
+            flexDirection: 'row', alignItems: 'center', gap: 14,
+            padding: '10px 10px 10px 16px',
           }}
         >
           <span style={{ fontSize: 13, color: 'var(--page-text)', lineHeight: 1.4 }}>
             {nextVersion ? `Milestone ${nextVersion} is ready.` : 'A new version is ready.'}
           </span>
-          <button className="btn-gold" style={{ padding: '6px 14px', fontSize: 12.5, whiteSpace: 'nowrap' }} onClick={applyUpdate}>
+          <button type="button" className="btn-gold" style={{ whiteSpace: 'nowrap' }} onClick={applyUpdate}>
             Reload
           </button>
         </motion.div>

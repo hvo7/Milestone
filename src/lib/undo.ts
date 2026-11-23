@@ -37,6 +37,10 @@ export interface UndoEntry {
    *  reuses this toast to report a step it already took, where the button offers
    *  "Redo" instead. */
   action?: string;
+  /** A second, quieter line under the label ("{next quest} unlocked"). */
+  detail?: string;
+  /** An art tile shown beside the label — the quest-complete toast's questline. */
+  art?: string;
 }
 
 /** How long the offer stays up. Long enough to notice a mis-click and react,
@@ -46,7 +50,7 @@ export const UNDO_WINDOW_MS = 12_000;
 interface UndoState {
   entry: UndoEntry | null;
   /** Register an undoable action, replacing any pending one. */
-  push: (label: string, undo: () => void, action?: string) => void;
+  push: (label: string, undo: () => void, action?: string, extra?: Pick<UndoEntry, 'detail' | 'art'>) => void;
   /** Run the pending undo (no-op when there isn't one). */
   run: () => void;
   dismiss: () => void;
@@ -57,7 +61,7 @@ let seq = 0;
 export const useUndoStore = create<UndoState>()((set, get) => ({
   entry: null,
 
-  push: (label, undo, action) => set({ entry: { id: `u${++seq}`, label, at: Date.now(), undo, action } }),
+  push: (label, undo, action, extra) => set({ entry: { id: `u${++seq}`, label, at: Date.now(), undo, action, ...extra } }),
 
   run: () => {
     const entry = get().entry;

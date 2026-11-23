@@ -57,7 +57,7 @@ export default function ModalShell({
           exit={hidden}
           transition={{ type: 'spring', ...spring }}
           onClick={e => e.stopPropagation()}
-          style={{ width: '100%', maxWidth, borderRadius: 14, padding: '24px', ...style }}
+          style={{ width: '100%', maxWidth, padding: '24px', ...style }}
         >
           {children}
         </motion.div>

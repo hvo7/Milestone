@@ -41,6 +41,8 @@
     "release:major": "npm version major --no-git-tag-version && npm run package"
   },
   "dependencies": {
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource-variable/nunito-sans": "^5.3.0",
     "framer-motion": "^12.38.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -48,6 +50,7 @@
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@electron/asar": "4.2.0",
     "@electron/packager": "^20.0.1",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.0",
@@ -67,7 +70,6 @@
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
-    "vitest": "^4.1.10",
-    "@electron/asar": "4.2.0"
+    "vitest": "^4.1.10"
   }
 }

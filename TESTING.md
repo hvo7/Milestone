@@ -1,5 +1,165 @@
 # Milestone Testing
 
+## Current testing status — November 23, 2026
+
+**One batch is pending review: Pondside · Batch 1 (foundation + Today)** on `testing/pondside-foundation`. Testing only. Production is unchanged at 3.3.15 and nothing has been promoted, released or installed. The November 22 status below still describes `main` and the earlier branches.
+
+## Pondside · Batch 1: foundation + Today (2026-11-23) — pending review
+
+### Request and scope
+
+The user approved the Pondside direction (boards B · Today dark/light, B · Phone Today and the subtle feedback set) and asked for the new appearance in testing. This batch replaces the visual foundation for the whole app and rebuilds Today. It changes presentation only. Quests is Batch 2 and is not built.
+
+**Base.** The prompt assumed `testing/today-agenda` still carried the inline Today agenda. Its tip (`94ba784`) is the November 22 revert, so the agenda existed only at `65a4160`. The user was asked and chose to build on `65a4160`. This branch is cut from the `94ba784` tip (no history rewrite) and restores the agenda's application files from `65a4160`: `Today.tsx`, `TaskRow.tsx`, `chrome.tsx`, `FirstRunCard.tsx`, `NavBar.tsx`, `TaskCreateDrawer.tsx`, `uiStore.ts`, `todayAgenda.css`, `Today.test.tsx`, `Today.navigation.test.tsx`. `todayInline.css` is replaced by `todayPondside.css`. **This reinstates agenda behavior that was withdrawn on November 22**, by the user's choice for this batch.
+
+### What to review
+
+- **Palette and type, everywhere.** Deep pond-green dark theme and paper-cream light theme. Fraunces for titles and the wordmark, Nunito Sans for everything else, both bundled (no network font requests). Pill buttons and tabs, soft surface cards, no borders between items, one soft shadow on modals, drawers and toasts only.
+- **Navigation.** Same tabs, restyled as pills, with a gold count badge. A Search button joins +, theme, reload and settings (Ctrl K and / still work). At 480px and below the header keeps wordmark, search and settings; Theme and Space tabs are also in Settings so nothing is lost on a phone. Reload has no phone control in this batch.
+- **Page art.** The watercolor is now a banner card at the top of the content column (200px, 112px on phone): pond on Today and All, bridge on every other route. On Today it carries the date pill. Other routes show their title under the banner. Settings › General › **Show page art** (default on) removes it with no space left behind.
+- **Today.** Banner, then tasks beside a habits rail. Header: Today, List options, gold New task; a water progress bar with "2 of 7". Category chips with open counts. Task rows are cards: art tile, title, one meta line, check ring on the right. A row opens in place with steps (thin guide line), counters or sessions, Edit, Remove and More. Habits rail: progress ring (also the check), name, progress text, leaf + streak count, round + for counters and session goals. "Last 12 weeks" heatmap panel with round cells. Completed and Activity history stay as disclosures. List options holds Today/Tomorrow, All/Systems/Quests, Show skipped and Restore.
+- **Phone (480px and below).** Scrolling pill tabs, compact banner, task cards, habits as a 3-up grid of ring tiles (an open habit takes the full row), New task as a full-width gold bar pinned above the safe area.
+- **Feedback.** Check: the ring fills over 180 ms and the check draws, then the row moves to Completed. Day closed: at 100% the bar becomes a closed ring with "Today's list is clear" and today's heatmap cell fills; the closing animation plays once per logical day. Quest complete: the undo toast shows the questline's art tile, "Quest complete · {quest}" and, in a sequential questline, "{next quest} unlocked"; Undo (12 seconds) restores the quest data, completion log and task history. Streaks are a plain count. No sound, confetti or bounce.
+
+### Implementation and affected files
+
+- `src/index.css`: semantic tokens (`--bg`, `--surface`, `--raised`, `--sunken`, `--line`, `--ink`, `--ink-dim`, `--ink-faint`, `--gold`, `--gold-ink`, `--water`, `--leaf`, `--danger`, `--heat-0…4`), per-theme category colors, and every legacy variable (`--accent*`, `--gold*`, `--dark-bg`, `--card-*`, `--text-*`, `--page-*`, `--nav-*`, `--input-*`, `--success`, `--sb-*`, `--track-bg`, `--modal-bg`) remapped onto them. Shared primitives restyled: nav, banner, buttons (`.btn-gold` primary, `.btn-ghost` secondary, `.btn-quiet`, `.btn-danger`, `.icon-btn-round`), chips, inputs, check control, progress bar and ring, toast, switch, empty state, focus ring. No raw color values remain outside the token block.
+- `src/motion.css` + `src/lib/motion.ts`: duration tokens; reduced motion sets them to 0. Script-driven motion (row expand, check fill, reload spin) reads the same tokens.
+- New: `components/Icon.tsx` (one stroke icon set), `ProgressRing.tsx`, `PageBanner.tsx`, `lib/dayClosed.ts`, `lib/questComplete.ts`, `pages/todayPondside.css`, `scripts/check-contrast.mjs`, `pages/Today.pondside.test.tsx`.
+- Changed: `NavBar.tsx`, `CommandPalette.tsx`, `SettingsModal.tsx` + `settings.css`, `ModalShell.tsx`, `UndoToast.tsx`, `UpdateToast.tsx`, `lib/undo.ts` (optional `detail`/`art` on an entry), `Heatmap.tsx` (weeks, compact, round cells), `ProgressBar.tsx`, `today/TaskRow.tsx` (Pondside row), `today/chrome.tsx` (`PondProgress`), `today/ProgressStrip.tsx`, `recurrence.tsx`, `lib/ui.ts` (category colors resolve to theme tokens), `RoutineCard.tsx`, `MomentumPanel.tsx`, `Today.tsx`, `uiStore.ts`, `lib/controlConsistency.test.ts`, `package.json`/`package-lock.json` (two font packages; version not bumped).
+- The Pondside Today is behind the existing `inlineAgenda` gate (on in testing mode). A non-testing build of this branch would show the earlier non-inline agenda layout with the new palette.
+
+### Decisions that differ from the written spec
+
+- **Light-theme accent values.** The approved light swatches for gold, water, leaf and danger measure 3.75–4.34:1 on `--raised`. They are a few points darker here (`#8b5c13`, `#27706a`, `#377235`, `#ab4437`) so every text pairing reaches 4.5:1. `--heat-4` keeps `#2c7f78`. Dark values are exactly as approved.
+- **Rail breakpoint vs. 560px minimum.** The rail drops below the list at 720px as instructed. Between 721px and about 1000px the task column is therefore narrower than 560px (about 400px at 760px).
+- **Banner art.** Only pond and bridge are used, as specified. The riverside and Systems scenes approved earlier are no longer shown; their files are untouched.
+- **Day progress** moved from List options to the header, so it is always visible. Semantics are unchanged (skips excluded, filters ignored).
+- **Category filter** is the chip row; the kind filter (All/Systems/Quests) stays in List options.
+- **Habit + button** appears on counters and session goals only. A plain habit is checked by tapping its ring. − is in the open row.
+- **Reset time** is whatever Settings holds (default 02:00), not a fixed 5am; unchanged by this batch.
+- Settings lost its two gray intro subtitles (concise-UI rule). The testing banner now reads "TESTING · Pondside".
+
+### Storage and compatibility
+
+No schema, store, storage-key or migration changes. Two optional fields were added to the existing `milestone-ui` store: `showPageArt` (absent = on) and `dayClosedOn` (the logical day whose day-closed animation has played). Older builds ignore both. `hiddenAgendaRows` returns with the agenda, as before. Nothing is synced or copied to production.
+
+### Validation (cloud workspace, 2026-11-23)
+
+- `npm test` (`vitest run`): **53 files, 546 tests passed**. 7 new tests in `Today.pondside.test.tsx` cover: day closed at 100% and once per logical day (including reload and next day), Tomorrow never closing, quest-complete toast content and Undo restoring all three slices, no "unlocked" line when not sequential, page-art preference (default, off, persisted, legacy save), and the check fill with and without reduced motion. The existing 12 agenda journeys pass against the new markup.
+- `npx tsc -b`: passed. `npm run testing -- --build-only`: passed (TypeScript + Vite, `dist-testing`). `node --test scripts/testing-preview.test.mjs`: 1 passed.
+- `npm run lint`: **13 problems (12 errors, 1 warning), all in files this batch did not write** (`VynuesTaskCreateDrawer.tsx`, `vynuesUi.tsx`, others). The branch base reports 14. ESLint on the files this batch added or changed reports only that pre-existing warning.
+- `node scripts/check-contrast.mjs`: all pairings pass.
+
+```
+dark
+  pass  14.79:1  (min 4.5)  --ink on --bg
+  pass   8.83:1  (min 4.5)  --ink-dim on --bg
+  pass   8.70:1  (min 4.5)  --water on --bg
+  pass  10.33:1  (min 4.5)  --leaf on --bg
+  pass   9.20:1  (min 4.5)  --gold on --bg
+  pass   6.97:1  (min 4.5)  --danger on --bg
+  pass   8.40:1  (min 4.5)  --color-crimson on --bg
+  pass   9.13:1  (min 4.5)  --color-sapphire on --bg
+  pass   9.41:1  (min 4.5)  --color-emerald on --bg
+  pass   9.66:1  (min 4.5)  --color-amber on --bg
+  pass   8.80:1  (min 4.5)  --color-violet on --bg
+  pass  12.88:1  (min 4.5)  --ink on --surface
+  pass   7.69:1  (min 4.5)  --ink-dim on --surface
+  pass   7.58:1  (min 4.5)  --water on --surface
+  pass   9.00:1  (min 4.5)  --leaf on --surface
+  pass   8.02:1  (min 4.5)  --gold on --surface
+  pass   6.07:1  (min 4.5)  --danger on --surface
+  pass   7.32:1  (min 4.5)  --color-crimson on --surface
+  pass   7.96:1  (min 4.5)  --color-sapphire on --surface
+  pass   8.20:1  (min 4.5)  --color-emerald on --surface
+  pass   8.41:1  (min 4.5)  --color-amber on --surface
+  pass   7.67:1  (min 4.5)  --color-violet on --surface
+  pass  10.65:1  (min 4.5)  --ink on --raised
+  pass   6.36:1  (min 4.5)  --ink-dim on --raised
+  pass   6.26:1  (min 4.5)  --water on --raised
+  pass   7.44:1  (min 4.5)  --leaf on --raised
+  pass   6.63:1  (min 4.5)  --gold on --raised
+  pass   5.02:1  (min 4.5)  --danger on --raised
+  pass   6.05:1  (min 4.5)  --color-crimson on --raised
+  pass   6.58:1  (min 4.5)  --color-sapphire on --raised
+  pass   6.78:1  (min 4.5)  --color-emerald on --raised
+  pass   6.96:1  (min 4.5)  --color-amber on --raised
+  pass   6.34:1  (min 4.5)  --color-violet on --raised
+  pass   9.02:1  (min 4.5)  --gold-ink on --gold
+  pass  14.79:1  (min 4.5)  --bg on --ink
+  pass   8.70:1  (min 4.5)  --bg on --water
+  pass   5.57:1  (min 3)  --ink-faint on --bg
+  pass   4.85:1  (min 3)  --ink-faint on --surface
+  pass   6.26:1  (min 3)  --water on --raised
+
+light
+  pass  11.93:1  (min 4.5)  --ink on --bg
+  pass   5.50:1  (min 4.5)  --ink-dim on --bg
+  pass   5.07:1  (min 4.5)  --water on --bg
+  pass   5.05:1  (min 4.5)  --leaf on --bg
+  pass   5.03:1  (min 4.5)  --gold on --bg
+  pass   5.06:1  (min 4.5)  --danger on --bg
+  pass   5.35:1  (min 4.5)  --color-crimson on --bg
+  pass   5.41:1  (min 4.5)  --color-sapphire on --bg
+  pass   5.18:1  (min 4.5)  --color-emerald on --bg
+  pass   5.51:1  (min 4.5)  --color-amber on --bg
+  pass   5.61:1  (min 4.5)  --color-violet on --bg
+  pass  13.35:1  (min 4.5)  --ink on --surface
+  pass   6.15:1  (min 4.5)  --ink-dim on --surface
+  pass   5.67:1  (min 4.5)  --water on --surface
+  pass   5.66:1  (min 4.5)  --leaf on --surface
+  pass   5.63:1  (min 4.5)  --gold on --surface
+  pass   5.67:1  (min 4.5)  --danger on --surface
+  pass   5.99:1  (min 4.5)  --color-crimson on --surface
+  pass   6.05:1  (min 4.5)  --color-sapphire on --surface
+  pass   5.80:1  (min 4.5)  --color-emerald on --surface
+  pass   6.17:1  (min 4.5)  --color-amber on --surface
+  pass   6.28:1  (min 4.5)  --color-violet on --surface
+  pass  10.80:1  (min 4.5)  --ink on --raised
+  pass   4.98:1  (min 4.5)  --ink-dim on --raised
+  pass   4.59:1  (min 4.5)  --water on --raised
+  pass   4.58:1  (min 4.5)  --leaf on --raised
+  pass   4.55:1  (min 4.5)  --gold on --raised
+  pass   4.59:1  (min 4.5)  --danger on --raised
+  pass   4.84:1  (min 4.5)  --color-crimson on --raised
+  pass   4.90:1  (min 4.5)  --color-sapphire on --raised
+  pass   4.69:1  (min 4.5)  --color-emerald on --raised
+  pass   4.99:1  (min 4.5)  --color-amber on --raised
+  pass   5.08:1  (min 4.5)  --color-violet on --raised
+  pass   5.55:1  (min 4.5)  --gold-ink on --gold
+  pass  11.93:1  (min 4.5)  --bg on --ink
+  pass   5.07:1  (min 4.5)  --bg on --water
+  pass   3.25:1  (min 3)  --ink-faint on --bg
+  pass   3.64:1  (min 3)  --ink-faint on --surface
+  pass   4.59:1  (min 3)  --water on --raised
+
+All pairings pass.
+```
+
+Custom questline colors picked by the user are not covered by this check.
+
+### Visual check: what was actually seen
+
+Rendered from the testing build served by `scripts/testing-preview.mjs` at `http://127.0.0.1:4174/` in headless Chrome, with a synthetic fixture in a throwaway profile. No console errors in any capture.
+
+- **Seen, Today:** 1280px dark and light; 1024px light (long title wrapping to three lines, 12 habits); 720px dark (rail below the list, long title, 12 habits); 390px dark and light. States: a row open with nested steps and guide line; a habit open with checkpoint pips; List options open; Tomorrow preview (read-only, no + buttons); a category chip filter; 100% done (closed ring, filled heatmap cell) dark 1280 and light 390; an empty day light 1280 and dark 390; page art off; quest-complete toast dark and light; Remove toast on phone above the New task bar; New task drawer; Settings at 1280 dark and 390 light; search palette.
+- **Seen, other routes:** Quests dark, Systems light, All dark, Life Vitals light. Legible, layouts unchanged.
+- **Captured but not inspected:** Life Vitals dark, Systems dark, Quests light, questline page and space page in both themes, All light, 1024px dark, 720px light.
+- **Not verified:** the Electron testing window; a physical phone, touch and safe-area insets; pointer drag reordering; the animations themselves (check fill, day-closed ring, reduced motion) were tested in code but not watched; hover and focus-ring appearance; create/edit/save, Undo and theme/page-art toggles were exercised by tests, not clicked in a browser. Life Vitals keeps its own status gradients and left accents from its approved batch.
+
+### Known limitations and pending work
+
+- On other routes the banner is 1160px wide while some page columns are wider or narrower; alignment is not tuned.
+- Drawers, Life Vitals, Systems, Quests and All pages still contain inline styles and a few raw colors in files this batch did not touch; they inherit the palette through the aliases.
+- No Reload control on phone.
+- Batch 2 (Quests two-pane, quiet-goal dot) is not started.
+- **Publication:** the work session had read-only access to `hvo7/Milestone`; the branch was not pushed from it. See the handoff for the remaining action.
+
+### Testing and production boundary; approval
+
+Run `npm install` (two new font packages), then `Open Testing.cmd` or `npm run testing`; for a conversation review `npm run testing -- --browser` and open `http://127.0.0.1:4174/`. Testing only: no production launch, patch, publish or release. **Awaiting the user's review. Not approved for production.**
+
 ## Current testing status — November 22, 2026
 
 **All pending feature batches are withdrawn.** The user requested a return to the approved Milestone 3.3.15 interface, including removal of the Life Vitals ASAP experiment. This status supersedes older review and promotion notes below.

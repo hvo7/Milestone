@@ -1,47 +1,61 @@
+/* Motion tokens. Every duration in the interface comes from here, and under
+   prefers-reduced-motion each one collapses to zero so state changes are instant.
+   Script-driven motion reads the same tokens through lib/motion.ts. */
+:root {
+  --motion-fast: 120ms;
+  --motion-expand: 140ms;
+  --motion-base: 180ms;
+  --motion-check: 180ms;
+  --motion-settle: 220ms;
+  --motion-day-closed: 420ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-expand: 0ms;
+    --motion-base: 0ms;
+    --motion-check: 0ms;
+    --motion-settle: 0ms;
+    --motion-day-closed: 0ms;
+  }
+}
+
 /* Shared interface motion. No looping decoration or transforms on page containers:
    fixed dialogs and drag/reorder elements keep their existing positioning. */
 @media (prefers-reduced-motion: no-preference) {
   .page-shell {
-    animation: testing-page-reveal 180ms ease-out;
-  }
-
-  .nav-link[aria-current='page']::after {
-    transform-origin: center;
-    animation: testing-tab-reveal 180ms ease-out;
+    animation: testing-page-reveal var(--motion-base) ease-out;
   }
 
   :is(.nav-tool, .icon-btn, .lv-primary, .lv-secondary, .lv-close) {
-    transition: color 150ms, background-color 150ms, border-color 150ms, opacity 150ms, scale 120ms;
+    transition: color var(--motion-fast), background-color var(--motion-fast), border-color var(--motion-fast), opacity var(--motion-fast), scale var(--motion-fast);
   }
   :is(.nav-tool, .icon-btn, .lv-primary, .lv-secondary, .lv-close):active:not(:disabled) {
     scale: .96;
   }
 
   .questline-nav-item {
-    transition: background-color 160ms, border-color 160ms, color 160ms;
+    transition: background-color var(--motion-base), border-color var(--motion-base), color var(--motion-base);
   }
   .lv-region {
-    transition: box-shadow 180ms, border-color 180ms;
+    transition: box-shadow var(--motion-base), border-color var(--motion-base);
   }
   .lv-badge {
-    transition: background-color 180ms, color 180ms;
+    transition: background-color var(--motion-base), color var(--motion-base);
   }
 
   .lv-dialog[open] {
-    animation: testing-panel-reveal 180ms cubic-bezier(.2,.8,.2,1);
+    animation: testing-panel-reveal var(--motion-base) var(--ease-out);
   }
   :is(.lv-explainer, .questline-insights)[open] > :not(summary) {
-    animation: testing-page-reveal 180ms ease-out;
+    animation: testing-page-reveal var(--motion-base) ease-out;
   }
 }
 
 @keyframes testing-page-reveal {
   from { opacity: .65; }
   to { opacity: 1; }
-}
-@keyframes testing-tab-reveal {
-  from { transform: scaleX(.35); opacity: .4; }
-  to { transform: scaleX(1); opacity: 1; }
 }
 @keyframes testing-panel-reveal {
   from { opacity: 0; transform: translateY(6px) scale(.985); }

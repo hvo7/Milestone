@@ -29,6 +29,13 @@ export interface ReminderSettings {
 export const DEFAULT_REMINDERS: ReminderSettings = { enabled: false, time: '19:00', keepInTray: false };
 
 interface UIStore {
+  /** Items dismissed from the testing agenda for one logical day. */
+  hiddenAgendaRows?: { day: string; ids: string[] };
+  /** "Show page art". Optional: absent means on, and older builds ignore it. */
+  showPageArt?: boolean;
+  setShowPageArt: (show: boolean) => void;
+  /** The logical day whose "day closed" moment has already played. Optional. */
+  dayClosedOn?: string;
   resetTime: string;
   setResetTime: (time: string) => void;
   editMode: boolean;
@@ -47,6 +54,7 @@ export const useUIStore = create<UIStore>()(
         set({ resetTime: time });
         window.dispatchEvent(new Event('milestone:refresh-day'));
       },
+      setShowPageArt: (show) => set({ showPageArt: show }),
       editMode: false,
       theme: 'light' as 'dark' | 'light',
       reminders: DEFAULT_REMINDERS,

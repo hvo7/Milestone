@@ -12,6 +12,9 @@ import { useQuestStore } from '../store';
 import { useVynuesStore } from '../vynuesStore';
 import { search, KIND_ICON, KIND_LABEL, type SearchResult } from '../lib/search';
 
+/** Dispatched on `window` to open search from a button. */
+const OPEN_SEARCH_EVENT = 'milestone:open-search';
+
 /** Fields where a bare `/` has to stay a slash. */
 const TYPING_SEL = 'input, textarea, select, [contenteditable]';
 
@@ -36,7 +39,12 @@ function useHotkey(onOpen: () => void, onToggle: () => void) {
       }
     };
     window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // The nav bar's search button opens the same palette.
+    window.addEventListener(OPEN_SEARCH_EVENT, onOpen);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener(OPEN_SEARCH_EVENT, onOpen);
+    };
   }, [onOpen, onToggle]);
 }
 
@@ -112,7 +120,7 @@ export default function CommandPalette() {
           onClick={closePalette}
           style={{
             position: 'fixed', inset: 0, zIndex: 300,
-            background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(3px)',
+            background: 'var(--scrim)',
             display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
             padding: '12vh 16px 16px',
           }}
@@ -128,9 +136,9 @@ export default function CommandPalette() {
             style={{
               width: 'min(620px, 100%)', maxHeight: '70vh',
               display: 'flex', flexDirection: 'column',
-              background: 'var(--page-surface)', border: '1px solid var(--page-border)',
-              borderRadius: 14, overflow: 'hidden',
-              boxShadow: '0 24px 70px rgba(0,0,0,0.45)',
+              background: 'var(--surface)',
+              borderRadius: 22, overflow: 'hidden',
+              boxShadow: 'var(--shadow-pop)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 16px', borderBottom: '1px solid var(--card-border)' }}>
