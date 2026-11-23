@@ -149,7 +149,9 @@ function AgendaDialog({ label, onClose, children }: { label: string; onClose: ()
     onCancel={event => { event.preventDefault(); onClose(); }}>{children}</dialog>;
 }
 
-export default function Today({ inlineAgenda = import.meta.env.MODE === 'testing' }: { inlineAgenda?: boolean }) {
+/** `inlineAgenda` is the Pondside Today, the released layout. The older agenda
+ *  layout stays reachable with `inlineAgenda={false}` for its own tests. */
+export default function Today({ inlineAgenda = true }: { inlineAgenda?: boolean }) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [optionsOpen, setOptionsOpen] = useState(false);
   const optionsButton = useRef<HTMLButtonElement>(null);

@@ -7,6 +7,17 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.4.0 - 2026-11-23
+
+- New look, "Pondside": a pond-green dark theme and a paper-cream light theme, Fraunces headings with Nunito Sans text (bundled, so they work offline), pill tabs and buttons, and soft cards in place of borders.
+- Navigation gains a Search button beside +, theme, reload and settings. On a phone the header keeps search and settings; Theme and Space tabs are also in Settings.
+- Page art is a banner card at the top of each page (pond on Today and All, the bridge elsewhere). Settings › General › Show page art turns it off.
+- Today is rebuilt: a progress bar with "2 of 7", category chips, task cards with an art tile and a check ring, rows that open in place with steps, Edit, Remove and More, a Daily habits rail with progress rings and streak counts, and a Last 12 weeks heatmap. List options holds Today/Tomorrow, Systems/Quests filters, skipped tasks and Restore. Task order is saved and can be changed by dragging or with the arrow keys. On a phone, habits are ring tiles and New task is a bar at the bottom.
+- Removing a task from Today hides it for that day only and can be undone or restored from List options.
+- Quiet feedback: the check ring fills, the progress bar becomes a closed ring when the day's list is clear, and finishing a quest shows a "Quest complete" toast with Undo.
+- Quests is two panes: questlines listed coldest first with a factual "Quiet 19 days" / "Moved today" reading, and the selected questline with momentum chips, progress and its quests. On a phone a chosen questline opens as its own view with Back. Manual questline ordering remains on Systems.
+- No data migration. Two optional interface preferences are added (page art, and the day the day-closed animation last played); older versions ignore them. Life Vitals, Systems, All and Space pages keep their layouts with the new palette.
+
 ## 3.3.15 - 2026-11-11
 
 - Reopening a Behind or On pace life area immediately shows its saved checklist without creating another check-in.

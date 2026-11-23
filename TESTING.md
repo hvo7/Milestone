@@ -1,8 +1,14 @@
 # Milestone Testing
 
-## Current testing status — November 23, 2026
+## Current release status — November 23, 2026
 
-**Two batches are pending review on `testing/pondside-foundation`: Pondside · Batch 1 (foundation + Today) and Pondside · Batch 2 (Quests).** Testing only. Production is unchanged at 3.3.15 and nothing has been promoted, released or installed. The November 22 status below still describes `main` and the earlier branches.
+**Pondside Batches 1 and 2 were approved for production by the user on November 23, 2026 ("Push both into production") and are prepared as release 3.4.0.** The sections below were written while the batches were pending review and are kept as the record of that review.
+
+- **Release commit:** on `release/3.4.0`, a fast-forward of `main` (`b6324f0`). It contains the two testing commits plus the promotion changes: the Pondside Today is now the default layout in every build (it was gated to testing mode), the version is 3.4.0, and `CHANGELOG.md` has the release notes.
+- **Regression found and fixed during promotion:** the Pondside row had moved "Unpin from Today" into the More menu, which hid the always-visible unpin control released in 3.3.13 (including on completed quests). It is back on the row as a pin button; `todayQuestPinExpiry.test.ts` caught it once the layout became the default.
+- **Validation of the release commit (cloud workspace):** `npm test` 54 files, 551 tests passed; `npx tsc -b` passed; `npm run build` (production) passed; `npm run testing -- --build-only` passed; `node --test electron/desktop.test.cjs` 7 passed; `npm run lint` unchanged at 13 pre-existing problems outside this work. The production build was served with `vite preview` and Today was seen in light theme: Pondside layout, no testing banner, version chip v3.4.0, bundled fonts loaded, no console errors.
+- **Not done from the work session:** it has read-only access to `hvo7/Milestone`, so `main` was **not pushed**, and the `pages.yml` and `release.yml` workflows (manual dispatch) were **not run**. No installed app was patched. Until the push and the two dispatches happen, production is still 3.3.15.
+- **Not verified:** the packaged Windows build, the installed-app update, the deployed PWA, and real production data (only a synthetic fixture was used).
 
 ## Pondside · Batch 2: Quests two-pane (2026-11-23) — pending review
 

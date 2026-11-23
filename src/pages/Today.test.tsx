@@ -37,7 +37,7 @@ afterEach(() => {
 
 const daily = (id: string, more: Partial<Routine> = {}): Routine =>
   ({ id, title: id, recurring: 'daily', trackedToday: false, completed: false, ...more });
-const render = () => act(() => root.render(<MemoryRouter><Today /></MemoryRouter>));
+const render = () => act(() => root.render(<MemoryRouter><Today inlineAgenda={false} /></MemoryRouter>));
 const button = (label: string) => [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === label)!;
 const checks = (selector: string) =>
   [...host.querySelectorAll<HTMLInputElement>(selector + ' input[type="checkbox"]')].map(c => c.getAttribute('aria-label'));
@@ -191,8 +191,8 @@ it('opens quest, action and project rows with their own editor and preserves the
   expect(currentRow().querySelector('[aria-label="Write proof"]')).toBeTruthy();
   await act(async () => { button('Edit').click(); await import('../components/QuestCreateDrawer'); });
   click(button('Cancel'));
-  click(currentRow().querySelector('summary')!);
-  click(button('Unpin from Today'));
+  // Unpin is on the row itself, not behind More (released in 3.3.13).
+  click(currentRow().querySelector('[aria-label="Unpin from Today"]')!);
   const actionId = useQuestStore.getState().questlines[0].quests[0].actions[0].id;
   act(() => qs.toggleTracked(qlId, questId, actionId));
   click(titleButton('Write proof'));

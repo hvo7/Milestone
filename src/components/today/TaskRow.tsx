@@ -350,6 +350,9 @@ function InlineContent({ row, dragControls }: { row: TaskRowProps; dragControls:
       {compact && onIncrement && !readOnly && <button type="button" className="habit-add" disabled={completed}
         aria-label={`Add ${step}${unit ? ` ${unit}` : ''} to ${title}`} title={`+${step}${unit ? ` ${unit}` : ''}`}
         onClick={() => onIncrement(step)}><Icon name="plus" size={16} /></button>}
+      {/* Released in 3.3.13: a pinned quest can always be unpinned from its row, done or not. */}
+      {!compact && onUnpin && !readOnly && <button type="button" className="inline-unpin icon-btn-round" aria-label="Unpin from Today"
+        title="Unpin from Today" onClick={onUnpin}><Icon name="pin" size={16} /></button>}
       {!compact && <label className="inline-check-target">{checkbox}</label>}
     </div>
     <div id={panelId} inert={!expanded} aria-hidden={!expanded}>
@@ -378,14 +381,13 @@ function InlineContent({ row, dragControls }: { row: TaskRowProps; dragControls:
               {!readOnly && <div className="inline-actions">
                 {onEdit && <button type="button" onClick={onEdit}>Edit</button>}
                 <button type="button" onClick={onRemove} title="Remove from today’s list">Remove</button>
-                {(subHandlers?.onAdd || onSkip || onUnpin) && <details>
+                {(subHandlers?.onAdd || onSkip) && <details>
                   <summary aria-label={`More actions for ${title}`} title="More actions"><Icon name="more" size={16} /></summary>
                   <div>
                     {subHandlers?.onAdd && <button type="button" onClick={event => {
                       event.currentTarget.closest('details')!.open = false; setAdding(true);
                     }}>Add step</button>}
                     {onSkip && <button type="button" onClick={onSkip}>{skipped ? 'Unskip' : 'Skip today'}</button>}
-                    {onUnpin && <button type="button" onClick={onUnpin}>Unpin from Today</button>}
                   </div>
                 </details>}
               </div>}
