@@ -1,5 +1,17 @@
 # Milestone Testing
 
+## Cleanup: unreferenced files (2026-11-23) — pending review
+
+On `chore/cleanup`, cut from `release/3.4.1` (`cc1d6af`). Requested by the user ("minimize the amount of unnecessary code and files"). Removes only files that no application code imports, found by scanning every `src` file for an importer:
+
+- `src/assets/quests-riverside.png`, `systems-lily-pond.png`, `systems-water-garden.png` (8.3 MB; banners replaced by pond and bridge in 3.4.0).
+- `src/components/QuestCard.tsx`, `RoutineCard.tsx` (no importer).
+- `src/pages/LifeVitalsPage.tsx`, `SimpleLifeVitalsPage.tsx` with its test and `simpleVitals.css` (earlier Life Vitals pages; the route uses `StatusLifeVitalsPage`). Their data libraries stay, because the current page migrates saved data through them.
+
+No behavior, storage or version change. Validation: `npm test` 54 files, 557 tests passed (4 fewer: the removed page's own tests); `npx tsc -b`, `npm run build`, `npm run testing -- --build-only` passed; lint unchanged at 13 pre-existing problems.
+
+Left in place and listed for the user's decision: the older non-inline Today layout in `TaskRow.tsx`/`Today.tsx` (kept alive only by its tests), and the alternative relay hosts (`Dockerfile`, `fly.toml`, `render.yaml`, `deploy/oracle`, `server/relay.mjs`, `relay.yml`, three docs), unused since the Cloudflare relay. Testing only; awaiting review.
+
 ## Current release status — November 23, 2026 (later)
 
 **Sync repair was approved for production by the user on November 23, 2026 ("add these updates") and is prepared as release 3.4.1** on `release/3.4.1`: the `testing/sync-repair` commit plus the version bump and `CHANGELOG.md` entry. 3.4.0 (`dbb4659`) is on `main` with tag `v3.4.0`.
