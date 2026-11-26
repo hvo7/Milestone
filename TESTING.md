@@ -1,8 +1,15 @@
 # Milestone Testing
 
-## Sync repair 2: item-level merging, sync issues, emergency recovery (2026-11-26) — pending review
+## Current release status — November 26, 2026
 
-On `testing/sync-merge-recovery`, based on `main` `4f06760`. Testing only; not approved for production. No version bump, release, deploy or install was performed.
+**Sync repair 2 was approved for production by the user on November 26, 2026 ("I approve of this for production") and is prepared as release 3.5.0** on `release/3.5.0`: the `testing/sync-merge-recovery` commit (`5124a82`, pushed by the user) plus the version bump, `CHANGELOG.md` entry, and a fix for the intermittently failing oversized-upload assertion in `deploy/cloudflare/relay.test.mjs` (it now accepts the runtime's cut connection as a refusal; 20 of 20 runs passed). 3.4.1 (`cc1d6af`) and the cleanup commits up to `4f06760` are on `main`.
+
+- The work session cannot push or deploy (GitHub write access was refused). The user pushes `release/3.5.0` to `main` from the bundle in `Claude outputs`, then runs `release.yml`, `pages.yml` and `cloudflare.yml` (or the by-hand Cloudflare deploy in `docs/relay-cloudflare.md`) — all three, so the phone app and relay history update with the desktops. Update order: desktop, phone, laptop last (`docs/sync-recovery.md`).
+- Validation of the release commit is the batch's validation below; the release commit changes only the version, release notes, this status and the relay test's oversized-upload check.
+
+## Sync repair 2: item-level merging, sync issues, emergency recovery (2026-11-26) — approved, release 3.5.0
+
+On `testing/sync-merge-recovery`, based on `main` `4f06760`. Approved for production 2026-11-26; see the release status above.
 
 ### Request and scope
 
@@ -42,7 +49,7 @@ Milestone Testing does not start sync (unchanged), so the merge cannot be exerci
 - `npm test`: **57 files, 624 tests passed** (+67: `syncMerge.test.ts` 43 incl. an 8-seed three-device randomised convergence test; `syncRecovery.test.ts` 18; `SyncHealthCard.test.tsx` 6; plus changes below). The randomised test was also run once with 300 seeds × 80 rounds: all converged, no undeleted item lost, no merge re-stamped as an edit.
 - `npm run test:sync`: 11 files / 127 vitest + 8 node tests passed (script now includes the new suites).
 - `npx tsc -b`, `npm run build`, `npm run cloudflare:prepare`, `npm --prefix deploy/cloudflare run check` (dry run, no deploy), `npm run testing -- --build-only`: passed. `npm run lint`: 13 problems, unchanged from `main`; none in touched files.
-- `npm run test:cloudflare` (Miniflare): passed, including history list/item/404/401 and persistence across restart. The pre-existing oversized-payload assertion (`relay.test.mjs:76`) fails intermittently with `fetch failed`; reproduced on unmodified `main` (2 of 15 runs), unrelated to this batch.
+- `npm run test:cloudflare` (Miniflare): passed, including history list/item/404/401 and persistence across restart. The pre-existing oversized-payload assertion (`relay.test.mjs:76`) failed intermittently with `fetch failed`, also on unmodified `main` (2 of 15 runs); fixed in the 3.5.0 release commit (20 of 20 runs passed).
 - Changed expectations, by design: two `cloudSync.live.test.ts` cases asserted whole-store replacement and conflict backups for concurrent copies — now both sides' items are kept and no backup is needed; one `syncRepair.test.ts` case asserted that a 3.4.1 copy could delete local Life Vitals — now it adds but cannot delete.
 - UI: the card was rendered in headless Chrome at 460 px (dark, light) and 390 px (recovery panel open), and inside the real Testing build (1280 px dark, 390 px light: Settings › Data & connections › Manage data › Recover items). No layout breaks seen.
 
@@ -63,7 +70,7 @@ Revert this branch's commit and rebuild. The stores are unchanged; an older buil
 
 ### Status
 
-Pending review in Testing and explicit production approval. Production promotion needs the desktop release, Pages, and the Cloudflare deploy together (see `docs/sync-recovery.md`, "Recommended update order").
+Approved for production 2026-11-26 as 3.5.0. Production promotion needs the desktop release, Pages, and the Cloudflare deploy together (see `docs/sync-recovery.md`, "Recommended update order"). Real-device checks above remain to be done after deploying.
 
 ## Cleanup: stale code and files (2026-11-23) — pending review
 

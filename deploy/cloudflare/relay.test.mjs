@@ -73,7 +73,11 @@ test('Cloudflare runtime: authentication, live delivery, persistence, backups an
   assert.equal((await request('write', doc('desktop', 1))).status, 409);
   const saved = await (await request('peers?deviceId=phone')).json();
   assert.equal(JSON.parse(saved.peers[0].stores.quest).state.text.length, large.length);
-  assert.equal((await request('write', doc('desktop', 3, 'x'.repeat(9 * 1024 * 1024)))).status, 400);
+  // Over the limit is refused. The Worker stops reading mid-upload, so the local
+  // runtime sometimes reports the cut connection instead of the 400; either way
+  // nothing is stored (checked after the restart below: the clock is still 2).
+  const oversized = await request('write', doc('desktop', 3, 'x'.repeat(9 * 1024 * 1024))).then(res => res.status, () => 'refused');
+  assert.ok(oversized === 400 || oversized === 'refused', `oversized write answered ${oversized}`);
 
   // The copy a write replaced is kept: once per half hour per device, or every
   // time for a build without item stamps.

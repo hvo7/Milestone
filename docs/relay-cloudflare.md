@@ -149,7 +149,7 @@ temporary storage and synthetic keys and verifies recovery after restart.
 - Authenticated `GET /api/backups` lists recovery copies; authenticated
   `GET /api/backup?name=<name-without-backup-prefix>` retrieves one. Use the token
   header rather than putting credentials in shared URLs.
-- From the sync-merge batch the relay also keeps **history**: before a device's
+- From 3.5.0 the relay also keeps **history**: before a device's
   document is replaced, the previous one is kept if that device's last kept copy
   is over 30 minutes old (always, for documents from builds before item stamps).
   Newest 48 per device, none older than 14 days. `GET /api/history` lists them

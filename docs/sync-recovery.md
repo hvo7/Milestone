@@ -1,7 +1,7 @@
 # Sync: how devices agree, and what to do when they don't
 
-Applies from the sync-merge batch (testing branch `testing/sync-merge-recovery`).
-Earlier builds (3.4.1 and before) are covered under [Older builds](#older-builds).
+Applies from 3.5.0. Earlier builds (3.4.1 and before) are covered under
+[Older builds](#older-builds).
 
 ## How the copies are reconciled
 
@@ -68,7 +68,7 @@ it — losing everything done on the phone in between. Reproduced in
    Data › *Load backup*. **Download it** in Recover saves one copy the same way.
 
 Safety copies and conflict handling never send anything off the device; relay
-copies need the relay deployed from this batch or later (older relays answer
+copies need the relay deployed from 3.5.0 or later (older relays answer
 404 and the list simply has no relay copies).
 
 ## Older builds

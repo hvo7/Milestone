@@ -7,6 +7,16 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.5.0 - 2026-11-26
+
+- Sync merges item by item. Opening a device that has been away (a laptop after a few days) no longer replaces what was done on the others: each quest, task, habit, step, Vynues task and Life Vitals area keeps the newest change made to it, and the daily reset never overrides a change you made elsewhere. Items added on any device are kept; an item deleted on one device while edited on another is kept.
+- When the same item was edited on two devices before either synced, the later edit is used and the other is listed in the new **Sync health** card (Settings › Data & connections › Manage data) to restore or keep. The list syncs between devices, and the Settings button shows a count while anything is open.
+- Sync health also shows each device's version, when it last synced, how many changes it has not received, and flags devices on an older version.
+- Emergency tools: pause sync without losing edits; recover missing or changed items from another device's copy, an automatic safety copy (taken on opening and before every merge) or the relay's history; replace with a copy; use this device's data everywhere; download every copy in one file. See `docs/sync-recovery.md`.
+- The relay keeps the previous copy of each device's data (at most every 30 minutes, 48 per device, 14 days) and serves it at `/api/history`. Requires deploying the relay with this release.
+- Devices still on 3.4.1 can add items but can no longer delete or undo changes made on an updated device. On first launch each device marks its existing data so a stale device cannot revert it.
+- Sync bookkeeping stores fingerprints instead of a second full copy of every store; converted automatically on first launch. No change to the stores themselves. Older versions ignore the new sync fields.
+
 ## 3.4.1 - 2026-11-23
 
 - Life Vitals now syncs between devices. An open Life Vitals page updates when another device saves a check-in. A device with no Life Vitals never replaces another device's.
