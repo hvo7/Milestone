@@ -32,6 +32,17 @@ export function readVitalsSlot(): string | undefined {
   } catch { return undefined; }
 }
 
+/** True when this device holds no Life Vitals at all — as opposed to holding
+ *  some that could not be read, which must never be mistaken for "all deleted". */
+export function vitalsStorageEmpty(): boolean {
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw === null) return true;
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length === 0;
+  } catch { return false; }
+}
+
 /** The areas inside a slot string, or null if it isn't a valid one. */
 export function parseVitalsSlot(raw: string): StatusVital[] | null {
   try {
@@ -42,7 +53,8 @@ export function parseVitalsSlot(raw: string): StatusVital[] | null {
 
 /** Writes another device's areas here and tells an open page to show them. */
 export function applyVitalsSlot(raw: string): boolean {
-  const areas = parseVitalsSlot(raw);
+  // A merge that removed every area rebuilds the slot without an `areas` key.
+  const areas = parseVitalsSlot(raw) ?? (isEmptySlot(raw) ? [] : null);
   if (!areas) return false;
   localStorage.setItem(KEY, JSON.stringify(areas));
   window.dispatchEvent(new Event(VITALS_SYNCED));
@@ -52,4 +64,11 @@ export function applyVitalsSlot(raw: string): boolean {
 export function subscribeVitals(listener: () => void): () => void {
   window.addEventListener(CHANGED, listener);
   return () => window.removeEventListener(CHANGED, listener);
+}
+
+function isEmptySlot(raw: string): boolean {
+  try {
+    const state: unknown = JSON.parse(raw)?.state;
+    return !!state && typeof state === 'object' && !('areas' in state);
+  } catch { return false; }
 }

@@ -1,46 +1,36 @@
 /**
- * Keeps two (or more) copies of Milestone in step through a folder your cloud
- * drive already syncs. The folder plumbing lives in electron/cloudSync.cjs; this
- * is the half that decides *whose* data wins and applies the answer to the stores.
+ * Keeps Milestone's copies on your devices in step — the desktop, the laptop and
+ * the phone — through whichever routes each one has: a folder the cloud drive
+ * carries (electron/cloudSync.cjs), the desktop's Wi-Fi server, and the relay.
+ * The routes only move documents; this file decides what each device keeps.
  *
- * ── How a device knows whether it's behind ──────────────────────────────────
- * Wall-clock timestamps are the obvious way to compare two versions and the
- * wrong one: two machines' clocks disagree, and "newer" says nothing about
- * whether one version actually *contains* the other. So each device carries a
- * vector clock — a count per device id — bumped on its own entry whenever it
- * publishes, and merged (max per entry) whenever it adopts someone else's data.
- * Comparing two clocks then answers the only question that matters:
+ * ── Whether a device is behind ──────────────────────────────────────────────
+ * Each synced store ("slot") carries a vector clock — a count per device id,
+ * bumped on a device's own entry when it publishes a change and merged when it
+ * takes in someone else's. Wall-clock times can't answer whether one copy has
+ * *seen* another; the clocks can.
  *
- *   ahead      — the peer has everything we have, plus more  → fast-forward, no loss
- *   behind     — we have everything the peer has, plus more  → re-publish so it catches up
- *   equal      — same version                                 → nothing to do
- *   concurrent — both edited without seeing the other         → a genuine conflict
+ * ── What each device keeps ──────────────────────────────────────────────────
+ * Since 3.5 every item in a store is merged on its own (lib/syncMerge.ts): each
+ * change carries a dot saying which device made it at which count, so for every
+ * quest, task and habit sync knows whether the other side had already seen this
+ * side's version. Only the item edited on both sides without either seeing the
+ * other is a real conflict, and the daily reset never beats a change you made.
  *
- * ── Slots are tracked independently ─────────────────────────────────────────
- * The three persisted stores — quests, Vynues projects, UI preferences — are
- * unrelated to each other, so each carries its own clock. Editing a quest here
- * while a Vynues task was edited there is not a conflict: each side is simply
- * ahead on a different slot, and both fast-forward. Only a slot edited on *both*
- * machines is a genuine conflict, and only that slot pays for it.
+ * Before 3.5 a conflict replaced a whole store with the most recently written
+ * copy. A laptop opened after a few days runs its daily reset first, which made
+ * its stale copy "the most recent" — so it overwrote everything the phone had
+ * done in the meantime. That is the failure this design removes.
  *
- * A single doc-level clock (what this used to be) collapsed all three together
- * and made any pair of unrelated edits look like a conflict, throwing away one
- * side's quests to resolve a disagreement about the theme.
+ * ── Order of work ───────────────────────────────────────────────────────────
+ * A device stamps its own changes, merges every other device's copy into its
+ * own, applies the result, and only then publishes. It never publishes a copy it
+ * has not reconciled with what it just read.
  *
- * ── What happens on a genuine conflict ──────────────────────────────────────
- * The data model has no per-item edit times (a quest doesn't record when its
- * title changed), so there is no honest way to merge two divergent versions of
- * one slot item by item — a merge would have to guess whether a missing quest
- * was deleted over there or created over here. Rather than guess, the more
- * recently written version of *that slot* wins and the losing copy is written to
- * `backups/` in the folder, in the same bundle format the Data panel's "Load
- * backup" reads. Nothing is silently dropped, and the UI says so.
- *
- * ── Talking to older builds ─────────────────────────────────────────────────
- * A doc written before per-slot clocks has only `clock`. It's read as though
- * every slot carried that clock, which is exactly what it meant, so a machine
- * still on the old build converges correctly — it just can't benefit from the
- * finer granularity until it updates.
+ * ── Older builds ────────────────────────────────────────────────────────────
+ * Documents from 3.4.1 and earlier carry no item stamps. They are merged
+ * conservatively — nothing they lack is deleted unless they had demonstrably
+ * seen it — and anything of yours they dropped is listed as a sync issue.
  */
 import { create } from 'zustand';
 import { QUEST_STORE_KEY, UI_STORE_KEY } from '../uiStore';
@@ -49,33 +39,50 @@ import { useUIStore } from '../uiStore';
 import { VYNUES_STORE_KEY, useVynuesStore } from '../vynuesStore';
 import { APP_VERSION } from '../buildInfo';
 import { withoutHistory, clearHistory } from './history';
-import { httpBridge, compositeBridge, servedByMilestone, identity, rememberToken, type SyncBridge } from './phoneTransport';
+import { httpBridge, compositeBridge, servedByMilestone, identity, rememberToken, type SyncBridge, type HistoryEntry } from './phoneTransport';
 import { loadRelay, relayConfigured, provisionSharedRelay } from './relay';
-import { applyVitalsSlot, parseVitalsSlot, readVitalsSlot, subscribeVitals } from './vitalsSync';
+import { applyVitalsSlot, parseVitalsSlot, readVitalsSlot, subscribeVitals, vitalsStorageEmpty } from './vitalsSync';
+import { compareClocks, mergeClocks, type Clock, type ClockRelation } from './syncClock';
+import {
+  explode, implode, stage, mergeSides, pruneTombs, stampEverything, missingItems, withItems, entityLabel, isItemPath, normalize, baselineOf,
+  differingItems, withVersions,
+  type Dot, type Entities, type Side, type Stamps, type MergeConflict, type Baseline,
+} from './syncMerge';
+import { automaticMarks, clearAutomaticMarks } from './syncIntent';
+import { SYNC_ISSUES_KEY, useSyncIssues, recordIssues, closeIssue, type SyncIssue, type NewIssue } from './syncIssues';
+import { isSyncPaused, setSyncPausedFlag, saveSafetySnapshot } from './syncSafety';
 
-export type Clock = Record<string, number>;
-export type Slot = 'quest' | 'vynues' | 'ui' | 'vitals';
+export { compareClocks, mergeClocks };
+export type { Clock, ClockRelation };
+
+export type Slot = 'quest' | 'vynues' | 'ui' | 'vitals' | 'issues';
 type Version = { at: string; deviceId: string };
 
-export const SLOT_NAMES: Slot[] = ['quest', 'vynues', 'ui', 'vitals'];
+export const SLOT_NAMES: Slot[] = ['quest', 'vynues', 'ui', 'vitals', 'issues'];
+/** Item-stamped documents. Absent on documents from 3.4.1 and earlier. */
+export const SYNC_PROTOCOL = 2;
 
 export interface SyncDoc {
   _milestoneSync: 1;
   deviceId: string;
   deviceName: string;
-  /** Informational, and the tiebreak when two versions are genuinely concurrent. */
+  /** Informational, and the tiebreak between copies that predate item stamps. */
   updatedAt: string;
-  /** The build that wrote this. Absent on documents from before 3.4.1. Shown in
-   *  the sync card so a device left on an old build is visible, not a mystery. */
+  /** The build that wrote this. Absent on documents from before 3.4.1. */
   appVersion?: string;
-  /** Doc-level clock. Kept for builds that predate `slotClocks`, and written as
-   *  the union of the slot clocks so those builds still converge. */
+  /** Doc-level clock: the union of the slot clocks, for builds before slot clocks. */
   clock: Clock;
-  /** Per-slot clocks. Absent on documents written by older builds. */
   slotClocks?: Partial<Record<Slot, Clock>>;
   slotVersions?: Partial<Record<Slot, Version>>;
   stores: Partial<Record<Slot, string>>;
+  /** Per-slot item stamps (s) and deletions (t). Present from protocol 2. */
+  items?: Partial<Record<Slot, { s: Record<string, Dot>; t: Record<string, Dot> }>>;
+  syncProtocol?: number;
 }
+
+const isObject = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+const validDot = (dot: unknown) => Array.isArray(dot) && dot.length === 4 && typeof dot[0] === 'string' && /^[\w-]{1,64}$/.test(dot[0])
+  && Number.isSafeInteger(dot[1]) && dot[1] >= 0 && Number.isFinite(dot[2]) && (dot[3] === 0 || dot[3] === 1);
 
 /** Reject corrupt payloads before touching persisted data or live store methods. */
 export function isSyncDoc(value: unknown): value is SyncDoc {
@@ -86,45 +93,66 @@ export function isSyncDoc(value: unknown): value is SyncDoc {
   if (doc._milestoneSync !== 1 || typeof doc.deviceId !== 'string' || !/^[\w-]{1,64}$/.test(doc.deviceId)
     || typeof doc.deviceName !== 'string' || !Number.isFinite(Date.parse(doc.updatedAt)) || !validClock(doc.clock)
     || !doc.stores || typeof doc.stores !== 'object') return false;
+  if (doc.items !== undefined && !isObject(doc.items)) return false;
   try {
     for (const slot of SLOT_NAMES) {
       if (doc.slotClocks?.[slot] && !validClock(doc.slotClocks[slot]!)) return false;
       const version = doc.slotVersions?.[slot];
       if (version && (!Number.isFinite(Date.parse(version.at)) || typeof version.deviceId !== 'string')) return false;
+      const items = doc.items?.[slot];
+      if (items !== undefined && (!isObject(items) || !isObject(items.s) || !isObject(items.t)
+        || !Object.values(items.s).every(validDot) || !Object.values(items.t).every(validDot))) return false;
       const raw = doc.stores[slot];
       if (raw === undefined) continue;
-      if (typeof raw !== 'string') return false;
-      const parsed = JSON.parse(raw);
-      if (!parsed?.state || typeof parsed.state !== 'object' || Array.isArray(parsed.state)) return false;
-      if (slot === 'vitals') { if (!parseVitalsSlot(raw)) return false; continue; }
-      const store = SLOTS.find(item => item.slot === slot)!.store as unknown as { getState: () => Record<string, unknown> };
-      const live = store.getState();
-      if (Object.keys(parsed.state).some(key => ['__proto__', 'constructor', 'prototype'].includes(key) || typeof live[key] === 'function')) return false;
-      if (slot === 'quest' && (!Array.isArray(parsed.state.questlines) || !Array.isArray(parsed.state.routines))) return false;
-      if (slot === 'vynues' && !Array.isArray(parsed.state.projects)) return false;
+      if (typeof raw !== 'string' || !validSlot(slot, raw)) return false;
     }
+    return true;
+  } catch { return false; }
+}
+
+/** A slot string this build can safely load into its stores. */
+function validSlot(slot: Slot, raw: string): boolean {
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed?.state || typeof parsed.state !== 'object' || Array.isArray(parsed.state)) return false;
+    if (slot === 'vitals') return !!parseVitalsSlot(raw) || !('areas' in parsed.state);
+    const store = SLOTS.find(item => item.slot === slot)!.store as unknown as { getState: () => Record<string, unknown> };
+    const live = store.getState();
+    if (Object.keys(parsed.state).some(key => ['__proto__', 'constructor', 'prototype'].includes(key) || typeof live[key] === 'function')) return false;
+    if (slot === 'quest' && (!Array.isArray(parsed.state.questlines) || !Array.isArray(parsed.state.routines))) return false;
+    if (slot === 'vynues' && !Array.isArray(parsed.state.projects)) return false;
+    if (slot === 'issues' && !Array.isArray(parsed.state.issues)) return false;
     return true;
   } catch { return false; }
 }
 
 interface SyncConfig { enabled: boolean; folderEnabled?: boolean; folder: string; deviceId: string; deviceName: string; }
 
-/** Minimal shape of a persisted zustand store — enough to push adopted state in
- *  without dragging each store's full state type across module boundaries. */
+/** Minimal shape of a persisted zustand store. */
 interface Settable { setState: (partial: object) => void }
 
 const SLOTS: { slot: Exclude<Slot, 'vitals'>; key: string; store: Settable }[] = [
   { slot: 'quest',  key: QUEST_STORE_KEY,  store: useQuestStore  as unknown as Settable },
   { slot: 'vynues', key: VYNUES_STORE_KEY, store: useVynuesStore as unknown as Settable },
   { slot: 'ui',     key: UI_STORE_KEY,     store: useUIStore     as unknown as Settable },
+  { slot: 'issues', key: SYNC_ISSUES_KEY,  store: useSyncIssues  as unknown as Settable },
 ];
 
-/** Local sync bookkeeping. Deliberately *not* in a synced store — this is what
- *  this device knows about the world, and copying it to another machine would
- *  make that machine claim to have seen edits it hasn't. */
+/** Local sync bookkeeping. Deliberately *not* synced — it is what this device
+ *  knows about the world. */
 const META_KEY = 'milestone-sync-meta';
 
-// ── Status, for the settings card ─────────────────────────────────────────────
+// ── Status, for the settings cards ────────────────────────────────────────────
+
+export interface PeerStatus {
+  deviceName: string;
+  updatedAt: string;
+  appVersion?: string;
+  /** Written by a build before item-level merging (3.4.1 or older). */
+  legacy?: boolean;
+  /** Changes this device knows about that the peer's last copy had not seen. */
+  waiting?: number;
+}
 
 export interface SyncStatus {
   /** Desktop build with the sync bridge — false in a browser tab. */
@@ -133,76 +161,56 @@ export interface SyncStatus {
   folderEnabled: boolean;
   folder: string;
   deviceName: string;
-  peers: { deviceName: string; updatedAt: string; appVersion?: string }[];
+  peers: PeerStatus[];
   lastSyncedAt: string | null;
   busy: boolean;
   error: string | null;
-  /** Something the user should read once — a conflict, or a first-run adoption. */
+  /** Something the user should read once. */
   notice: string | null;
-  /** A standing problem that is not stopping sync: a device whose data was
-   *  skipped. Re-evaluated on every exchange, so it clears itself when fixed. */
+  /** A standing problem that is not stopping sync. Re-evaluated every exchange. */
   warning: string | null;
-  /** True in a browser rather than the desktop app — a phone, or a tab. The
-   *  reconciliation is identical; the wording isn't. */
+  /** True in a browser rather than the desktop app — a phone, or a tab. */
   overWifi: boolean;
-  /** True when this copy has some route to its other copies. False means it is
-   *  working alone: everything still saves, nothing is being exchanged. */
+  /** True when this copy has some route to its other copies. */
   linked: boolean;
+  /** Sync stopped by hand from the recovery tools. Edits are kept and sent on resume. */
+  paused: boolean;
+  /** Changes made here that have not been delivered yet. */
+  pending: boolean;
 }
 
 export const useSyncStatus = create<SyncStatus>(() => ({
   available: false, enabled: false, folderEnabled: false, folder: '', deviceName: '',
   peers: [], lastSyncedAt: null, busy: false, error: null, notice: null, warning: null, overWifi: false, linked: false,
+  paused: false, pending: false,
 }));
 
 const setStatus = (patch: Partial<SyncStatus>) => useSyncStatus.setState(patch);
 export const dismissNotice = () => setStatus({ notice: null });
 
-// ── Vector clocks ─────────────────────────────────────────────────────────────
+// ── Clocks ────────────────────────────────────────────────────────────────────
 
-const at = (clock: Clock, key: string) => clock[key] ?? 0;
-
-export type ClockRelation = 'ahead' | 'behind' | 'equal' | 'concurrent';
-
-export function compareClocks(a: Clock, b: Clock): ClockRelation {
-  let ahead = false, behind = false;
-  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
-    if (at(a, key) > at(b, key)) ahead = true;
-    else if (at(a, key) < at(b, key)) behind = true;
-  }
-  return ahead && behind ? 'concurrent' : ahead ? 'ahead' : behind ? 'behind' : 'equal';
-}
-
-export function mergeClocks(a: Clock, b: Clock): Clock {
-  const out: Clock = { ...a };
-  for (const key of Object.keys(b)) out[key] = Math.max(at(a, key), at(b, key));
-  return out;
-}
-
-/** A document's clock for one slot. Older documents have only the doc-level
- *  clock, which stood for all three slots at once — so that is what they get. */
+/** A document's clock for one slot. Older documents have only the doc-level clock. */
 export const slotClock = (doc: Pick<SyncDoc, 'clock' | 'slotClocks'>, slot: Slot): Clock =>
   doc.slotClocks?.[slot] ?? doc.clock ?? {};
 
-/** The doc-level clock to publish alongside per-slot ones: the union, so a build
- *  that only understands `clock` still sees us move forward whenever any slot does. */
+/** The doc-level clock to publish alongside per-slot ones. */
 export const unionClocks = (slots: Partial<Record<Slot, Clock>>): Clock =>
   SLOT_NAMES.reduce<Clock>((acc, slot) => mergeClocks(acc, slots[slot] ?? {}), {});
 
 // ── Local state ───────────────────────────────────────────────────────────────
 
 let config: SyncConfig | null = null;
-/** Set while remote data is being written into the stores, so the store
- *  subscriptions below don't mistake an adoption for a local edit and publish
- *  it straight back out. */
+/** Set while remote data is being written into the stores. */
 let applying = false;
 let writeTimer: ReturnType<typeof setTimeout> | null = null;
 let pullChain: Promise<void> = Promise.resolve();
 let cleanup: (() => void) | null = null;
 let pendingPull: Promise<void> | null = null;
 let pullRequested = false;
-// Delivery is remembered for this connection, independent of offline peers.
 let deliveredSnapshot = '';
+/** The other devices' documents as last read, for the recovery tools. */
+let lastPeers: SyncDoc[] = [];
 
 function enqueue(work: () => Promise<void>) {
   pullChain = pullChain.then(work).catch(err => {
@@ -211,26 +219,13 @@ function enqueue(work: () => Promise<void>) {
   return pullChain;
 }
 
-/**
- * Where documents are exchanged.
- *
- * The desktop uses the Electron bridge (a folder the cloud drive carries, plus
- * the phone server this computer runs). A phone has no bridge, but if the page
- * was served by a Milestone desktop it can reach the same documents over HTTP —
- * see lib/phoneTransport.ts. Either way the reconciler below is unchanged: it
- * asks for peers, writes its own document, and decides per slot.
- */
 let transport: SyncBridge | null = null;
 const bridge = () => transport ?? (window.electronAPI?.sync as SyncBridge | undefined) ?? null;
 
 /**
- * Every route this device has to its other copies, as one bridge.
- *
- * A desktop has the cloud folder and the Wi-Fi server (both behind the Electron
- * bridge) and, if you set one up, the relay. A phone has the relay and — when it
- * is home — the desktop that served it. Reads take the union and writes go
- * everywhere, so which routes happen to be up is not something the reconciler
- * has to think about.
+ * Every route this device has to its other copies, as one bridge: the cloud
+ * folder and Wi-Fi server (desktop), the origin that served the page (phone),
+ * and the relay. Reads take the union and writes go everywhere.
  */
 async function buildTransport(): Promise<SyncBridge | null> {
   const parts: SyncBridge[] = [];
@@ -244,8 +239,6 @@ async function buildTransport(): Promise<SyncBridge | null> {
   const originToken = savedRelay.url === location.origin && relayConfigured(savedRelay)
     ? savedRelay.token : linkToken;
 
-  // A page served by a desktop or a relay can always reach the endpoint it came
-  // from, at the origin it came from.
   // A paired offline PWA must retain its route even when health is unreachable.
   if (!local && (originToken || await servedByMilestone())) {
     parts.push(httpBridge({ token: originToken, me: identity() }));
@@ -254,41 +247,39 @@ async function buildTransport(): Promise<SyncBridge | null> {
   const desktopConfig = local ? await local.getConfig() : null;
   if (desktopConfig?.sharedRelay) provisionSharedRelay(desktopConfig.sharedRelay);
   const relay = loadRelay();
-  // Not added twice: a phone that loaded the app *from* the relay is already
-  // talking to it through the line above.
   const servedByRelay = !local && parts.length > 0 && relay.url === location.origin;
   if (relayConfigured(relay) && !servedByRelay) {
     parts.push(httpBridge({
       base: relay.url,
       token: relay.token,
-      // The desktop's own identity, so the relay leaves its document out of the
-      // peer list rather than handing this machine back its own clock.
       me: local ? await local.getConfig() : identity(),
-      // The desktop's own identity comes from Electron, and its poll comes from
-      // the folder watcher; a second timer would only duplicate the work.
       poll: !local,
     }));
   }
 
   if (!parts.length) return null;
-  // A single route needs no wrapper, and the desktop's own bridge must stay
-  // itself — enableSync and friends reach for it directly.
   return parts.length === 1 && local ? null : compositeBridge(parts);
 }
 
 interface Meta {
-  /** What this device believes it has seen, per slot. */
+  /** What this device has seen, per slot. */
   slots: Record<Slot, Clock>;
-  /** Last published content per slot, so a publish only bumps slots that moved.
-   *  Without this every write would advance all three and re-create exactly the
-   *  false conflicts per-slot clocks exist to avoid. */
-  published: Partial<Record<Slot, string>>;
-  /** Failed writes survive restart and are retried even if peers haven't changed. */
+  /** Each slot as this device last stamped it, as path → fingerprint: the
+   *  baseline its next local changes are measured against. */
+  base: Partial<Record<Slot, Record<string, string>>>;
+  /** Item stamps and deletions per slot. */
+  items: Partial<Record<Slot, Stamps>>;
+  /** A write still has to reach every route. Survives restart. */
   pending?: boolean;
   versions?: Partial<Record<Slot, Version>>;
+  /** Set once this device has joined (or started) a sync group under item stamps. */
+  protocol?: number;
 }
 
-const emptyMeta = (): Meta => ({ slots: { quest: {}, vynues: {}, ui: {}, vitals: {} }, published: {} });
+const emptyMeta = (): Meta => ({ slots: { quest: {}, vynues: {}, ui: {}, vitals: {}, issues: {} }, base: {}, items: {} });
+
+const toRecord = (baseline: Baseline) => Object.fromEntries(baseline);
+const baselineFor = (meta: Meta, slot: Slot): Baseline => new Map(Object.entries(meta.base[slot] ?? {}));
 
 function loadMeta(): Meta {
   try {
@@ -299,14 +290,23 @@ function loadMeta(): Meta {
       for (const slot of SLOT_NAMES) {
         if (parsed.slots[slot] && typeof parsed.slots[slot] === 'object') meta.slots[slot] = parsed.slots[slot] as Clock;
       }
-      if (parsed.published && typeof parsed.published === 'object') meta.published = parsed.published;
+      if (parsed.base && typeof parsed.base === 'object') meta.base = parsed.base;
+      else if (parsed.published && typeof parsed.published === 'object') {
+        // 3.4.1 kept a full copy of what it last published. Its fingerprints
+        // are the baseline: whatever changed since is this device's news.
+        for (const slot of SLOT_NAMES) {
+          const raw = parsed.published[slot];
+          const entities = typeof raw === 'string' ? explode(raw) : null;
+          if (entities) meta.base[slot] = toRecord(baselineOf(entities));
+        }
+      }
+      if (parsed.items && typeof parsed.items === 'object') meta.items = parsed.items;
       meta.pending = parsed.pending === true;
       meta.versions = parsed.versions ?? {};
+      if (typeof parsed.protocol === 'number') meta.protocol = parsed.protocol;
       return meta;
     }
-    // Upgrade from the single-clock format: that one clock described all three
-    // slots, so seed each with it rather than starting from zero (which would
-    // read as "never seen anything" and re-adopt a peer we're already level with).
+    // Upgrade from the single-clock format: that one clock described every slot.
     if (parsed && typeof parsed.clock === 'object' && parsed.clock) {
       const meta = emptyMeta();
       for (const slot of SLOT_NAMES) meta.slots[slot] = { ...parsed.clock as Clock };
@@ -318,28 +318,55 @@ function loadMeta(): Meta {
 
 const saveMeta = (meta: Meta) => localStorage.setItem(META_KEY, JSON.stringify(meta));
 
-/** The three persisted stores exactly as they sit in localStorage. Shipping the
- *  raw strings (rather than re-serialising parsed state) keeps this byte-identical
- *  to what the Backup & Restore bundle carries, so both paths stay interchangeable. */
+/** Has this device ever synced: a first exchange joins a group rather than
+ *  stamping whatever defaults a fresh install holds as news. Devices upgrading
+ *  from 3.4.1 have published before and count as joined. */
+const joined = (meta: Meta) => !!meta.protocol || Object.keys(meta.base).length > 0;
+
+/** One slot as it sits on this device. `undefined` = nothing here; `null` =
+ *  something here that can't be read, which must never count as "deleted". */
+function readSlot(slot: Slot): string | undefined | null {
+  if (slot === 'vitals') {
+    const raw = readVitalsSlot();
+    return raw !== undefined ? raw : vitalsStorageEmpty() ? undefined : null;
+  }
+  const key = SLOTS.find(item => item.slot === slot)!.key;
+  return localStorage.getItem(key) ?? undefined;
+}
+
 function snapshot(): Partial<Record<Slot, string>> {
   const stores: Partial<Record<Slot, string>> = {};
-  for (const { slot, key } of SLOTS) {
-    const raw = localStorage.getItem(key);
-    if (raw !== null) stores[slot] = raw;
+  for (const slot of SLOT_NAMES) {
+    const raw = readSlot(slot);
+    if (typeof raw === 'string') stores[slot] = raw;
   }
-  const vitals = readVitalsSlot();
-  if (vitals !== undefined) stores.vitals = vitals;
   return stores;
 }
 
-/** Writes an incoming version into localStorage *and* into the live stores, so
- *  an edit made on the other computer appears without a restart. */
+/** A slot's entities, with absence as an empty set. Null when unreadable. */
+function entitiesOf(raw: string | undefined | null): Entities | null {
+  if (raw === null) return null;
+  if (raw === undefined) return new Map();
+  return cachedExplode(raw);
+}
+
+const exploded = new Map<string, Entities>();
+function cachedExplode(raw: string): Entities | null {
+  const hit = exploded.get(raw);
+  if (hit) return hit;
+  const result = explode(raw);
+  if (result) {
+    exploded.set(raw, result);
+    if (exploded.size > 12) exploded.delete(exploded.keys().next().value!);
+  }
+  return result;
+}
+
+/** Writes incoming versions into localStorage *and* the live stores. */
 function applyStores(stores: Partial<Record<Slot, string>>) {
   applying = true;
-  // Outside the undo history, and it *clears* it. Adopting the other computer's
-  // data makes every local step meaningless: those snapshots describe a state
-  // this profile is no longer in, and restoring one would throw away what just
-  // arrived — then sync that loss back over the wire.
+  // Adopting other data makes every undo step meaningless — they describe a
+  // state this profile is no longer in.
   clearHistory();
   return withoutHistory(() => {
   try {
@@ -349,13 +376,10 @@ function applyStores(stores: Partial<Record<Slot, string>>) {
       localStorage.setItem(key, raw);
       try {
         const parsed = JSON.parse(raw);
-        // zustand's persist wraps state as { state, version }.
         if (parsed && typeof parsed.state === 'object' && parsed.state) store.setState(parsed.state);
-      } catch { /* leave the store as-is; the raw value is still on disk for next launch */ }
+      } catch { /* the raw value is still on disk for next launch */ }
     }
     if (typeof stores.vitals === 'string') applyVitalsSlot(stores.vitals);
-    // Theme is applied to <html> imperatively on toggle, so adopting a different
-    // theme has to re-assert it — setState alone won't repaint the attribute.
     const theme = useUIStore.getState().theme;
     document.documentElement.setAttribute('data-theme', theme);
     window.dispatchEvent(new Event('milestone:refresh-day'));
@@ -365,96 +389,153 @@ function applyStores(stores: Partial<Record<Slot, string>>) {
   });
 }
 
-const backupBundle = () => {
-  const stores = snapshot();
-  return { _milestone: 2, appVersion: APP_VERSION, exportedAt: new Date().toISOString(), quest: stores.quest, vynues: stores.vynues, ui: stores.ui, vitals: stores.vitals };
+/** The current data in the Backup & Restore bundle format. */
+const bundleOf = (stores: Partial<Record<Slot, string>>) =>
+  ({ _milestone: 2, appVersion: APP_VERSION, exportedAt: new Date().toISOString(), quest: stores.quest, vynues: stores.vynues, ui: stores.ui, vitals: stores.vitals });
+
+/** A safety copy of this device's data (the issue list is not data). */
+const safetyCopy = (reason: string, stores = snapshot()) => {
+  const data: Partial<Record<Slot, string>> = { ...stores };
+  delete data.issues;
+  return saveSafetySnapshot(reason, data).catch(() => {});
 };
 
-// ── Publish ───────────────────────────────────────────────────────────────────
+// ── Stamping local changes ────────────────────────────────────────────────────
 
 /**
- * Writes this device's document to the folder.
- *
- * `bump` advances our own entry — true for a real local edit, false when we're
- * only re-stating a version a peer already ought to have. Even on a real edit,
- * only slots whose *content* changed since our last publish move: bumping a slot
- * nobody touched would tell peers we have news about it, and manufacture the
- * conflicts this design exists to avoid.
+ * Gives this device's changes since the last stamp their dots and makes the
+ * current data the new baseline. Synchronous, so nothing can change in between.
  */
-async function publish(bump: boolean) {
-  const api = bridge();
-  if (!api || !config?.enabled) return;
-
-  const meta = loadMeta();
-  const stores = snapshot();
-
-  if (bump) {
-    for (const slot of SLOT_NAMES) {
-      const current = stores[slot];
-      if (current === meta.published[slot]) continue;      // untouched slot
-      meta.slots[slot] = { ...meta.slots[slot], [config.deviceId]: at(meta.slots[slot], config.deviceId) + 1 };
-      meta.versions = { ...meta.versions, [slot]: { at: new Date().toISOString(), deviceId: config.deviceId } };
+function stageAll(meta: Meta, now = Date.now()) {
+  if (!config) return;
+  const me = config.deviceId;
+  for (const slot of SLOT_NAMES) {
+    const raw = readSlot(slot);
+    if (raw === null) continue;                              // unreadable: leave it alone
+    const current = entitiesOf(raw)!;
+    const prior = meta.items[slot] ?? { stamps: {}, tombs: {} };
+    const published = meta.slots[slot][me] ?? 0;
+    const staged = stage(baselineFor(meta, slot), current, prior, meta.slots[slot], me, now, automaticMarks(slot));
+    if (staged.changed.length) {
+      meta.items[slot] = { stamps: staged.stamps, tombs: pruneTombs(staged.tombs, now) };
+      meta.slots[slot] = staged.clock;
+      meta.versions = { ...meta.versions, [slot]: { at: new Date(now).toISOString(), deviceId: me } };
+      clearAutomaticMarks(slot, staged.changed);
+      meta.pending = true;
+      if (raw === undefined) delete meta.base[slot];
+      else meta.base[slot] = toRecord(baselineOf(current));
     }
+    if (meta.protocol !== SYNC_PROTOCOL) guard(meta, slot, current, published, now);
   }
-  const signature = JSON.stringify({ stores, slots: meta.slots, versions: meta.versions, app: APP_VERSION });
-  if (!meta.pending && signature === deliveredSnapshot) return;
-  meta.published = { ...stores };
-  meta.pending = true;
-  saveMeta(meta);
+  meta.protocol = SYNC_PROTOCOL;
+}
 
-  const doc: SyncDoc = {
+/**
+ * The first stamp after upgrading from 3.4.1.
+ *
+ * Everything here was made by hand somewhere but carries no stamp. Each item is
+ * given one at the count this device last published under the old build: a
+ * device that has seen that publish treats it as old news, and one that has not
+ * (a laptop away for days) learns that this version is newer than its own.
+ * Because it marks a change made by hand, a device still on the old build — a
+ * laptop reverting to its stale copy — cannot replace or delete it either.
+ */
+function guard(meta: Meta, slot: Slot, current: Entities, published: number, now: number) {
+  const items = meta.items[slot] ?? { stamps: {}, tombs: {} };
+  const stamps = { ...items.stamps };
+  for (const path of current.keys()) stamps[path] ??= [config!.deviceId, published, now, 0];
+  meta.items[slot] = { ...items, stamps };
+}
+
+/** The document this device publishes: exactly what it last stamped. */
+function buildDoc(meta: Meta): SyncDoc {
+  const stores: Partial<Record<Slot, string>> = {};
+  const items: NonNullable<SyncDoc['items']> = {};
+  for (const slot of SLOT_NAMES) {
+    // Read straight after stamping, with nothing awaited in between, so the
+    // data and its stamps describe the same moment. An empty Life Vitals list
+    // is never published: an older build could adopt "no areas" from it.
+    const raw = readSlot(slot);
+    if (typeof raw === 'string') stores[slot] = raw;
+    const stamps = meta.items[slot];
+    if (stamps) items[slot] = { s: stamps.stamps, t: stamps.tombs };
+  }
+  return {
     _milestoneSync: 1,
-    deviceId: config.deviceId,
-    deviceName: config.deviceName,
+    deviceId: config!.deviceId,
+    deviceName: config!.deviceName,
     updatedAt: new Date().toISOString(),
     appVersion: APP_VERSION,
+    syncProtocol: SYNC_PROTOCOL,
     clock: unionClocks(meta.slots),
     slotClocks: meta.slots,
     slotVersions: meta.versions,
     stores,
+    items,
   };
+}
+
+// ── Publish ───────────────────────────────────────────────────────────────────
+
+/** Stamps any local changes and writes this device's document everywhere. */
+async function publish() {
+  const api = bridge();
+  if (!api || !config?.enabled || isSyncPaused()) return;
+
+  const meta = loadMeta();
+  // A device that has not joined its group yet waits for its first successful
+  // read, so a fresh install's defaults are never published as news.
+  if (!joined(meta)) return;
+  stageAll(meta);
+  saveMeta(meta);
+
+  const doc = buildDoc(meta);
+  const signature = JSON.stringify({ stores: doc.stores, slots: doc.slotClocks, items: doc.items, app: APP_VERSION });
+  if (!meta.pending && signature === deliveredSnapshot) return;
+  meta.pending = true;
+  saveMeta(meta);
+  setStatus({ pending: true });
 
   let res = await api.write(doc);
-  // The relay refuses a document whose clock is behind the one it already holds
-  // for this device. That happens when this device's bookkeeping went backwards
-  // — a restored profile, cleared site data — and without help it is permanent:
-  // every later write is refused too. Take back the clock the relay remembers,
-  // and send again.
+  // The relay refuses a document whose clock is behind the one it holds for
+  // this device (a restored profile, cleared site data). Take back the clock
+  // the relay remembers and send again.
   if (!res.ok && res.stale && api.readSelf) {
     const mine = await api.readSelf().catch(() => null);
     if (mine && isSyncDoc(mine) && mine.deviceId === config.deviceId) {
-      for (const slot of SLOT_NAMES) meta.slots[slot] = mergeClocks(meta.slots[slot], slotClock(mine, slot));
-      saveMeta(meta);
-      doc.clock = unionClocks(meta.slots);
-      doc.slotClocks = meta.slots;
+      const repaired = loadMeta();
+      for (const slot of SLOT_NAMES) repaired.slots[slot] = mergeClocks(repaired.slots[slot], slotClock(mine, slot));
+      saveMeta(repaired);
+      doc.clock = unionClocks(repaired.slots);
+      doc.slotClocks = repaired.slots;
       res = await api.write(doc);
       if (res.ok) setStatus({ notice: 'This device\'s sync record was behind the relay\'s copy and has been repaired. Syncing has resumed.' });
     }
   }
   if (res.ok) {
     deliveredSnapshot = signature;
-    meta.pending = false;
-    saveMeta(meta);
-    setStatus({ lastSyncedAt: res.at ?? new Date().toISOString(), error: null });
+    const done = loadMeta();
+    // Anything stamped while the write was in flight is still owed.
+    done.pending = JSON.stringify(done.base) !== JSON.stringify(meta.base);
+    saveMeta(done);
+    setStatus({ lastSyncedAt: res.at ?? new Date().toISOString(), error: null, pending: done.pending });
   }
   else setStatus({ error: res.error ?? 'Could not write to the sync folder.' });
+  refreshPeerStatus();
 }
 
 function scheduleWrite() {
   if (applying || !config?.enabled) return;
   if (writeTimer) clearTimeout(writeTimer);
-  // Long enough that typing a task title is one write rather than twenty — a
-  // pause this long means you stopped typing — and short enough that the other
-  // device has it before you've finished picking it up. Now that a write is
-  // pushed rather than waited for, this delay *is* the latency between the two
-  // screens, so it is worth keeping honest.
-  writeTimer = setTimeout(() => { writeTimer = null; void enqueue(() => publish(true)); }, 700);
+  // Long enough that typing a title is one write rather than twenty; short
+  // enough that the other screen has it before you've picked it up.
+  writeTimer = setTimeout(() => { writeTimer = null; void enqueue(publish); }, 700);
 }
 
-// ── Pull ──────────────────────────────────────────────────────────────────────
+// ── Merge ─────────────────────────────────────────────────────────────────────
 
-/** Of two peer documents, the one that supersedes the other *for one slot* — or,
- *  if neither does, the more recently written. */
+/** Of two peer documents, the one that supersedes the other for one slot — or,
+ *  if neither does, the more recently written. Kept for copies without stamps. */
 export function preferredForSlot(a: SyncDoc, b: SyncDoc, slot: Slot): SyncDoc {
   const rel = compareClocks(slotClock(a, slot), slotClock(b, slot));
   if (rel === 'ahead') return a;
@@ -464,152 +545,226 @@ export function preferredForSlot(a: SyncDoc, b: SyncDoc, slot: Slot): SyncDoc {
   return av.at > bv.at || (av.at === bv.at && av.deviceId >= bv.deviceId) ? a : b;
 }
 
-/** What this device should do about one slot, given the best peer for it. */
-interface SlotPlan {
-  slot: Slot;
-  source: SyncDoc;
-  relation: ClockRelation;
-  keepLocal?: boolean;
-}
-
-/**
- * Applies the slots we decided to take, in one pass, and folds their clocks into
- * ours. Everything else on this machine is left exactly as it is — that is the
- * whole point of tracking slots separately.
- */
-async function adoptSlots(plans: SlotPlan[], conflicted: SlotPlan[]) {
-  const api = bridge();
-  const before = JSON.stringify(snapshot());
-
-  if (conflicted.length && api) {
-    // Some slot on this machine is about to be replaced by a version that isn't
-    // a descendant of it, so park a restorable copy before it goes.
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const res = await api.writeBackup(`${config?.deviceName ?? 'device'}-${stamp}.json`, backupBundle());
-    if (!res.ok) { setStatus({ error: 'Sync paused: could not save a conflict backup. Your local changes were kept.' }); return; }
-    for (const plan of conflicted) {
-      const peer = plan.source;
-      const saved = await api.writeBackup(`${peer.deviceId}-${plan.slot}-${stamp}.json`, {
-        _milestone: 2, appVersion: APP_VERSION, exportedAt: new Date().toISOString(),
-        quest: peer.stores.quest, vynues: peer.stores.vynues, ui: peer.stores.ui, vitals: peer.stores.vitals,
-      });
-      if (!saved.ok) { setStatus({ error: 'Sync paused: could not back up the other device. Both versions were kept.' }); return; }
-    }
-    const names = conflicted.map(p => SLOT_LABEL[p.slot]).join(' and ');
-    setStatus({
-      notice: `Devices independently edited ${names}. The version with the latest edit was selected consistently on both devices. Both versions were saved in sync backups for recovery.`,
-    });
-  }
-
-  // A user can keep editing while an asynchronous conflict backup is written.
-  // Reconcile again with that edit's clock instead of replacing it unseen.
-  if (JSON.stringify(snapshot()) !== before) { void pull(); return; }
-
-  const incoming: Partial<Record<Slot, string>> = {};
-  for (const plan of plans) {
-    if (plan.keepLocal) continue;
-    const raw = plan.source.stores[plan.slot];
-    if (typeof raw === 'string') incoming[plan.slot] = raw;
-  }
-  applyStores(incoming);
-
-  const meta = loadMeta();
-  for (const plan of plans) {
-    meta.slots[plan.slot] = mergeClocks(meta.slots[plan.slot], slotClock(plan.source, plan.slot));
-    if (!plan.keepLocal) meta.versions = { ...meta.versions, [plan.slot]: plan.source.slotVersions?.[plan.slot] ?? { at: plan.source.updatedAt, deviceId: plan.source.deviceId } };
-  }
-  saveMeta(meta);
-  setStatus({ lastSyncedAt: new Date().toISOString(), error: null });
-
-  // Record that we've seen it, so the next comparison is 'equal' rather than a
-  // second conflict over the same divergence.
-  await publish(false);
-}
-
-/** Human names for the notice text — "quests", not "quest". */
+/** Human names for messages. */
 const SLOT_LABEL: Record<Slot, string> = {
   vitals: 'Life Vitals',
   quest: 'quests and tasks',
   vynues: 'Vynues projects',
   ui: 'display settings',
+  issues: 'sync issues',
 };
+
+/** Does this document carry the slot at all. An older build that has never
+ *  held a slot says nothing about it — its silence is not a deletion. */
+const carries = (doc: SyncDoc, slot: Slot) => typeof doc.stores[slot] === 'string' || (!!doc.items && !!doc.items[slot]);
+
+function remoteSide(doc: SyncDoc, slot: Slot): Side | null {
+  const entities = entitiesOf(doc.stores[slot]);
+  if (!entities) return null;
+  const items = doc.items?.[slot];
+  return {
+    entities, stamps: items?.s ?? {}, tombs: items?.t ?? {}, clock: slotClock(doc, slot), legacy: !doc.items,
+    device: { id: doc.deviceId, name: doc.deviceName }, at: doc.slotVersions?.[slot]?.at ?? doc.updatedAt,
+  };
+}
+
+function localSide(meta: Meta, slot: Slot, entities: Entities): Side {
+  return {
+    entities, stamps: meta.items[slot]?.stamps ?? {}, tombs: meta.items[slot]?.tombs ?? {}, clock: meta.slots[slot], legacy: false,
+    device: { id: config!.deviceId, name: config!.deviceName }, at: meta.versions?.[slot]?.at ?? '1970-01-01T00:00:00.000Z',
+  };
+}
+
+/** Conflicts worth your attention: named items whose version gave way. */
+function issuesFrom(slot: Slot, conflicts: MergeConflict[], entities: Entities, sides: Entities[]): NewIssue[] {
+  if (slot === 'issues') return [];
+  const out: NewIssue[] = [];
+  for (const conflict of conflicts) {
+    const label = entityLabel(conflict.kept.value) ?? entityLabel(conflict.lost.value);
+    if (!label) continue;
+    const where = entities.get(conflict.path) ?? sides.map(side => side.get(conflict.path)).find(Boolean);
+    out.push({
+      kind: conflict.kind, slot, path: conflict.path, label,
+      keptFrom: conflict.kept.device, lostFrom: conflict.lost.device, lost: conflict.lost.value,
+      parent: where?.parent ?? null, field: where?.field ?? null,
+    });
+  }
+  return out;
+}
+
+/**
+ * Brings every other device's changes into this one, item by item.
+ *
+ * Returns what moved. Runs synchronously from reading the local stores to
+ * writing the result, so an edit can't slip in between and be overwritten.
+ */
+function mergePeers(meta: Meta, peers: SyncDoc[]): { stores: Partial<Record<Slot, string>>; issues: NewIssue[]; from: Set<string>; invalid: Slot[] } {
+  const out: Partial<Record<Slot, string>> = {};
+  const issues: NewIssue[] = [];
+  const from = new Set<string>();
+  const invalid: Slot[] = [];
+
+  for (const slot of SLOT_NAMES) {
+    const remotes = peers.filter(peer => carries(peer, slot));
+    if (!remotes.length) continue;
+    const current = entitiesOf(readSlot(slot));
+    if (!current) continue;
+    const base = baselineFor(meta, slot);
+    let side = localSide(meta, slot, current);
+    let changed = false;
+    const found: MergeConflict[] = [];
+    const sides: Entities[] = [];
+
+    for (const peer of remotes) {
+      const remote = remoteSide(peer, slot);
+      if (!remote) continue;
+      const relation = compareClocks(remote.clock, side.clock);
+      // Nothing it holds is news here.
+      if (relation === 'behind' || relation === 'equal') continue;
+      const merged = mergeSides(side, remote, base);
+      if (merged.changed) { changed = true; from.add(peer.deviceName); }
+      found.push(...merged.conflicts);
+      sides.push(remote.entities);
+      side = { ...side, entities: merged.entities, stamps: merged.stamps, tombs: merged.tombs, clock: merged.clock };
+    }
+
+    const raw = changed ? implode(side.entities) : undefined;
+    if (raw !== undefined && !validSlot(slot, raw)) { invalid.push(slot); continue; }
+    meta.slots[slot] = side.clock;
+    meta.items[slot] = { stamps: side.stamps, tombs: side.tombs };
+    if (raw !== undefined) {
+      out[slot] = raw;
+      meta.base[slot] = toRecord(baselineOf(side.entities));
+    }
+    issues.push(...issuesFrom(slot, found, side.entities, [current, ...sides]));
+  }
+  return { stores: out, issues, from, invalid };
+}
+
+/**
+ * A device's first exchange. With other devices already syncing, it takes their
+ * data and keeps only its own items they have never had (and never deleted).
+ * With none, its data starts the group and is stamped as this device's.
+ */
+function join(meta: Meta, peers: SyncDoc[], now = Date.now()): Partial<Record<Slot, string>> {
+  const me = config!.deviceId;
+  const out: Partial<Record<Slot, string>> = {};
+  for (const slot of SLOT_NAMES) {
+    const raw = readSlot(slot);
+    if (raw === null) continue;
+    const local = entitiesOf(raw)!;
+    const remotes = peers.filter(peer => carries(peer, slot)).map(peer => remoteSide(peer, slot)).filter((side): side is Side => !!side);
+    if (!remotes.length) {
+      const staged = stage(new Map(), local, { stamps: {}, tombs: {} }, meta.slots[slot], me, now);
+      meta.items[slot] = { stamps: staged.stamps, tombs: staged.tombs };
+      meta.slots[slot] = staged.clock;
+      if (raw !== undefined) meta.base[slot] = toRecord(baselineOf(local));
+      continue;
+    }
+    const group = remotes.slice(1).reduce<Side>((acc, remote) => {
+      const merged = mergeSides(acc, remote);
+      return { ...acc, entities: merged.entities, stamps: merged.stamps, tombs: merged.tombs, clock: merged.clock };
+    }, remotes[0]);
+    const theirs = group.entities;
+    const mine = missingItems(theirs, local).map(item => item.path).filter(path => !group.tombs[path]);
+    const result = mine.length ? withItems(theirs, local, mine) : theirs;
+    const resultRaw = implode(result);
+    if (!validSlot(slot, resultRaw)) continue;
+    meta.items[slot] = { stamps: group.stamps, tombs: group.tombs };
+    meta.slots[slot] = mergeClocks(meta.slots[slot], group.clock);
+    // The group's copy is the baseline, so this device's own items become its
+    // first stamped changes and travel to the others.
+    meta.base[slot] = toRecord(baselineOf(theirs));
+    if (resultRaw !== raw) out[slot] = resultRaw;
+  }
+  meta.protocol = SYNC_PROTOCOL;
+  return out;
+}
 
 async function pullOnce() {
   const api = bridge();
   if (!api || !config?.enabled) return;
+  if (isSyncPaused()) { setStatus({ paused: true }); return; }
 
   const res = await api.readPeers();
   if (!res.ok) { setStatus({ error: res.error ?? 'Could not read the sync folder.' }); return; }
-
-  // Account for edits made offline, during the debounce, or while the network
-  // read was in flight, before deciding whether a peer supersedes this device.
-  const previous = loadMeta().published;
-  const current = snapshot();
-  // Fresh installs run store hydration/day bookkeeping while the first read is
-  // in flight. Do not promote that empty baseline over an existing peer. Initial
-  // adoption below backs up differing local content before taking remote data.
-  if (Object.keys(previous).length === 0 && writeTimer) {
-    clearTimeout(writeTimer);
-    writeTimer = null;
-  }
-  if (writeTimer || (Object.keys(previous).length > 0 && SLOT_NAMES.some(slot => current[slot] !== previous[slot]))) {
-    if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
-    await publish(true);
-    // Publishing can itself take time; another local edit needs its own turn.
-    if (JSON.stringify(snapshot()) !== JSON.stringify(current)) { void pull(); return; }
-  }
-
   if (!Array.isArray(res.peers)) {
     setStatus({ error: 'The sync route returned an unreadable answer. Local data was kept.' });
     return;
   }
-  // One unreadable document must not stop this device syncing with the others:
-  // it is left out and named, and everything else carries on.
+  if (isSyncPaused()) return;
+  if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
+
+  // One unreadable document must not stop this device syncing with the others.
   const unreadable = res.peers.filter(doc => !isSyncDoc(doc)) as { deviceName?: unknown }[];
   const peers = res.peers.filter(isSyncDoc).filter(doc => doc.deviceId !== config?.deviceId);
+  lastPeers = peers;
   const skipped = unreadable.map(doc => typeof doc?.deviceName === 'string' && doc.deviceName ? doc.deviceName.slice(0, 40) : 'an unnamed device');
   setStatus({
-    peers: peers.map(p => ({ deviceName: p.deviceName, updatedAt: p.updatedAt, appVersion: p.appVersion })),
     warning: skipped.length
       ? `Skipped unreadable sync data from ${[...new Set(skipped)].join(', ')}. Update Milestone on that device; the other devices are still syncing.`
       : null,
   });
 
-  if (peers.length === 0) { await publish(Object.keys(previous).length === 0); return; }
-
+  // From here to applyStores nothing awaits: what is read is what is merged.
   const meta = loadMeta();
-  const localDoc: SyncDoc = { _milestoneSync: 1, ...config, updatedAt: '1970-01-01T00:00:00.000Z',
-    clock: unionClocks(meta.slots), slotClocks: meta.slots, slotVersions: meta.versions, stores: snapshot() };
-  const take: SlotPlan[] = [];
-  const conflicted: SlotPlan[] = [];
-  let weAreAhead = false;
-
-  // Each slot is decided on its own evidence: an edit to quests over there and
-  // to Vynues over here means both sides fast-forward, with nothing discarded.
-  for (const slot of SLOT_NAMES) {
-    const candidates = peers.filter(peer => typeof peer.stores[slot] === 'string');
-    if (!candidates.length) continue;
-    const source = candidates.reduce((a, b) => preferredForSlot(a, b, slot));
-    const relation = compareClocks(slotClock(source, slot), meta.slots[slot]);
-    if (relation === 'ahead') {
-      const plan = { slot, source, relation };
-      take.push(plan);
-      // First pairing must keep a recovery copy of pre-existing local data.
-      if (!meta.published[slot] && current[slot] && current[slot] !== source.stores[slot]) conflicted.push(plan);
+  const before = snapshot();
+  let incoming: Partial<Record<Slot, string>>;
+  let issues: NewIssue[] = [];
+  let from: Set<string>;
+  if (!joined(meta)) {
+    incoming = join(meta, peers);
+    from = new Set(peers.map(peer => peer.deviceName));
+  } else {
+    stageAll(meta);
+    const merged = mergePeers(meta, peers);
+    incoming = merged.stores;
+    issues = merged.issues;
+    from = merged.from;
+    if (merged.invalid.length) {
+      setStatus({ warning: `Could not combine ${merged.invalid.map(slot => SLOT_LABEL[slot]).join(' and ')} with another device's copy. This device's version was kept.` });
     }
-    else if (relation === 'concurrent') {
-      const plan = { slot, source, relation, keepLocal: preferredForSlot(localDoc, source, slot) === localDoc };
-      take.push(plan); conflicted.push(plan);
-    }
-    else if (relation === 'behind') weAreAhead = true;
   }
 
-  if (take.length) await adoptSlots(take, conflicted);
-  else if (weAreAhead || loadMeta().pending) await publish(false);
+  const moved = Object.keys(incoming).length > 0;
+  if (moved) {
+    applyStores(incoming);
+    meta.pending = true;
+  }
+  saveMeta(meta);
+  if (moved) void safetyCopy(`Before taking changes from ${[...from].join(', ') || 'another device'}`, before);
+  if (recordIssues(issues)) {
+    const open = useSyncIssues.getState().issues.filter(issue => issue.status === 'open').length;
+    setStatus({ notice: `${open === 1 ? 'An item was' : `${open} items were`} changed on two devices at once. Both versions are kept in Sync health.` });
+  }
+  setStatus({ lastSyncedAt: new Date().toISOString(), error: null });
+  refreshPeerStatus();
+
+  await publish();
 }
 
-/** Serialised so a burst of watcher events can't run two reconciliations over
- *  the same stores at once. */
+/** What each other device has and hasn't caught up on, for the status cards. */
+function refreshPeerStatus() {
+  const meta = loadMeta();
+  const seen = (clock: Clock, dot: Dot) => (clock[dot[0]] ?? 0) >= dot[1];
+  setStatus({
+    pending: !!meta.pending,
+    peers: lastPeers.map(peer => {
+      let waiting = 0;
+      for (const slot of SLOT_NAMES) {
+        if (slot === 'issues') continue;
+        const clock = slotClock(peer, slot);
+        const items = meta.items[slot];
+        for (const [path, dot] of [...Object.entries(items?.stamps ?? {}), ...Object.entries(items?.tombs ?? {})]) {
+          if (isItemPath(path) && !seen(clock, dot)) waiting++;
+        }
+      }
+      return { deviceName: peer.deviceName, updatedAt: peer.updatedAt, appVersion: peer.appVersion, legacy: !peer.items, waiting };
+    }),
+  });
+}
+
+/** Serialised so a burst of watcher events can't run two reconciliations at once. */
 function pull() {
   pullRequested = true;
   if (!pendingPull) pendingPull = enqueue(async () => {
@@ -620,7 +775,6 @@ function pull() {
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/** Called once at startup. Safe to call in a browser (no bridge → no-op). */
 async function connect() {
   deliveredSnapshot = '';
   cleanup?.();
@@ -628,9 +782,7 @@ async function connect() {
   if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
   transport = await buildTransport();
   const browser = !window.electronAPI?.sync;
-  // Said even when there is nothing to sync with, because a browser copy that is
-  // working alone still needs the settings card to point it at a relay.
-  setStatus({ overWifi: browser, linked: !!bridge() });
+  setStatus({ overWifi: browser, linked: !!bridge(), paused: isSyncPaused() });
 
   const api = bridge();
   if (!api) { config = null; setStatus({ available: false, enabled: false, peers: [] }); return; }
@@ -647,20 +799,14 @@ async function connect() {
   const offs = SLOTS.map(({ store }) =>
     (store as unknown as { subscribe: (fn: () => void) => () => void }).subscribe(scheduleWrite));
   offs.push(subscribeVitals(scheduleWrite));
-
   offs.push(api.onChanged(() => { void pull(); }));
 
-  // Belt and braces around the watcher: cloud clients can materialise a file in
-  // ways fs.watch doesn't report, and coming back to a machine you left open is
+  // Belt and braces around the watcher: coming back to a device you left open is
   // exactly when you most expect it to have caught up.
   const refresh = () => { void pull(); };
   const visible = () => { if (!document.hidden) refresh(); };
   window.addEventListener('focus', refresh);
   window.addEventListener('online', refresh);
-  // `focus` is the desktop's version of that moment. A phone returning from the
-  // background often never fires it — the page was never unfocused, it was
-  // suspended — so the one thing you always do before looking at your tasks
-  // wouldn't refresh them. Both, because either can arrive without the other.
   document.addEventListener('visibilitychange', visible);
   const timer = setInterval(refresh, 300_000);
   cleanup = () => {
@@ -673,6 +819,7 @@ async function connect() {
 
   if (config.enabled) {
     const meta = loadMeta(); meta.pending = true; saveMeta(meta);
+    void safetyCopy('When Milestone opened');
     await pullOnce();
   }
 }
@@ -690,15 +837,12 @@ export async function stopCloudSync() {
 }
 
 /**
- * Turns sync on for a chosen folder.
- * `mode` settles the one moment where data can be lost outright — the folder
- * already holds another computer's data and this one has data of its own:
+ * Turns folder sync on. `mode` settles the one moment where a choice is
+ * needed — the folder already holds another computer's data:
  *   'adopt' — take what's in the folder, replacing this computer's data
- *   'push'  — publish this computer's data, replacing what the peers hold
+ *   'push'  — make this computer's data the shared copy
  */
 async function enableFolder(folder: string, mode: 'adopt' | 'push') {
-  // Folder sync is a desktop arrangement: picking one on a phone would be
-  // choosing a folder that phone cannot see.
   const api = window.electronAPI?.sync;
   if (!api) return;
 
@@ -708,43 +852,84 @@ async function enableFolder(folder: string, mode: 'adopt' | 'push') {
   try {
     const res = await api.readPeers();
     if (!res.ok) throw new Error(res.error ?? 'Unable to inspect existing sync data.');
-    const peers = (res.peers ?? []).filter(isSyncDoc);
+    const peers = (res.peers ?? []).filter(isSyncDoc).filter(doc => doc.deviceId !== config?.deviceId);
+    lastPeers = peers;
+    await safetyCopy(mode === 'push' ? 'Before sharing this computer\'s data' : 'Before loading the folder\'s data');
 
-    if (mode === 'push') {
-      // Absorb every peer's clock on every slot, then bump: the result strictly
-      // supersedes all of them, so they fast-forward instead of seeing conflicts.
-      const meta = loadMeta();
-      for (const peer of peers) {
-        for (const slot of SLOT_NAMES) meta.slots[slot] = mergeClocks(meta.slots[slot], slotClock(peer, slot));
-      }
-      // Force every slot to count as changed, so the bump below reaches all three
-      // even where our content happens to match what we last published.
-      meta.published = {};
-      saveMeta(meta);
-      await publish(true);
-      if (peers.length) setStatus({ notice: 'This computer\'s data is now the shared copy. The other computer will pick it up next time it syncs.' });
-    } else if (peers.length) {
-      // Explicitly discarding this machine's data, so keep a rescue copy.
-      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const backup = await api.writeBackup(`${config?.deviceName ?? 'device'}-before-adopt-${stamp}.json`, backupBundle());
-      if (!backup.ok) throw new Error('Could not back up local data; adoption cancelled.');
-      // Take every slot from the best peer for it — this is the deliberate
-      // "replace what's here", so no slot is exempt.
-      const plans = SLOT_NAMES.filter(slot => peers.some(peer => peer.stores[slot])).map(slot => ({
-        slot,
-        source: peers.filter(peer => peer.stores[slot]).reduce((a, b) => preferredForSlot(a, b, slot)),
-        relation: 'ahead' as const,
-      }));
-      await adoptSlots(plans, []);
-      const names = [...new Set(plans.map(p => p.source.deviceName))].join('” and “');
-      setStatus({ notice: `Loaded the data from “${names}”. This computer's previous data was saved to backups/ in the sync folder.` });
+    if (mode === 'push' || !peers.length) {
+      makeAuthoritative(peers);
+      await publish();
+      if (peers.length) setStatus({ notice: 'This computer\'s data is now the shared copy. The other devices will pick it up next time they sync.' });
     } else {
-      await publish(true);
+      const backup = await api.writeBackup(`${config?.deviceName ?? 'device'}-before-adopt-${new Date().toISOString().replace(/[:.]/g, '-')}.json`, bundleOf(snapshot()));
+      if (!backup.ok) throw new Error('Could not back up local data; adoption cancelled.');
+      const meta = loadMeta();
+      // Replace, not merge: this is the explicit "use the folder's data".
+      meta.base = {}; meta.items = {}; meta.protocol = undefined;
+      for (const slot of SLOT_NAMES) meta.slots[slot] = {};
+      const incoming = adoptGroup(meta, peers);
+      applyStores(incoming);
+      saveMeta(meta);
+      await publish();
+      const names = [...new Set(peers.map(p => p.deviceName))].join('” and “');
+      setStatus({ notice: `Loaded the data from “${names}”. This computer's previous data was saved to backups/ in the sync folder.` });
     }
-    setStatus({ peers: peers.map(p => ({ deviceName: p.deviceName, updatedAt: p.updatedAt })) });
+    refreshPeerStatus();
   } finally {
     setStatus({ busy: false });
   }
+}
+
+/** The group's data, replacing this device's outright. */
+function adoptGroup(meta: Meta, peers: SyncDoc[]): Partial<Record<Slot, string>> {
+  const out: Partial<Record<Slot, string>> = {};
+  for (const slot of SLOT_NAMES) {
+    const remotes = peers.filter(peer => carries(peer, slot)).map(peer => remoteSide(peer, slot)).filter((side): side is Side => !!side);
+    if (!remotes.length) continue;
+    const group = remotes.slice(1).reduce<Side>((acc, remote) => {
+      const merged = mergeSides(acc, remote);
+      return { ...acc, entities: merged.entities, stamps: merged.stamps, tombs: merged.tombs, clock: merged.clock };
+    }, remotes[0]);
+    const raw = implode(group.entities);
+    if (!validSlot(slot, raw)) continue;
+    meta.items[slot] = { stamps: group.stamps, tombs: group.tombs };
+    meta.slots[slot] = group.clock;
+    meta.base[slot] = toRecord(baselineOf(group.entities));
+    out[slot] = raw;
+  }
+  meta.protocol = SYNC_PROTOCOL;
+  meta.pending = true;
+  return out;
+}
+
+/** Stamps every item here as newer than anything the given devices have seen,
+ *  and marks whatever they hold that is not here as deleted. */
+function makeAuthoritative(peers: SyncDoc[]) {
+  const meta = loadMeta();
+  const now = Date.now();
+  const me = config!.deviceId;
+  for (const slot of SLOT_NAMES) {
+    const raw = readSlot(slot);
+    if (raw === null) continue;
+    const current = entitiesOf(raw)!;
+    let clock = meta.slots[slot];
+    const known = new Set<string>(Object.keys(meta.items[slot]?.tombs ?? {}));
+    for (const peer of peers) {
+      clock = mergeClocks(clock, slotClock(peer, slot));
+      for (const path of entitiesOf(peer.stores[slot])?.keys() ?? []) known.add(path);
+      for (const path of Object.keys(peer.items?.[slot]?.s ?? {})) known.add(path);
+    }
+    const staged = stampEverything(current, known, clock, me, now);
+    meta.items[slot] = { stamps: staged.stamps, tombs: staged.tombs };
+    meta.slots[slot] = staged.clock;
+    meta.versions = { ...meta.versions, [slot]: { at: new Date(now).toISOString(), deviceId: me } };
+    if (raw === undefined) delete meta.base[slot];
+    else meta.base[slot] = toRecord(baselineOf(current));
+  }
+  meta.protocol = SYNC_PROTOCOL;
+  meta.pending = true;
+  saveMeta(meta);
+  deliveredSnapshot = '';
 }
 
 export function enableSync(folder: string, mode: 'adopt' | 'push') {
@@ -768,18 +953,178 @@ export async function syncNow() {
 export async function peekFolder(folder: string): Promise<{ deviceName: string; updatedAt: string }[]> {
   const api = window.electronAPI?.sync;
   if (!api) return [];
-  // Inspection must not silently switch the live connection before confirmation.
   const res = await api.readPeers(folder);
   if (!res.ok) throw new Error(res.error ?? 'Unable to inspect sync folder.');
   return (res.peers ?? []).filter(isSyncDoc).map(p => ({ deviceName: p.deviceName, updatedAt: p.updatedAt }));
 }
 
 /**
- * Announces a write that bypassed the stores — importing a backup file replaces
- * localStorage wholesale. Without this the imported data would carry the old
- * clock, and the next pull would read it as stale and overwrite it.
+ * Announces a write that bypassed the stores — importing a backup replaces
+ * localStorage wholesale. Stamping it makes the import this device's newest
+ * change, so it travels rather than being undone.
  */
 export function noteExternalWrite() {
   if (!config?.enabled) return;
-  void enqueue(() => publish(true));
+  void enqueue(publish);
 }
+
+// ── Recovery: the emergency tools ─────────────────────────────────────────────
+
+/** Stops exchanging with other devices. Edits keep saving here and are stamped,
+ *  so resuming sends them without anything being overwritten. */
+export async function setSyncPaused(paused: boolean) {
+  setSyncPausedFlag(paused);
+  setStatus({ paused });
+  if (!paused) await syncNow();
+}
+
+/** A copy that recovery can compare against: another device's latest, a
+ *  safety snapshot, or a relay history entry. */
+export interface RecoverySource {
+  id: string;
+  label: string;
+  at: string;
+  stores: Partial<Record<Slot, string>>;
+}
+
+/** The other devices' current copies, as last read. */
+export function peerCopies(): RecoverySource[] {
+  return lastPeers.map(peer => ({ id: `peer:${peer.deviceId}`, label: `${peer.deviceName}'s copy`, at: peer.updatedAt, stores: peer.stores }));
+}
+
+/** Relay history, where the relay keeps it (1.1 relays and later). */
+export async function relayHistory(): Promise<HistoryEntry[]> {
+  const api = bridge();
+  if (!api?.readHistory) return [];
+  return api.readHistory().catch(() => []);
+}
+
+export async function relayHistoryCopy(id: string): Promise<RecoverySource | null> {
+  const api = bridge();
+  const doc = await api?.readHistoryItem?.(id).catch(() => null);
+  if (!doc || !isSyncDoc(doc)) return null;
+  return { id: `history:${id}`, label: `${doc.deviceName}'s copy`, at: doc.updatedAt, stores: doc.stores };
+}
+
+export interface RecoveryItem {
+  slot: Slot; path: string; label: string;
+  /** missing: not on this device. different: here, in another version. */
+  change: 'missing' | 'different';
+}
+
+/** How `source` differs from this device, item by item. */
+export function compareWith(source: RecoverySource): RecoveryItem[] {
+  const out: RecoveryItem[] = [];
+  for (const slot of SLOT_NAMES) {
+    if (slot === 'issues' || source.stores[slot] === undefined) continue;
+    const theirs = entitiesOf(source.stores[slot]);
+    const mine = entitiesOf(readSlot(slot));
+    if (!theirs || !mine) continue;
+    for (const item of missingItems(mine, theirs)) out.push({ slot, ...item, change: 'missing' });
+    for (const item of differingItems(mine, theirs)) out.push({ slot, ...item, change: 'different' });
+  }
+  return out;
+}
+
+/** Items in `source` that are not on this device. */
+export const missingFrom = (source: RecoverySource) => compareWith(source).filter(item => item.change === 'missing');
+
+/** Applies a local change made by a recovery action and sends it. The change
+ *  is stamped as yours, so it reaches every device. */
+async function applyRecovery(reason: string, stores: Partial<Record<Slot, string>>) {
+  await enqueue(async () => {
+    await safetyCopy(reason);
+    applyStores(stores);
+    if (config?.enabled) await publish();
+  });
+}
+
+/** Puts back the chosen items: missing ones are added with their contents,
+ *  different ones get that copy's version of their own fields. Nothing else
+ *  here is removed or changed. */
+export async function bringBack(source: RecoverySource, items: RecoveryItem[]): Promise<number> {
+  const stores: Partial<Record<Slot, string>> = {};
+  for (const slot of SLOT_NAMES) {
+    const chosen = items.filter(item => item.slot === slot);
+    if (!chosen.length) continue;
+    const theirs = entitiesOf(source.stores[slot]);
+    const mine = entitiesOf(readSlot(slot));
+    if (!theirs || !mine) continue;
+    const added = withItems(mine, theirs, chosen.filter(item => item.change === 'missing').map(item => item.path));
+    const raw = implode(withVersions(added, theirs, chosen.filter(item => item.change === 'different').map(item => item.path)));
+    if (validSlot(slot, raw)) stores[slot] = raw;
+  }
+  if (!Object.keys(stores).length) return 0;
+  await applyRecovery(`Before bringing back items from ${source.label}`, stores);
+  return items.length;
+}
+
+/** Replaces this device's data with `source` and sends it as the newest change,
+ *  deletions included. */
+export async function restoreCopy(source: RecoverySource): Promise<void> {
+  const stores: Partial<Record<Slot, string>> = {};
+  for (const slot of SLOT_NAMES) {
+    const raw = source.stores[slot];
+    if (slot !== 'issues' && typeof raw === 'string' && validSlot(slot, raw)) stores[slot] = raw;
+  }
+  await applyRecovery(`Before restoring ${source.label}`, stores);
+}
+
+/** Makes this device's data what every device holds. */
+export async function shareThisDeviceEverywhere(): Promise<void> {
+  await enqueue(async () => {
+    const api = bridge();
+    if (!api || !config?.enabled) throw new Error('Sync is not set up on this device.');
+    const res = await api.readPeers();
+    if (!res.ok) throw new Error(res.error ?? 'Could not reach the other devices.');
+    const peers = (res.peers ?? []).filter(isSyncDoc).filter(doc => doc.deviceId !== config?.deviceId);
+    lastPeers = peers;
+    await safetyCopy('Before using this device\'s data everywhere');
+    makeAuthoritative(peers);
+    await publish();
+    setStatus({ notice: 'This device\'s data is now the shared copy. Other devices take it on their next sync.' });
+  });
+}
+
+const stampsOf = (slot: Slot) => loadMeta().items[slot]?.stamps ?? {};
+
+/** Undoes what a sync issue set aside: the losing version comes back as your
+ *  newest change. */
+export async function restoreIssue(issue: SyncIssue): Promise<boolean> {
+  const slot = issue.slot as Slot;
+  if (!SLOT_NAMES.includes(slot) || slot === 'issues') return false;
+  const mine = entitiesOf(readSlot(slot));
+  if (!mine) return false;
+  const next: Entities = new Map(mine);
+  if (issue.lost === null) {
+    // What gave way was a deletion: removing the item now carries it out.
+    for (const path of [...next.keys()]) if (path === issue.path || path.startsWith(`${issue.path}/`)) next.delete(path);
+  } else {
+    const existing = next.get(issue.path);
+    if (!existing && issue.parent && !next.has(issue.parent)) return false;
+    next.set(issue.path, existing ? { ...existing, value: issue.lost } : { parent: issue.parent, field: issue.field, kind: 'item', value: issue.lost });
+  }
+  const raw = implode(normalize(next, stampsOf(slot)));
+  if (!validSlot(slot, raw)) return false;
+  await applyRecovery(`Before restoring “${issue.label}”`, { [slot]: raw });
+  closeIssue(issue.id, 'restored');
+  return true;
+}
+
+export const dismissIssue = (issue: SyncIssue) => closeIssue(issue.id, 'dismissed');
+
+/** Every copy this device can see, in one file: its own, the other devices',
+ *  and the open issues. For when something has gone wrong and needs a human. */
+export function emergencyBundle() {
+  return {
+    _milestoneEmergency: 1,
+    exportedAt: new Date().toISOString(),
+    appVersion: APP_VERSION,
+    device: config ? { id: config.deviceId, name: config.deviceName } : null,
+    thisDevice: bundleOf(snapshot()),
+    otherDevices: lastPeers.map(peer => ({ deviceName: peer.deviceName, updatedAt: peer.updatedAt, appVersion: peer.appVersion, bundle: bundleOf(peer.stores) })),
+    issues: useSyncIssues.getState().issues,
+  };
+}
+
+export { bundleOf as backupBundleOf };

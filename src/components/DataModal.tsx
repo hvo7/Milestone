@@ -5,6 +5,7 @@ import { APP_VERSION, VERSION_LABEL, buildDateLabel } from '../buildInfo';
 import { noteExternalWrite } from '../lib/cloudSync';
 import CloudSyncCard from './CloudSyncCard';
 import PhoneCard from './PhoneCard';
+import SyncHealthCard from './SyncHealthCard';
 import AutoBackupCard from './AutoBackupCard';
 import UpdateCard from './UpdateCard';
 import ModalShell from './ModalShell';
@@ -95,6 +96,7 @@ export default function DataModal({ onClose }: Props) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
             {/* Sync and automatic backups — both hide outside the desktop app */}
+            <SyncHealthCard />
             <CloudSyncCard />
             <PhoneCard />
             <AutoBackupCard />

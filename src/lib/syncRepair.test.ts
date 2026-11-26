@@ -72,13 +72,14 @@ it('never publishes an empty Life Vitals list, so an unused device cannot overwr
   expect(write.mock.lastCall![0].slotClocks!.vitals).toEqual({});
 });
 
-it('backs up local Life Vitals before a first pairing replaces them', async () => {
+it('keeps local Life Vitals that an older build\'s copy lacks, and adds the ones it has', async () => {
   const { sync, peers, backup } = await setup({}, () => localStorage.setItem(VITALS_KEY, JSON.stringify([area('Gym')])));
-  // The laptop has seen this desktop's first publish and edited after it.
+  // A 3.4.1 laptop that saw this desktop's first publish and kept its own copy.
   peers.push(peerDoc({ clock: { laptop: 1, desktop: 1 }, slotClocks: { vitals: { laptop: 1, desktop: 1 } }, stores: { vitals: vitalsSlot('Work') } }));
   await sync.syncNow();
-  expect(JSON.parse(localStorage.getItem(VITALS_KEY)!)).toEqual([area('Work')]);
-  expect(backup).not.toHaveBeenCalled();   // a fast-forward of something already published: nothing lost
+  // An older build can add, never delete: its whole-copy conflict handling may be stale.
+  expect(JSON.parse(localStorage.getItem(VITALS_KEY)!).map((a: { name: string }) => a.name)).toEqual(['Gym', 'Work']);
+  expect(backup).not.toHaveBeenCalled();
 });
 
 it('rejects a malformed Life Vitals slot without touching local areas', async () => {

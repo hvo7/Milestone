@@ -149,8 +149,14 @@ temporary storage and synthetic keys and verifies recovery after restart.
 - Authenticated `GET /api/backups` lists recovery copies; authenticated
   `GET /api/backup?name=<name-without-backup-prefix>` retrieves one. Use the token
   header rather than putting credentials in shared URLs.
-- This does not change conflict semantics: concurrent edits within one data store
-  choose a deterministic winner and preserve recovery copies, not an item-level merge.
+- From the sync-merge batch the relay also keeps **history**: before a device's
+  document is replaced, the previous one is kept if that device's last kept copy
+  is over 30 minutes old (always, for documents from builds before item stamps).
+  Newest 48 per device, none older than 14 days. `GET /api/history` lists them
+  (`id`, `deviceId`, `deviceName`, `saved`); `GET /api/history-item?id=` returns
+  one. The app's Recover items reads them. `/api/health` reports `history: true`.
+- Conflicts are settled item by item in the clients, not here — see
+  [sync-recovery.md](sync-recovery.md). The relay only stores and relays documents.
 - Safari may suspend background apps. Changes arrive live while connected and
   catch up when the app resumes. No hosted server can force iOS to keep it running.
 - Deploy app/relay updates together after future approvals. Merely updating the

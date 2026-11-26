@@ -5,6 +5,11 @@ import { DurableObject } from 'cloudflare:workers';
 const MAX_BYTES = 8 * 1024 * 1024;
 const MAX_DEVICES = 16;
 const MAX_BACKUPS = 20;
+/** Earlier copies of each device's document, for recovering from a bad sync:
+ *  at most one per half hour per device, the newest 48, none older than 14 days. */
+const HISTORY_EVERY_MS = 30 * 60_000;
+const HISTORY_PER_DEVICE = 48;
+const HISTORY_DAYS = 14;
 const CHUNK_CHARS = 100_000;
 const ID = /^[a-zA-Z0-9_-]{1,64}$/;
 const cors = {
@@ -74,7 +79,7 @@ export default {
     }
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
     if (url.pathname === '/api/health' && request.method === 'GET') {
-      return json({ ok: true, app: 'milestone', relay: true, push: 'websocket', protocol: 1,
+      return json({ ok: true, app: 'milestone', relay: true, push: 'websocket', protocol: 1, history: true,
         configured: typeof env.MILESTONE_TOKEN === 'string' && env.MILESTONE_TOKEN.length >= 32 });
     }
     if (!await authorized(request, env)) return json({ ok: false, error: 'Wrong or missing pairing key.' }, 401);
@@ -93,6 +98,35 @@ export class MilestoneRelay extends DurableObject {
     this.sql = ctx.storage.sql;
     this.sql.exec('CREATE TABLE IF NOT EXISTS objects (id TEXT PRIMARY KEY, kind TEXT NOT NULL, saved INTEGER NOT NULL)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS chunks (id TEXT NOT NULL, part INTEGER NOT NULL, value TEXT NOT NULL, PRIMARY KEY (id, part))');
+    this.sql.exec('CREATE TABLE IF NOT EXISTS history (id TEXT PRIMARY KEY, device TEXT NOT NULL, name TEXT NOT NULL, saved INTEGER NOT NULL)');
+  }
+
+  /**
+   * Keeps the copy a device is about to replace, if its last kept copy is old
+   * enough. Keeping the *previous* version is the point: when a device writes
+   * something bad, what you want back is what it held just before.
+   */
+  keepHistory(deviceId, previous) {
+    const now = Date.now();
+    const latest = this.sql.exec('SELECT saved FROM history WHERE device = ? ORDER BY saved DESC LIMIT 1', deviceId).toArray()[0];
+    // Copies from builds before item-level merging (no `items`) are always
+    // kept: such a device may be about to replace its own edits wholesale.
+    if (latest && now - latest.saved < HISTORY_EVERY_MS && previous.items) return;
+    const id = `history:${deviceId}:${now}`;
+    const text = JSON.stringify(previous);
+    this.ctx.storage.transactionSync(() => {
+      this.sql.exec('INSERT OR REPLACE INTO history (id, device, name, saved) VALUES (?, ?, ?, ?)', id, deviceId, String(previous.deviceName || deviceId).slice(0, 80), now);
+      this.sql.exec('DELETE FROM chunks WHERE id = ?', id);
+      for (let offset = 0; offset < text.length; offset += CHUNK_CHARS) {
+        this.sql.exec('INSERT INTO chunks (id, part, value) VALUES (?, ?, ?)', id, offset / CHUNK_CHARS, text.slice(offset, offset + CHUNK_CHARS));
+      }
+      const old = this.sql.exec('SELECT id FROM history WHERE device = ? AND (saved < ? OR id NOT IN (SELECT id FROM history WHERE device = ? ORDER BY saved DESC LIMIT ?))',
+        deviceId, now - HISTORY_DAYS * 86_400_000, deviceId, HISTORY_PER_DEVICE).toArray();
+      for (const row of old) {
+        this.sql.exec('DELETE FROM chunks WHERE id = ?', row.id);
+        this.sql.exec('DELETE FROM history WHERE id = ?', row.id);
+      }
+    });
   }
 
   read(id) {
@@ -135,6 +169,16 @@ export class MilestoneRelay extends DurableObject {
         .toArray().map(row => this.read(row.id));
       return json({ ok: true, peers });
     }
+    if (url.pathname === '/api/history' && request.method === 'GET') {
+      const history = this.sql.exec('SELECT id, device AS deviceId, name AS deviceName, saved FROM history ORDER BY saved DESC').toArray();
+      return json({ ok: true, history });
+    }
+    if (url.pathname === '/api/history-item' && request.method === 'GET') {
+      const id = url.searchParams.get('id') || '';
+      const known = /^history:[a-zA-Z0-9_-]{1,64}:\d{1,16}$/.test(id) && this.sql.exec('SELECT id FROM history WHERE id = ?', id).toArray().length;
+      const doc = known ? this.read(id) : null;
+      return doc ? json({ ok: true, doc }) : json({ ok: false, error: 'Not found.' }, 404);
+    }
     if (url.pathname === '/api/backups' && request.method === 'GET') {
       const backups = this.sql.exec("SELECT id, saved FROM objects WHERE kind = 'backup' ORDER BY saved DESC").toArray();
       return json({ ok: true, backups });
@@ -162,6 +206,7 @@ export class MilestoneRelay extends DurableObject {
     if (existing && Object.entries(existing.clock).some(([key, count]) => (body.clock[key] ?? 0) < count)) {
       return json({ ok: false, error: 'This device sent an older snapshot. Reconnect before retrying.' }, 409);
     }
+    if (existing) this.keepHistory(body.deviceId, existing);
     this.save(id, 'device', body);
     for (const socket of this.ctx.getWebSockets()) {
       if (socket.deserializeAttachment()?.deviceId === body.deviceId) continue;

@@ -1,0 +1,29 @@
+.sh-card { background: var(--input-bg); border: 1px solid var(--card-border); border-radius: 10px; padding: 14px 16px; color: var(--page-text); }
+.sh-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.sh-head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.sh-state { font-size: 11.5px; font-weight: 700; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+.sh-ok { color: var(--success); background: color-mix(in srgb, var(--success) 14%, transparent); }
+.sh-warn { color: var(--gold); }
+.sh-state.sh-warn { background: color-mix(in srgb, var(--gold) 16%, transparent); }
+.sh-bad { color: var(--danger); background: color-mix(in srgb, var(--danger) 14%, transparent); }
+.sh-note, .sh-done { margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
+.sh-done { margin: 10px 0 0; color: var(--success); }
+.sh-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.sh-issue { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 8px; background: var(--accent-soft); border: 1px solid var(--accent-border); font-size: 12px; line-height: 1.45; }
+.sh-issue strong { font-size: 12.5px; overflow-wrap: anywhere; }
+.sh-devices { gap: 4px; }
+.sh-device { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 12px; }
+.sh-device-name { font-weight: 600; }
+.sh-meta { color: var(--text-dim); }
+.sh-chip { font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--card-border); color: var(--text-dim); }
+.sh-chip-warn { color: var(--gold); border-color: color-mix(in srgb, var(--gold) 45%, transparent); }
+.sh-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.sh-actions button { font-size: 12px; padding: 5px 12px; }
+.sh-recovery { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--card-border); }
+.sh-recovery select { font-size: 12.5px; padding: 7px 10px; width: 100%; }
+.sh-label { margin: 0; font-size: 12px; font-weight: 600; }
+.sh-picks { list-style: none; margin: 0; padding: 0; max-height: 180px; overflow: auto; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.sh-picks label { display: flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.sh-confirm { display: flex; flex-direction: column; gap: 6px; font-size: 12px; line-height: 1.5; padding: 10px 12px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent); }
+.sh-divider { height: 1px; background: var(--card-border); margin: 4px 0; }
+.sh-error { margin: 0; font-size: 12px; color: var(--danger); }

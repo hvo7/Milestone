@@ -2,6 +2,7 @@ import { useState, Suspense } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useQuestStore, useUIStore } from '../store';
 import SpacesModal from './SpacesModal';
+import { useSyncIssues } from '../lib/syncIssues';
 import SettingsModal from './SettingsModal';
 import { DEFAULT_SPACES } from '../store';
 import { useVynuesStore } from '../vynuesStore';
@@ -37,6 +38,7 @@ export default function NavBar({ cover, hideCover = false }: { cover?: { title: 
   const [dataOpen,  setDataOpen]  = useState(false);
   const [remindOpen, setRemindOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const syncReview = useSyncIssues(s => s.issues.filter(issue => issue.status === 'open').length);
 
   const dailyRemaining =
     routines.filter(r => r.recurring === 'daily' && !r.completed && !routineIsArchived(r, questlines, systems)).length +
@@ -109,8 +111,11 @@ export default function NavBar({ cover, hideCover = false }: { cover?: { title: 
             title={`Reload tasks — new day starts at ${resetTime} local time`} aria-label="Reload tasks">
             <Icon name="reload" />
           </button>
-          <button type="button" className="nav-tool" onClick={() => setSettingsOpen(true)} title="Settings" aria-label="Settings" aria-haspopup="dialog">
+          <button type="button" className="nav-tool nav-tool-badged" onClick={() => setSettingsOpen(true)}
+            title={syncReview ? `Settings — ${syncReview} sync ${syncReview === 1 ? 'item' : 'items'} to review` : 'Settings'}
+            aria-label={syncReview ? `Settings, ${syncReview} sync ${syncReview === 1 ? 'item' : 'items'} to review` : 'Settings'} aria-haspopup="dialog">
             <Icon name="settings" />
+            {syncReview > 0 && <span className="nav-count nav-tool-count" aria-hidden="true">{syncReview}</span>}
           </button>
         </div>
       </nav>
@@ -123,7 +128,7 @@ export default function NavBar({ cover, hideCover = false }: { cover?: { title: 
         {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)}
           notifications={reminders?.enabled ? reminders.time : 'Off'} desktop={isElectron}
           onNotifications={() => { setSettingsOpen(false); setRemindOpen(true); }}
-          onData={() => { setSettingsOpen(false); setDataOpen(true); }}
+          onData={() => { setSettingsOpen(false); setDataOpen(true); }} syncReview={syncReview}
           onNotion={() => { setSettingsOpen(false); setSyncOpen(true); }}
           onSpaces={() => { setSettingsOpen(false); setSpacesOpen(true); }} />}
         {spacesOpen && <SpacesModal onClose={() => setSpacesOpen(false)} />}

@@ -75,6 +75,18 @@ test('Cloudflare runtime: authentication, live delivery, persistence, backups an
   assert.equal(JSON.parse(saved.peers[0].stores.quest).state.text.length, large.length);
   assert.equal((await request('write', doc('desktop', 3, 'x'.repeat(9 * 1024 * 1024)))).status, 400);
 
+  // The copy a write replaced is kept: once per half hour per device, or every
+  // time for a build without item stamps.
+  await request('write', { ...doc('phone', 2), items: {} });
+  await request('write', { ...doc('phone', 3), items: {} });
+  const history = await (await request('history')).json();
+  assert.deepEqual(history.history.map(entry => entry.deviceId).sort(), ['desktop', 'phone']);
+  const desktopHistory = history.history.find(entry => entry.deviceId === 'desktop');
+  const kept = await (await request(`history-item?id=${encodeURIComponent(desktopHistory.id)}`)).json();
+  assert.equal(kept.doc.clock.desktop, 1);
+  assert.equal((await request('history-item?id=device:desktop')).status, 404);
+  assert.equal((await request('history', null, 'wrong')).status, 401);
+
   for (let i = 0; i < 22; i++) await request('backup', { name: `backup-${i}`, bundle: { _milestone: 2, quest: 'synthetic' } });
   const backups = await (await request('backups')).json();
   assert.equal(backups.backups.length, 20);
@@ -86,5 +98,6 @@ test('Cloudflare runtime: authentication, live delivery, persistence, backups an
   runtime = new Miniflare(options);
   const recovered = await (await request('peers?deviceId=phone')).json();
   assert.equal(recovered.peers[0].clock.desktop, 2);
+  assert.equal((await (await request('history')).json()).history.length, 2);
   assert.equal(JSON.parse(recovered.peers[0].stores.quest).state.text.length, large.length);
 });

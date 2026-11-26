@@ -34,7 +34,13 @@ export interface SyncBridge {
   readSelf?: () => Promise<unknown | null>;
   writeBackup: (name: string, bundle: unknown) => Promise<{ ok: boolean; error?: string }>;
   onChanged: (callback: () => void) => () => void;
+  /** Earlier copies of each device's document, where the route keeps them
+   *  (the relay from 1.1). For recovering from a bad sync. */
+  readHistory?: () => Promise<HistoryEntry[]>;
+  readHistoryItem?: (id: string) => Promise<unknown | null>;
 }
+
+export interface HistoryEntry { id: string; deviceId: string; deviceName: string; saved: number }
 
 const TOKEN_KEY = 'milestone-phone-token';
 const DEVICE_KEY = 'milestone-phone-device';
@@ -247,6 +253,23 @@ export function httpBridge({ base = '', token, me }: {
       } catch { return null; }
     },
     writeBackup: (name, bundle) => post('backup', { name, bundle }),
+    readHistory: async () => {
+      try {
+        const res = await syncFetch(url('history'), { cache: 'no-store' });
+        // A relay from before history answers 404: it simply has none.
+        if (!res.ok) return [];
+        const body = await res.json() as { history?: unknown };
+        return Array.isArray(body?.history) ? body.history.filter(validHistory) : [];
+      } catch { return []; }
+    },
+    readHistoryItem: async id => {
+      try {
+        const res = await syncFetch(url('history-item', { id }), { cache: 'no-store' });
+        if (!res.ok) return null;
+        const body = await res.json() as { doc?: unknown };
+        return body?.doc ?? null;
+      } catch { return null; }
+    },
 
     onChanged: callback => {
       listeners.add(callback);
@@ -347,5 +370,24 @@ export function compositeBridge(parts: SyncBridge[]): SyncBridge {
       const offs = parts.map(p => p.onChanged(callback));
       return () => offs.forEach(off => off());
     },
+
+    readHistory: async () => {
+      const lists = await Promise.all(parts.map(part => part.readHistory?.().catch(() => []) ?? Promise.resolve([])));
+      const byId = new Map<string, HistoryEntry>();
+      for (const entry of lists.flat()) byId.set(entry.id, entry);
+      return [...byId.values()].sort((a, b) => b.saved - a.saved);
+    },
+    readHistoryItem: async id => {
+      for (const part of parts) {
+        const doc = await part.readHistoryItem?.(id).catch(() => null);
+        if (doc) return doc;
+      }
+      return null;
+    },
   };
 }
+
+const validHistory = (entry: unknown): entry is HistoryEntry => {
+  const e = entry as HistoryEntry;
+  return !!e && typeof e.id === 'string' && typeof e.deviceId === 'string' && typeof e.deviceName === 'string' && Number.isFinite(e.saved);
+};

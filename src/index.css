@@ -884,6 +884,8 @@ select.rune-input option:disabled { color: var(--text-dim); }
 .nav-tools { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .nav-tool { display: grid; place-items: center; width: 40px; height: 40px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--ink-dim); cursor: pointer; }
 .nav-tool:hover, .nav-tool[data-active='true'] { color: var(--ink); background: var(--raised); }
+.nav-tool-badged { position: relative; }
+.nav-tool-count { position: absolute; top: 2px; right: 0; min-width: 16px; height: 16px; font-size: 10px; padding: 0 4px; }
 .testing-banner { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 16px; padding: 8px 20px; background: var(--gold); color: var(--gold-ink); font-size: 12.5px; }
 
 /* Page banner: the watercolour as a card at the top of the content column. */

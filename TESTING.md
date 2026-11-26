@@ -1,5 +1,70 @@
 # Milestone Testing
 
+## Sync repair 2: item-level merging, sync issues, emergency recovery (2026-11-26) — pending review
+
+On `testing/sync-merge-recovery`, based on `main` `4f06760`. Testing only; not approved for production. No version bump, release, deploy or install was performed.
+
+### Request and scope
+
+The user reported that after editing on the iPhone while the laptop and desktop were unused, opening the laptop's Milestone later reverted the phone's changes and removed what had been made on the phone. They asked for the sync issues to be fixed first, then a system that tracks unresolved changes and issues, and an emergency sync system in case it fails again.
+
+### Root cause (reproduced)
+
+Conflicts were settled per store ("slot"): when two devices had both changed quests, the copy written most recently replaced the other wholesale (`preferredForSlot` → `slotVersions.at`). On launch the laptop's daily reset (`checkAndResetRecurring`) changed habits before sync connected; `pullOnce` published that as a local edit first, which made the laptop's clock concurrent with the phone's and its timestamp the newest. The laptop kept its stale copy, published it with a clock that dominated the phone's, and the phone fast-forwarded to it. The phone's version went only to a conflict backup nobody was told about. A failing test reproduced this on the old code before any change (`expected { local: ['a'], published: ['a'] }` instead of `['a', 'p']`); it is now the first case in `src/lib/syncRecovery.test.ts`.
+
+### Behavior
+
+- **Item-level merging** (`src/lib/syncMerge.ts`). Every item — questline, quest, action, habit, step, Vynues project/task/subtask, Life Vitals area/check-in, each heatmap day and history entry, each setting — is merged on its own. Each change carries a dot `[device, count, time, automatic]`; deletions leave tombstones (kept 120 days). Only one side changed it → that side; both → your change beats an automatic one, then the later one, and the other is kept as a sync issue; deleted on one side while edited on the other → kept with an issue; additions always survive. Item lists are normalised identically on every device so a merge is never mistaken for a new edit.
+- **Automatic changes** (`src/lib/syncIntent.ts`): the daily reset runs inside `automatic()` (App.tsx), so its changes are stamped automatic and never override a change made by hand elsewhere.
+- **Order of work** (`src/lib/cloudSync.ts`): stamp local changes → merge every peer → apply → publish. It no longer publishes before reconciling.
+- **Joining**: a device that has never synced takes the group's data and keeps its own items the group never had and never deleted; a first device starts the group.
+- **Older builds** (documents without stamps): can add items and change items nobody changed by hand on an updated device; never delete, never undo a hand-made change. On first run an updated device stamps what it holds at the count it last published under 3.4.1 (a "guard"), so a stale device — updated or not — cannot revert work it had not seen.
+- **Sync issues** (`src/lib/syncIssues.ts`, synced as a fifth slot `issues`): kind, item name, which device's version was kept, the version that gave way. Restore / Delete it / Keep. Same conflict found on two devices → one entry (id derived from content). Closed issues kept 30 days; max 100.
+- **Sync health card** (`src/components/SyncHealthCard.tsx`, Data & backups): status chip, open issues, each device's version / last sync / changes waiting / *Update needed*, Pause/Resume, Sync now, Recover items. Settings button shows a count when issues are open; Settings opens on Data & connections then.
+- **Emergency tools**: safety copies in IndexedDB on every device (on open, before each merge that changes data, before each recovery action; newest 30 then one a day for 21 days; `src/lib/syncSafety.ts`); Pause sync; Recover items from another device's copy, a safety copy or a relay copy — lists *Not on this device* (ticked) and *Different here* (unticked) and brings back only the selection as a new change; Replace with this copy; Use this device's data everywhere; Download emergency file (this device, every peer's last copy, issues).
+- **Relay history** (`deploy/cloudflare/worker.mjs`): the previous document of a device is kept before it is replaced, at most every 30 min (every time for pre-stamp builds), newest 48 per device, 14 days; `GET /api/history`, `GET /api/history-item?id=`. Clients read it through `readHistory` in `lib/phoneTransport.ts`; older relays answer 404 and are treated as having none.
+
+Runbook and design notes: `docs/sync-recovery.md`. Relay notes: `docs/relay-cloudflare.md`.
+
+### Storage and compatibility
+
+- `milestone-sync-meta` now holds `base` (path → fingerprint of the last stamped copy) instead of `published` (a full second copy of every store), plus `items` (stamps/tombstones) and `protocol: 2`. A 3.4.1 meta is converted once on load.
+- New keys: `milestone-sync-issues` (persisted store, synced), `milestone-sync-paused`; IndexedDB database `milestone-sync-safety`.
+- Documents gain `items`, `syncProtocol: 2` and `stores.issues`. 3.4.1 clients and the deployed relay accept and ignore them (relay validation checks only quest/vynues/ui). No data migration of the stores themselves.
+- Size: on a synthetic 761 KB quest store (5,522 items) exploding takes ~38 ms, a merge ~51 ms; stamps for every item would be ~500 KB, but upgraded devices only stamp what changes (plus one guard per item at upgrade). Uploads grow by the stamps' size.
+
+### Testing versus production
+
+Milestone Testing does not start sync (unchanged), so the merge cannot be exercised live there; the Sync health card is shown in Testing (Not connected) for review of its tools. No production profile, relay, Cloudflare Worker or installed app was touched. Relay history requires deploying the Worker (`cloudflare.yml`), which needs separate approval.
+
+### Validation (cloud workspace, 2026-11-26)
+
+- `npm test`: **57 files, 624 tests passed** (+67: `syncMerge.test.ts` 43 incl. an 8-seed three-device randomised convergence test; `syncRecovery.test.ts` 18; `SyncHealthCard.test.tsx` 6; plus changes below). The randomised test was also run once with 300 seeds × 80 rounds: all converged, no undeleted item lost, no merge re-stamped as an edit.
+- `npm run test:sync`: 11 files / 127 vitest + 8 node tests passed (script now includes the new suites).
+- `npx tsc -b`, `npm run build`, `npm run cloudflare:prepare`, `npm --prefix deploy/cloudflare run check` (dry run, no deploy), `npm run testing -- --build-only`: passed. `npm run lint`: 13 problems, unchanged from `main`; none in touched files.
+- `npm run test:cloudflare` (Miniflare): passed, including history list/item/404/401 and persistence across restart. The pre-existing oversized-payload assertion (`relay.test.mjs:76`) fails intermittently with `fetch failed`; reproduced on unmodified `main` (2 of 15 runs), unrelated to this batch.
+- Changed expectations, by design: two `cloudSync.live.test.ts` cases asserted whole-store replacement and conflict backups for concurrent copies — now both sides' items are kept and no backup is needed; one `syncRepair.test.ts` case asserted that a 3.4.1 copy could delete local Life Vitals — now it adds but cannot delete.
+- UI: the card was rendered in headless Chrome at 460 px (dark, light) and 390 px (recovery panel open), and inside the real Testing build (1280 px dark, 390 px light: Settings › Data & connections › Manage data › Recover items). No layout breaks seen.
+
+### Manual verification still needed (real devices)
+
+Not run on a real iPhone, laptop or desktop, nor against the live relay. With approval and after deploying all three channels: (1) edit on the phone, open the stale laptop, confirm the phone's edits survive on all three; (2) rename the same task on two devices offline, reconnect, confirm one issue appears and *Use …'s* restores; (3) delete a questline on one device while adding a step to it on another; (4) Pause, edit, Resume; (5) Recover from a safety copy and from a relay copy.
+
+### Known limitations
+
+- Two edits to different fields of the same item on two devices at once keep one version (the other is in the issue).
+- Concurrent completions on the same day on two devices can undercount that day's heatmap total (per-day counts merge as values).
+- During the changeover, edits made in a device's last session on 3.4.1 to items already changed on an updated device are not applied (recoverable from relay copies).
+- A device away longer than 120 days may bring back items deleted meanwhile.
+
+### Rollback
+
+Revert this branch's commit and rebuild. The stores are unchanged; an older build ignores `items`, `syncProtocol`, `stores.issues`, `milestone-sync-issues` and the IndexedDB snapshots. Its whole-store conflict handling returns with it.
+
+### Status
+
+Pending review in Testing and explicit production approval. Production promotion needs the desktop release, Pages, and the Cloudflare deploy together (see `docs/sync-recovery.md`, "Recommended update order").
+
 ## Cleanup: stale code and files (2026-11-23) — pending review
 
 On `chore/cleanup`, cut from `release/3.4.1` (`cc1d6af`). The user asked to remove old stale code and unnecessary files while keeping current data. 39 files changed, about 4,600 lines removed. No behavior, storage, sync-format or version change; saved data is not read or written by any of this.

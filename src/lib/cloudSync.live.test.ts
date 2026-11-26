@@ -116,28 +116,27 @@ it('ignores malformed remote state without corrupting local storage', async () =
   expect(typeof store.getState().addQuest).toBe('function');
 });
 
-it('does not discard local changes when a conflict backup fails', async () => {
+it('never needs a conflict backup to keep both sides: an older build\'s concurrent copy adds its items alongside', async () => {
   const { sync, peers, write, backup, store } = await setup();
-  peers.push({ ...write.mock.lastCall![0], deviceId: 'phone', clock: { phone: 1 }, slotClocks: undefined,
+  store.setState({ routines: [], questlines: [{ id: 'mine', title: 'Mine', description: '', icon: '', color: '#369', quests: [] }] });
+  await vi.advanceTimersByTimeAsync(700);
+  peers.push({ ...write.mock.lastCall![0], deviceId: 'phone', clock: { phone: 1 }, slotClocks: undefined, items: undefined,
     updatedAt: '2099-01-01T00:00:00.000Z', slotVersions: undefined,
     stores: { quest: JSON.stringify({ state: { questlines: [{ id: 'peer', title: 'Peer', quests: [] }], routines: [] } }) } });
   backup.mockResolvedValue({ ok: false });
   await sync.syncNow();
-  expect(store.getState().questlines).toEqual([]);
-  expect(sync.useSyncStatus.getState().error).toContain('backup');
-  backup.mockResolvedValue({ ok: true });
-  await sync.syncNow();
-  expect(store.getState().questlines[0].id).toBe('peer');
+  expect(store.getState().questlines.map(q => q.id).sort()).toEqual(['mine', 'peer']);
+  expect(sync.useSyncStatus.getState().error).toBeNull();
+  expect(backup).not.toHaveBeenCalled();
 });
 
-it('keeps the newer local edit on a concurrent peer push and backs up both copies', async () => {
-  const { sync, peers, write, backup, store } = await setup();
-  peers.push({ ...write.mock.lastCall![0], deviceId: 'phone', clock: { phone: 1 }, slotClocks: undefined,
+it('takes a concurrent older-build copy\'s new item without counting it as a local edit', async () => {
+  const { sync, peers, write, store } = await setup();
+  peers.push({ ...write.mock.lastCall![0], deviceId: 'phone', clock: { phone: 1 }, slotClocks: undefined, items: undefined,
     updatedAt: '2001-01-01T00:00:00.000Z', slotVersions: undefined,
     stores: { quest: JSON.stringify({ state: { questlines: [{ id: 'peer', title: 'Older peer', quests: [] }], routines: [] } }) } });
   await sync.syncNow();
-  expect(store.getState().questlines).toEqual([]);
-  expect(backup).toHaveBeenCalledTimes(2);
+  expect(store.getState().questlines.map(q => q.id)).toEqual(['peer']);
   expect(write.mock.lastCall![0].slotClocks!.quest).toEqual({ desktop: 1, phone: 1 });
 });
 

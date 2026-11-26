@@ -10,6 +10,7 @@ import NavBar from './components/NavBar';
 import RouteBoundary from './components/RouteBoundary';
 import { startReminders } from './lib/reminders';
 import { startHistory, installUndoHotkeys, withoutHistory } from './lib/history';
+import { automatic } from './lib/syncIntent';
 import { lazyChunk } from './lib/lazyChunk';
 import { startDayClock } from './lib/dayClock';
 
@@ -78,9 +79,11 @@ function AppRoutes() {
 
   useEffect(() => {
     // Outside the history: a day turning over is not something you did, and
-    // Ctrl+Z stepping back through a rollover would take the day with it.
+    // Ctrl+Z stepping back through a rollover would take the day with it. Sync
+    // is told the same, so a device opened days later can't let its reset
+    // override what you did on another device in the meantime.
     return startDayClock(() => {
-      withoutHistory(() => { checkAndResetRecurring(); checkAndResetVynues(); });
+      withoutHistory(() => automatic(() => { checkAndResetRecurring(); checkAndResetVynues(); }));
       refreshClock();
     });
   }, [checkAndResetRecurring, checkAndResetVynues]);

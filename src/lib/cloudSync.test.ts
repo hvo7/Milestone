@@ -118,7 +118,7 @@ describe('unionClocks', () => {
     const slots = { quest: { A: 3 }, vynues: { B: 9 }, ui: { A: 1 }, vitals: { B: 2 } };
     const union = unionClocks(slots);
     for (const slot of SLOT_NAMES) {
-      expect(['ahead', 'equal']).toContain(compareClocks(union, slots[slot]));
+      expect(['ahead', 'equal']).toContain(compareClocks(union, slots[slot as keyof typeof slots] ?? {}));
     }
   });
 });

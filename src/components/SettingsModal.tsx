@@ -5,11 +5,13 @@ import { useUIStore } from '../uiStore';
 import Icon from './Icon';
 import './settings.css';
 
-export default function SettingsModal({ onClose, notifications, onNotifications, onData, onNotion, onSpaces, desktop }: {
+export default function SettingsModal({ onClose, notifications, onNotifications, onData, onNotion, onSpaces, desktop, syncReview = 0 }: {
   onClose: () => void; notifications: string;
   onNotifications: () => void; onData: () => void; onNotion: () => void; onSpaces?: () => void; desktop: boolean;
+  /** Open sync issues, so the way to them is marked. */
+  syncReview?: number;
 }) {
-  const [tab, setTab] = useState('general');
+  const [tab, setTab] = useState(syncReview ? 'data' : 'general');
   const resetTime = useUIStore(s => s.resetTime);
   const setResetTime = useUIStore(s => s.setResetTime);
   const [resetDraft, setResetDraft] = useState(resetTime);
@@ -69,7 +71,7 @@ export default function SettingsModal({ onClose, notifications, onNotifications,
           </>}
           {tab === 'archive' && <ArchivePanel />}
           {tab === 'data' && <><h3>Data &amp; connections</h3>
-            <div className="settings-row"><div><h4>Data &amp; backups</h4><p>Backups, sync, transfers and app updates.</p></div><button className="btn-ghost" onClick={onData}>Manage data</button></div>
+            <div className="settings-row"><div><h4>Data &amp; backups</h4><p>{syncReview ? <strong style={{ color: 'var(--gold)' }}>{syncReview === 1 ? '1 sync item' : `${syncReview} sync items`} to review.</strong> : 'Backups, sync, transfers and app updates.'}</p></div><button className="btn-ghost" onClick={onData}>Manage data</button></div>
             <div className="settings-row"><div><h4>Notion</h4><p>{desktop ? 'Import and export your workspace.' : 'Import and export are available in the desktop app.'}</p></div><button className="btn-ghost" disabled={!desktop} onClick={onNotion}>{desktop ? 'Open Notion' : 'Desktop only'}</button></div>
           </>}
         </div>
