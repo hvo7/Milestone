@@ -82,7 +82,7 @@ hand-made change. Sync health marks it *Update needed*.
 The **first** device to update stamps everything it holds as made by hand (at
 the count it last published), so a device still on 3.4.1 can't revert it.
 
-A device that updates **after** another already runs 3.5.0 joins that device
+From 3.5.1, a device that updates **after** another already runs 3.5 joins it
 instead: it takes the updated devices' data, then re-applies only what it
 changed itself since it last published (the daily reset excepted — it runs
 again on the new data). Where an updated device changed the same item too, its

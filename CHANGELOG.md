@@ -7,6 +7,12 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.5.1 - 2026-11-27
+
+- A device that updates after another already runs 3.5 (for example a desktop left off for days, even one that ran the old version once before updating) now takes the updated devices' data and keeps only its own changes that never synced, plus items only it had. Where another device changed the same item too, its own change is kept and the other version is listed in Sync health. Its previous copy is saved in Recover items. In 3.5.0 such a device could let its stale copy win.
+- A device updating from 3.4.1 sends nothing until it has reached the other devices once.
+- Marking pre-update data as yours no longer outranks a dated change, and is never reported as a conflict.
+
 ## 3.5.0 - 2026-11-26
 
 - Sync merges item by item. Opening a device that has been away (a laptop after a few days) no longer replaces what was done on the others: each quest, task, habit, step, Vynues task and Life Vitals area keeps the newest change made to it, and the daily reset never overrides a change you made elsewhere. Items added on any device are kept; an item deleted on one device while edited on another is kept.
@@ -14,7 +20,7 @@ Dates are the date the version was set, not the date it was packaged.
 - Sync health also shows each device's version, when it last synced, how many changes it has not received, and flags devices on an older version.
 - Emergency tools: pause sync without losing edits; recover missing or changed items from another device's copy, an automatic safety copy (taken on opening and before every merge) or the relay's history; replace with a copy; use this device's data everywhere; download every copy in one file. See `docs/sync-recovery.md`.
 - The relay keeps the previous copy of each device's data (at most every 30 minutes, 48 per device, 14 days) and serves it at `/api/history`. Requires deploying the relay with this release.
-- Devices still on 3.4.1 can add items but can no longer delete or undo changes made on an updated device. The first device to update marks its existing data as yours, so a stale device cannot revert it. A device that updates later (for example a desktop left off for days) takes the updated devices' data and keeps only its own unsynced changes; its previous copy is saved.
+- Devices still on 3.4.1 can add items but can no longer delete or undo changes made on an updated device. On first launch each device marks its existing data so a stale device cannot revert it.
 - Sync bookkeeping stores fingerprints instead of a second full copy of every store; converted automatically on first launch. No change to the stores themselves. Older versions ignore the new sync fields.
 
 ## 3.4.1 - 2026-11-23
