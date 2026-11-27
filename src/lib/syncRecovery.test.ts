@@ -133,6 +133,56 @@ describe('both devices updated, one of them stale', () => {
   });
 });
 
+describe('a device that comes back on 3.4.1 after the others updated', () => {
+  /** The desktop's bookkeeping after one 3.4.1 session: it took the phone's
+   *  count (phone: 9) but kept its own stale copy and published that. */
+  const staleDesktop = (stale: string) => () => {
+    localStorage.setItem(META, JSON.stringify({ slots: { quest: { desktop: 8, phone: 9, laptop: 4 }, vynues: {}, ui: {}, vitals: {} },
+      published: { quest: stale }, versions: { quest: { at: '2026-12-01T09:00:00.000Z', deviceId: 'desktop' } } }));
+    localStorage.setItem('milestone-v1', stale);
+  };
+  const phoneNow = (): SyncDoc => {
+    const at = Date.parse('2026-11-27T05:00:00.000Z');
+    return { _milestoneSync: 1, deviceId: 'phone', deviceName: 'Phone', updatedAt: '2026-11-30T00:00:00.000Z', appVersion: '3.5.0', syncProtocol: 2,
+      clock: { phone: 9, laptop: 4, desktop: 7 }, slotClocks: { quest: { phone: 9, laptop: 4, desktop: 7 } },
+      stores: { quest: questSlot([ql('a', 'Renamed on phone'), ql('p', 'Made on phone')], [habit('walk', { completed: true })]) },
+      items: { quest: { s: {
+        '/questlines': ['phone', 9, at, 0], '/questlines/a': ['phone', 9, at, 0], '/questlines/p': ['phone', 9, at, 0],
+        '/routines': ['phone', 5, 0, 0], '/routines/walk': ['phone', 8, at, 0],
+      }, t: {} } } };
+  };
+
+  it('takes the laptop and phone\'s latest data once it updates, keeping only what it made itself', async () => {
+    const stale = questSlot([ql('a', 'Shared'), ql('d', 'Only on desktop')], [habit('walk')]);
+    const t = await setup({ me: 'desktop', before: staleDesktop(stale), peers: [phoneNow()] });
+    t.automatic(() => t.store.setState({ routines: [habit('walk', { lastResetAt: '2026-12-01T10:00:00.000Z' })] }));
+    await t.sync.startCloudSync();
+    const local = t.store.getState();
+    expect(local.questlines.map(q => q.title)).toEqual(['Renamed on phone', 'Made on phone', 'Only on desktop']);
+    expect(local.routines[0].completed).toBe(true);
+    expect(t.useSyncIssues.getState().issues).toEqual([]);
+    expect(t.sync.useSyncStatus.getState().notice).toContain('latest data from Phone');
+    const sent = t.write.mock.lastCall![0];
+    expect(sent.items!.quest!.s['/questlines/d'][0]).toBe('desktop');
+    expect(JSON.parse(sent.stores.quest!).state.questlines.map((q: Json) => q.title)).toEqual(['Renamed on phone', 'Made on phone', 'Only on desktop']);
+    await vi.advanceTimersByTimeAsync(0);
+    expect((await t.safety.listSafetySnapshots()).map(s => s.reason)).toContain('Before taking changes from Phone');
+  });
+
+  it('does not publish its stale copy if it cannot reach the others on first launch', async () => {
+    const t = await setup({ me: 'desktop', before: staleDesktop(questSlot([ql('a', 'Shared')])) });
+    t.readPeers.mockResolvedValue({ ok: false, error: 'Offline' } as never);
+    await t.sync.startCloudSync();
+    t.store.setState({ questlines: [ql('a', 'Shared'), ql('x', 'Offline edit')] });
+    await vi.advanceTimersByTimeAsync(800);
+    expect(t.write).not.toHaveBeenCalled();
+    // Back online, it joins and the offline edit goes out with it.
+    t.readPeers.mockResolvedValue({ ok: true, peers: [phoneNow()] });
+    await t.sync.syncNow();
+    expect(t.store.getState().questlines.map(q => q.title).sort()).toEqual(['Made on phone', 'Offline edit', 'Renamed on phone']);
+  });
+});
+
 describe('the sync issue list', () => {
   const conflictPeer = (): SyncDoc => ({
     _milestoneSync: 1, deviceId: 'phone', deviceName: 'Phone', updatedAt: '2099-01-01T00:00:00.000Z', syncProtocol: 2,
@@ -143,21 +193,22 @@ describe('the sync issue list', () => {
 
   it('records an item edited on two devices with the version that gave way, and restores it', async () => {
     const t = await setup({ before: staleLaptop, peers: [conflictPeer()] });
+    // Renamed on the laptop and never synced, while the phone renamed it too.
     t.store.setState({ questlines: [ql('a', 'Laptop title')] });
     await t.sync.startCloudSync();
-    expect(t.store.getState().questlines[0].title).toBe('Phone title');
+    expect(t.store.getState().questlines[0].title).toBe('Laptop title');
     const [issue] = t.useSyncIssues.getState().issues;
-    expect(issue).toMatchObject({ kind: 'edit', label: 'Phone title', keptFrom: 'Phone', lostFrom: 'Laptop', status: 'open' });
+    expect(issue).toMatchObject({ kind: 'edit', label: 'Laptop title', keptFrom: 'Laptop', lostFrom: 'Phone', status: 'open' });
     expect(t.sync.useSyncStatus.getState().notice).toContain('two devices');
 
     expect(await t.sync.restoreIssue(issue)).toBe(true);
-    expect(t.store.getState().questlines[0].title).toBe('Laptop title');
+    expect(t.store.getState().questlines[0].title).toBe('Phone title');
     expect(t.useSyncIssues.getState().issues[0].status).toBe('restored');
     // The restored version goes out as the newest change, so it wins everywhere.
     const sent = t.write.mock.lastCall![0];
-    expect(JSON.parse(sent.stores.quest!).state.questlines[0].title).toBe('Laptop title');
+    expect(JSON.parse(sent.stores.quest!).state.questlines[0].title).toBe('Phone title');
     expect(sent.items!.quest!.s['/questlines/a'][0]).toBe('laptop');
-    expect(sent.items!.quest!.s['/questlines/a'][1]).toBeGreaterThan(6 - 3);
+    expect(sent.items!.quest!.s['/questlines/a'][1]).toBeGreaterThan(sent.slotClocks!.quest!.laptop - 1);
   });
 
   it('syncs the list itself, so dismissing on one device dismisses everywhere', async () => {

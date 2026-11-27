@@ -79,26 +79,34 @@ updated device therefore lets it **add** items and **change** items nobody has
 changed by hand on an updated device — but never **delete**, and never undo a
 hand-made change. Sync health marks it *Update needed*.
 
-On its first run an updated device stamps everything it already holds at the
-count it last published under the old build. A device that has seen that publish
-treats those items as old news; one that has not (a laptop away for days) learns
-they are newer than its own. That is what stops a stale laptop reverting work the
-phone did before either was updated.
+The **first** device to update stamps everything it holds as made by hand (at
+the count it last published), so a device still on 3.4.1 can't revert it.
 
-Cost of that rule during the changeover: edits made on a device in the one
+A device that updates **after** another already runs 3.5.0 joins that device
+instead: it takes the updated devices' data, then re-applies only what it
+changed itself since it last published (the daily reset excepted — it runs
+again on the new data). Where an updated device changed the same item too, its
+own change is kept and the other version becomes a sync issue. Its previous copy
+is a safety copy (*Before taking changes from …*). This is what lets a desktop
+left off for days come back — even after one session on the old build, which
+took the others' counts while keeping its stale copy — and pick up the latest
+state from the laptop and phone.
+
+Cost of these rules during the changeover: edits made on a device in the one
 session it still runs the old build, to items already changed on an updated
-device, are not applied. They are in that device's relay copies (every write from
-an old build is kept) and can be brought back with Recover items.
+device, are not applied. They are in that device's safety copies and relay
+copies and can be brought back with Recover items. Items deleted on one device
+before it updated can come back from a device that still has them.
 
 ### Recommended update order
 
-1. Approve and deploy together: `release.yml` (desktop and laptop), `pages.yml`,
-   and `cloudflare.yml` (phone app **and** relay history).
-2. Update the **desktop** first and open it once with the network on.
-3. Open the **phone** app, background it, reopen: it takes the update.
-4. Open the **laptop** last. If it shows an update, apply it before editing.
-5. Check Sync health on each: every device should show the new version and no
-   *Update needed*.
+1. Publish the release: `release.yml` (desktop and laptop) and the Cloudflare
+   deploy (phone app and relay); `pages.yml` for the web copy.
+2. Before updating, let the devices you have sync once (open each online; *Sync
+   now*), so no device holds edits the others haven't seen.
+3. Update them one at a time, opening each online after it updates. A device
+   left off (or still on 3.4.1) catches up when it next opens and updates.
+4. Check Sync health on each: the new version everywhere, no *Update needed*.
 
 ## Storage and compatibility
 

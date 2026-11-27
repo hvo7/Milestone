@@ -405,13 +405,14 @@ export function mergeSides(local: Side, remote: Side, base?: Baseline | null): M
         const winner: 'local' | 'remote' = keepPresent === !!l ? 'local' : 'remote';
         keep(winner, true);
         if (keepPresent) keptOverDelete.push({ path, source: l ? local : remote });
-        if (keepPresent) conflicts.push({ path, kind: 'delete',
+        // A guard (time 0) only says "made by hand before stamps": no edit was lost.
+        if (keepPresent && present[2] > 0) conflicts.push({ path, kind: 'delete',
           kept: { device: l ? local.device.name : remote.device.name, value: l ? lValue : rValue },
           lost: { device: l ? remote.device.name : local.device.name, value: null } });
       } else {
         const localWins = beats(ld, rd);
         keep(localWins ? 'local' : 'remote', true);
-        if (ld[3] === 0 && rd[3] === 0) conflicts.push({ path, kind: 'edit',
+        if (ld[3] === 0 && rd[3] === 0 && ld[2] > 0 && rd[2] > 0) conflicts.push({ path, kind: 'edit',
           kept: { device: localWins ? local.device.name : remote.device.name, value: localWins ? lValue : rValue },
           lost: { device: localWins ? remote.device.name : local.device.name, value: localWins ? rValue : lValue } });
       }

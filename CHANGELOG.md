@@ -14,7 +14,7 @@ Dates are the date the version was set, not the date it was packaged.
 - Sync health also shows each device's version, when it last synced, how many changes it has not received, and flags devices on an older version.
 - Emergency tools: pause sync without losing edits; recover missing or changed items from another device's copy, an automatic safety copy (taken on opening and before every merge) or the relay's history; replace with a copy; use this device's data everywhere; download every copy in one file. See `docs/sync-recovery.md`.
 - The relay keeps the previous copy of each device's data (at most every 30 minutes, 48 per device, 14 days) and serves it at `/api/history`. Requires deploying the relay with this release.
-- Devices still on 3.4.1 can add items but can no longer delete or undo changes made on an updated device. On first launch each device marks its existing data so a stale device cannot revert it.
+- Devices still on 3.4.1 can add items but can no longer delete or undo changes made on an updated device. The first device to update marks its existing data as yours, so a stale device cannot revert it. A device that updates later (for example a desktop left off for days) takes the updated devices' data and keeps only its own unsynced changes; its previous copy is saved.
 - Sync bookkeeping stores fingerprints instead of a second full copy of every store; converted automatically on first launch. No change to the stores themselves. Older versions ignore the new sync fields.
 
 ## 3.4.1 - 2026-11-23

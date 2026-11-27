@@ -44,7 +44,7 @@ import { loadRelay, relayConfigured, provisionSharedRelay } from './relay';
 import { applyVitalsSlot, parseVitalsSlot, readVitalsSlot, subscribeVitals, vitalsStorageEmpty } from './vitalsSync';
 import { compareClocks, mergeClocks, type Clock, type ClockRelation } from './syncClock';
 import {
-  explode, implode, stage, mergeSides, pruneTombs, stampEverything, missingItems, withItems, entityLabel, isItemPath, normalize, baselineOf,
+  explode, implode, stage, mergeSides, pruneTombs, stampEverything, missingItems, withItems, entityLabel, isItemPath, normalize, baselineOf, fingerprint,
   differingItems, withVersions,
   type Dot, type Entities, type Side, type Stamps, type MergeConflict, type Baseline,
 } from './syncMerge';
@@ -425,7 +425,7 @@ function stageAll(meta: Meta, now = Date.now()) {
       if (raw === undefined) delete meta.base[slot];
       else meta.base[slot] = toRecord(baselineOf(current));
     }
-    if (meta.protocol !== SYNC_PROTOCOL) guard(meta, slot, current, published, now);
+    if (meta.protocol !== SYNC_PROTOCOL) guard(meta, slot, current, published);
   }
   meta.protocol = SYNC_PROTOCOL;
 }
@@ -440,10 +440,12 @@ function stageAll(meta: Meta, now = Date.now()) {
  * Because it marks a change made by hand, a device still on the old build — a
  * laptop reverting to its stale copy — cannot replace or delete it either.
  */
-function guard(meta: Meta, slot: Slot, current: Entities, published: number, now: number) {
+function guard(meta: Meta, slot: Slot, current: Entities, published: number) {
   const items = meta.items[slot] ?? { stamps: {}, tombs: {} };
   const stamps = { ...items.stamps };
-  for (const path of current.keys()) stamps[path] ??= [config!.deviceId, published, now, 0];
+  // Time 0: it records that this version is yours, not when it was made, so
+  // any dated change beats it in a tie.
+  for (const path of current.keys()) stamps[path] ??= [config!.deviceId, published, 0, 0];
   meta.items[slot] = { ...items, stamps };
 }
 
@@ -483,9 +485,10 @@ async function publish() {
   if (!api || !config?.enabled || isSyncPaused()) return;
 
   const meta = loadMeta();
-  // A device that has not joined its group yet waits for its first successful
-  // read, so a fresh install's defaults are never published as news.
-  if (!joined(meta)) return;
+  // A device that has not joined its group yet — or has just updated from 3.4.1
+  // and not yet seen whether the others have — waits for its first successful
+  // read, so neither a fresh install's defaults nor a stale copy go out as news.
+  if (!joined(meta) || meta.protocol !== SYNC_PROTOCOL) return;
   stageAll(meta);
   saveMeta(meta);
 
@@ -645,10 +648,18 @@ function mergePeers(meta: Meta, peers: SyncDoc[]): { stores: Partial<Record<Slot
  * A device's first exchange. With other devices already syncing, it takes their
  * data and keeps only its own items they have never had (and never deleted).
  * With none, its data starts the group and is stamped as this device's.
+ *
+ * `upgrading`: the device ran 3.4.1 until now and the others are already on
+ * item stamps. Its old bookkeeping can't be trusted — 3.4.1 took other devices'
+ * counts even when it kept its own stale copy — so it takes the others' data,
+ * then re-applies what it changed by hand since it last published (nobody else
+ * can have that). Where the others changed the same item too, its own change is
+ * kept and theirs becomes a sync issue.
  */
-function join(meta: Meta, peers: SyncDoc[], now = Date.now()): Partial<Record<Slot, string>> {
+function join(meta: Meta, peers: SyncDoc[], now = Date.now(), upgrading = false): { stores: Partial<Record<Slot, string>>; issues: NewIssue[] } {
   const me = config!.deviceId;
   const out: Partial<Record<Slot, string>> = {};
+  const issues: NewIssue[] = [];
   for (const slot of SLOT_NAMES) {
     const raw = readSlot(slot);
     if (raw === null) continue;
@@ -666,8 +677,13 @@ function join(meta: Meta, peers: SyncDoc[], now = Date.now()): Partial<Record<Sl
       return { ...acc, entities: merged.entities, stamps: merged.stamps, tombs: merged.tombs, clock: merged.clock };
     }, remotes[0]);
     const theirs = group.entities;
-    const mine = missingItems(theirs, local).map(item => item.path).filter(path => !group.tombs[path]);
-    const result = mine.length ? withItems(theirs, local, mine) : theirs;
+    let result: Entities = theirs;
+    if (upgrading) {
+      const reapplied = reapply(slot, theirs, local, baselineFor(meta, slot), group.device.name, issues);
+      result = reapplied;
+    }
+    const mine = missingItems(result, local).map(item => item.path).filter(path => !group.tombs[path]);
+    if (mine.length) result = withItems(result, local, mine);
     const resultRaw = implode(result);
     if (!validSlot(slot, resultRaw)) continue;
     meta.items[slot] = { stamps: group.stamps, tombs: group.tombs };
@@ -678,7 +694,39 @@ function join(meta: Meta, peers: SyncDoc[], now = Date.now()): Partial<Record<Sl
     if (resultRaw !== raw) out[slot] = resultRaw;
   }
   meta.protocol = SYNC_PROTOCOL;
-  return out;
+  return { stores: out, issues };
+}
+
+/**
+ * The group's copy with this device's own unpublished changes laid back on top:
+ * every item that differs from what this device last published, except what the
+ * daily reset did on its own (it runs again on the new data anyway).
+ */
+function reapply(slot: Slot, theirs: Entities, local: Entities, base: Baseline, groupName: string, issues: NewIssue[]): Entities {
+  const marks = automaticMarks(slot);
+  const auto = (path: string, value: string | null) => marks?.has(path) && marks.get(path) === value;
+  const out: Entities = new Map(theirs);
+  const changed = [...local].filter(([path, entity]) => base.get(path) !== fingerprint(entity.value) && !auto(path, entity.value));
+  const removed = [...base.keys()].filter(path => !local.has(path) && !auto(path, null));
+  for (const [path, entity] of changed) {
+    const group = theirs.get(path);
+    // They changed it as well since this device last published: both kept, theirs as an issue.
+    if (base.has(path) && base.get(path) !== (group ? fingerprint(group.value) : null)) {
+      const label = entityLabel(entity.value) ?? entityLabel(group?.value);
+      if (label && slot !== 'issues') issues.push({ kind: group ? 'edit' : 'delete', slot, path, label, keptFrom: config!.deviceName,
+        lostFrom: groupName, lost: group?.value ?? null, parent: entity.parent, field: entity.field });
+    }
+    let owner = entity.parent;
+    const chain: string[] = [];
+    while (owner && !out.has(owner) && local.has(owner)) { chain.unshift(owner); owner = local.get(owner)!.parent; }
+    if (owner && !out.has(owner)) continue;
+    for (const path of chain) out.set(path, local.get(path)!);
+    out.set(path, entity);
+  }
+  for (const path of removed) {
+    for (const other of [...out.keys()]) if (other === path || other.startsWith(`${path}/`)) out.delete(other);
+  }
+  return normalize(out, {});
 }
 
 async function pullOnce() {
@@ -712,9 +760,17 @@ async function pullOnce() {
   let incoming: Partial<Record<Slot, string>>;
   let issues: NewIssue[] = [];
   let from: Set<string>;
+  // Updated from 3.4.1, and another device already runs item stamps: join it.
+  const group = peers.filter(peer => !!peer.items);
+  const rejoining = joined(meta) && meta.protocol !== SYNC_PROTOCOL && group.length > 0;
   if (!joined(meta)) {
-    incoming = join(meta, peers);
+    incoming = join(meta, peers).stores;
     from = new Set(peers.map(peer => peer.deviceName));
+  } else if (rejoining) {
+    const result = join(meta, group, Date.now(), true);
+    incoming = result.stores;
+    issues = result.issues;
+    from = new Set(group.map(peer => peer.deviceName));
   } else {
     stageAll(meta);
     const merged = mergePeers(meta, peers);
@@ -733,6 +789,9 @@ async function pullOnce() {
   }
   saveMeta(meta);
   if (moved) void safetyCopy(`Before taking changes from ${[...from].join(', ') || 'another device'}`, before);
+  if (rejoining && moved) {
+    setStatus({ notice: `Updated: this device now has the latest data from ${[...from].join(' and ')}, plus its own unsynced changes. Its previous copy is in Recover items.` });
+  }
   if (recordIssues(issues)) {
     const open = useSyncIssues.getState().issues.filter(issue => issue.status === 'open').length;
     setStatus({ notice: `${open === 1 ? 'An item was' : `${open} items were`} changed on two devices at once. Both versions are kept in Sync health.` });
@@ -741,6 +800,8 @@ async function pullOnce() {
   refreshPeerStatus();
 
   await publish();
+  // Devices still on 3.4.1 are merged on the next pass, under the usual rules.
+  if (rejoining && peers.length > group.length) await pullOnce();
 }
 
 /** What each other device has and hasn't caught up on, for the status cards. */
