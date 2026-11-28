@@ -19,7 +19,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:desktop": "node --test electron/desktop.test.cjs",
-    "test:sync": "vitest run src/lib/syncMerge.test.ts src/lib/syncRecovery.test.ts src/lib/syncRepair.test.ts src/components/SyncHealthCard.test.tsx src/lib/cloudSync.test.ts src/lib/cloudSync.live.test.ts src/lib/phoneTransport.test.ts src/lib/relay.test.ts src/lib/syncPush.test.ts src/lib/syncBudget.test.ts src/lib/syncTraffic.test.ts && node --test electron/desktop.test.cjs electron/cloudSync.test.cjs",
+    "test:sync": "vitest run src/lib/syncMerge.test.ts src/lib/syncRecovery.test.ts src/lib/syncRepair.test.ts src/components/SyncHealthCard.test.tsx src/lib/cloudSync.test.ts src/lib/cloudSync.live.test.ts src/lib/phoneTransport.test.ts src/lib/relay.test.ts src/lib/syncPush.test.ts src/lib/syncBudget.test.ts src/lib/syncTraffic.test.ts src/lib/syncCheckpoint.test.ts src/lib/updateCheckpoint.test.ts src/components/UpdateCard.test.tsx && node --test electron/desktop.test.cjs electron/cloudSync.test.cjs",
     "cloudflare:prepare": "tsc -b && vite build --mode cloudflare --outDir .testing/cloudflare-app",
     "test:cloudflare": "npm --prefix deploy/cloudflare test",
     "patch": "npm run build && node scripts/package.mjs --patch",

@@ -9,11 +9,12 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   useSyncStatus, setSyncPaused, syncNow, restoreIssue, dismissIssue, peerCopies, relayHistory, relayHistoryCopy, forgetPeer,
   compareWith, bringBack, restoreCopy, shareThisDeviceEverywhere, emergencyBundle, backupBundleOf,
-  type RecoverySource, type RecoveryItem, type PeerStatus,
+  saveCheckpoint, checkpoints, checkpointCopy, describeCheckpoint,
+  type RecoverySource, type RecoveryItem, type PeerStatus, type CheckpointResult,
 } from '../lib/cloudSync';
 import { useSyncIssues, openIssues, type SyncIssue } from '../lib/syncIssues';
 import { listSafetySnapshots, loadSafetySnapshot, type SnapshotSummary } from '../lib/syncSafety';
-import type { HistoryEntry } from '../lib/phoneTransport';
+import type { BackupEntry, HistoryEntry } from '../lib/phoneTransport';
 import './syncHealth.css';
 
 const STALE_DAYS = 3;
@@ -85,11 +86,60 @@ function DeviceRow({ peer, now }: { peer: PeerStatus; now: number }) {
   );
 }
 
+/** What saving a checkpoint achieved, in a sentence. */
+function checkpointMessage(result: CheckpointResult, behind: string[]): string {
+  if (!result.shared) return 'Checkpoint saved on this device only: the relay and the cloud folder could not be reached.';
+  if (result.allInSync) return 'Checkpoint saved. Every device had the same data, so it is safe to update.';
+  if (!result.synced) return 'Checkpoint saved, but this device could not reach the others first. It holds this device\'s data.';
+  return `Checkpoint saved, but ${behind.length ? behind.join(' and ') : 'another device'} had not caught up. Open Milestone there, let it sync, then save another.`;
+}
+
+/**
+ * The state every device agrees on, saved before an update. Each device also
+ * takes one by itself just before it updates; this is the same thing on demand,
+ * with a check that the others have caught up first.
+ */
+function Checkpoint({ onDone }: { onDone: (message: string) => void }) {
+  const status = useSyncStatus();
+  const [busy, setBusy] = useState(false);
+  const behind = status.peers.filter(peer => !peer.inSync);
+  const agreed = status.enabled && !status.paused && !status.pending && !status.error && !behind.length;
+  const note = !status.enabled ? 'Not connected: a checkpoint holds this device\'s data only.'
+    : status.paused ? 'Sync is paused: a checkpoint holds this device\'s data only.'
+    : agreed ? (status.peers.length ? `All ${status.peers.length + 1} devices have the same data.` : 'No other device has synced yet.')
+    : behind.length ? `Not caught up yet: ${behind.map(peer => peer.legacy ? `${peer.deviceName} (older version)` : peer.waiting ? `${peer.deviceName} (${peer.waiting} waiting)` : peer.deviceName).join(', ')}. Open Milestone there first.`
+    : 'Still sending changes from this device.';
+  async function save() {
+    setBusy(true);
+    try {
+      const result = await saveCheckpoint('Saved by hand');
+      onDone(checkpointMessage(result, useSyncStatus.getState().peers.filter(peer => !peer.inSync).map(peer => peer.deviceName)));
+    } finally { setBusy(false); }
+  }
+  return (
+    <div className="sh-checkpoint">
+      <p className="sh-label">Before updating</p>
+      <p className={agreed ? 'sh-note sh-ok-text' : 'sh-note'}>{note}</p>
+      <div className="sh-actions">
+        <button type="button" className={agreed ? 'btn-gold' : 'btn-ghost'} disabled={busy} onClick={() => void save()}>
+          {busy ? 'Saving…' : 'Save checkpoint'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 type SourceOption = { id: string; label: string; load: () => Promise<RecoverySource | null> };
+
+function checkpointLabel(entry: BackupEntry): string {
+  const info = describeCheckpoint(entry.name);
+  return info ? `Checkpoint, ${info.device} v${info.version} · ${when(entry.saved)}` : `Checkpoint · ${when(entry.saved)}`;
+}
 
 function Recovery({ onDone }: { onDone: (message: string) => void }) {
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [saved, setSaved] = useState<BackupEntry[]>([]);
   const [choice, setChoice] = useState('');
   const [source, setSource] = useState<RecoverySource | null>(null);
   const [items, setItems] = useState<RecoveryItem[]>([]);
@@ -101,16 +151,18 @@ function Recovery({ onDone }: { onDone: (message: string) => void }) {
   useEffect(() => {
     void listSafetySnapshots().then(setSnapshots);
     void relayHistory().then(setHistory);
+    void checkpoints().then(setSaved);
   }, []);
 
   const options = useMemo<SourceOption[]>(() => [
     ...peerCopies().map(copy => ({ id: copy.id, label: `${copy.label} · now`, load: async () => copy })),
+    ...saved.map(entry => ({ id: `checkpoint:${entry.name}`, label: checkpointLabel(entry), load: () => checkpointCopy(entry.name) })),
     ...snapshots.map(snap => ({ id: `snap:${snap.id}`, label: `${snap.reason} · ${when(snap.at)}`, load: async () => {
       const full = await loadSafetySnapshot(snap.id);
       return full ? { id: `snap:${full.id}`, label: `the copy from ${when(full.at)}`, at: full.at, stores: full.stores } : null;
     } })),
     ...history.map(entry => ({ id: `history:${entry.id}`, label: `${entry.deviceName}, relay copy · ${when(entry.saved)}`, load: () => relayHistoryCopy(entry.id) })),
-  ], [snapshots, history]);
+  ], [snapshots, history, saved]);
 
   async function choose(id: string) {
     setChoice(id); setSource(null); setItems([]); setConfirm(null); setError('');
@@ -242,6 +294,7 @@ export default function SyncHealthCard() {
         {!status.paused && status.enabled && <button type="button" className="btn-ghost" disabled={status.busy} onClick={() => void syncNow()}>{status.busy ? 'Syncing…' : 'Sync now'}</button>}
         <button type="button" className="btn-ghost" aria-expanded={recovering} onClick={() => setRecovering(value => !value)}>Recover items</button>
       </div>
+      {status.enabled && !status.paused && <Checkpoint onDone={setMessage} />}
       {recovering && <Recovery onDone={text => { setMessage(text); setRecovering(false); }} />}
       {message && <p className="sh-done" role="status">{message}</p>}
     </section>

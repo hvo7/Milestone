@@ -16,6 +16,7 @@
 import { useEffect, useState } from 'react';
 import { VERSION_LABEL, buildDateLabel } from '../buildInfo';
 import { useAppUpdate, checkForUpdate, applyUpdate } from '../lib/appUpdate';
+import { restartOntoUpdate } from '../lib/updateCheckpoint';
 
 const shell = {
   background: 'var(--input-bg)',
@@ -35,6 +36,7 @@ export default function UpdateCard() {
 
 function DesktopUpdate() {
   const [status, setStatus] = useState<DesktopUpdateStatus | null>(null);
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     const api = window.electronAPI?.update;
@@ -48,7 +50,8 @@ function DesktopUpdate() {
   if (!status) return null;
 
   const check = () => { void window.electronAPI?.update?.check().then(setStatus); };
-  const apply = () => { void window.electronAPI?.update?.apply(); };
+  // A checkpoint of the data as last shared with the other devices first.
+  const apply = () => { setRestarting(true); void restartOntoUpdate(status.stagedVersion ?? null); };
 
   const busy = status.phase === 'checking' || status.phase === 'downloading';
 
@@ -58,7 +61,7 @@ function DesktopUpdate() {
       <p style={body}>
         {status.phase === 'staged' ? (
           <>Milestone <strong style={{ color: 'var(--page-text-dim)' }}>{status.stagedVersion}</strong> is downloaded and
-          will be installed when you next close the app.</>
+          will be installed when you next close the app. A checkpoint of your synced data is saved first.</>
         ) : status.phase === 'downloading' ? (
           <>Downloading {status.latestVersion}…</>
         ) : status.phase === 'checking' ? (
@@ -76,8 +79,8 @@ function DesktopUpdate() {
       {status.supported && (
         <div style={{ display: 'flex', gap: 8 }}>
           {status.phase === 'staged' ? (
-            <button className="btn-gold" style={{ flex: 1 }} onClick={apply}>
-              Restart now
+            <button className="btn-gold" style={{ flex: 1 }} onClick={apply} disabled={restarting}>
+              {restarting ? 'Saving a checkpoint…' : 'Restart now'}
             </button>
           ) : (
             <button className="btn-ghost" style={{ flex: 1 }} onClick={check} disabled={busy}>
@@ -93,7 +96,7 @@ function DesktopUpdate() {
 // ── The web and phone copies ──────────────────────────────────────────────────
 
 function WebUpdate() {
-  const { ready, nextVersion, busy, supported } = useAppUpdate();
+  const { ready, nextVersion, busy, supported, saving } = useAppUpdate();
 
   return (
     <div style={shell}>
@@ -112,7 +115,9 @@ function WebUpdate() {
 
       {supported && (
         ready
-          ? <button className="btn-gold" style={{ width: '100%' }} onClick={applyUpdate}>Reload onto the new version</button>
+          ? <button className="btn-gold" style={{ width: '100%' }} onClick={() => void applyUpdate()} disabled={saving}>
+              {saving ? 'Saving a checkpoint…' : 'Reload onto the new version'}
+            </button>
           : (
             <button
               className="btn-ghost"

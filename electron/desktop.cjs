@@ -213,6 +213,8 @@ ipcMain.handle('sync:write-backup', (_event, { name, bundle }) => {
   const viaFolder = cloudSync.loadConfig().enabled ? cloudSync.writeBackup(name, bundle) : { ok: false };
   return viaFolder.ok ? viaFolder : phone.writeBackup(name, bundle);
 });
+ipcMain.handle('sync:read-backups', () => cloudSync.readBackups());
+ipcMain.handle('sync:read-backup', (_event, name) => cloudSync.readBackup(name));
 
 // ── The phone ─────────────────────────────────────────────────────────────────
 // See electron/phone.cjs: this computer serves the app to your phone over the

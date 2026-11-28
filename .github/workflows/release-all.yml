@@ -1,0 +1,53 @@
+# Ships one version to every platform, in an order that can't leave them apart.
+#
+#   1. The desktop build (release.yml): tested, packaged, published as a
+#      GitHub Release. Desktop and laptop download it in the background.
+#   2. Only if that succeeded, the phone app (pages.yml) on GitHub Pages.
+#
+# If the desktop build fails, the phone is not moved ahead to a version the
+# computers can't follow. Re-running is safe: release.yml skips a version that
+# is already released, and the phone app is simply deployed again.
+#
+# No device switches over blindly. Each one, just before it moves to the new
+# version, syncs with the others one last time and saves a checkpoint of the
+# shared state, on the device, on the relay and in the cloud folder
+# (src/lib/updateCheckpoint.ts). See docs/updating.md for the whole runbook.
+name: Release everywhere
+
+on:
+  # Run by hand from the Actions tab, once a testing batch is approved.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release-all
+  cancel-in-progress: false
+
+jobs:
+  desktop:
+    uses: ./.github/workflows/release.yml
+
+  phone:
+    needs: desktop
+    uses: ./.github/workflows/pages.yml
+
+  summary:
+    needs: [desktop, phone]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: What happens next
+        run: |
+          version=$(node -p "require('./package.json').version")
+          {
+            echo "## Milestone v$version is out on every platform"
+            echo
+            echo "- **Desktop and laptop** download it in the background and show *Restart now*. Restarting saves a checkpoint first."
+            echo "- **Phone** picks it up the next time Milestone is opened, saves a checkpoint, then reloads."
+            echo
+            echo "If anything looks wrong afterwards: Data › Sync health › Recover items › the newest *Checkpoint*."
+          } >> "$GITHUB_STEP_SUMMARY"

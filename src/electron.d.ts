@@ -21,6 +21,9 @@ declare global {
         readPeers:   (previewFolder?: string) => Promise<{ ok: boolean; peers?: unknown[]; unreadable?: number; error?: string }>;
         write:       (doc: unknown) => Promise<{ ok: boolean; at?: string; error?: string }>;
         writeBackup: (name: string, bundle: unknown) => Promise<{ ok: boolean; path?: string; error?: string }>;
+        /** Rescue copies and checkpoints in the folder's backups/, newest first. */
+        readBackups: () => Promise<{ name: string; saved: number }[]>;
+        readBackup:  (name: string) => Promise<unknown | null>;
         /** Returns an unsubscribe function. */
         onChanged:   (callback: () => void) => () => void;
       };

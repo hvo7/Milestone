@@ -70,24 +70,31 @@ where a bug looks like "I forgot to do it" rather than like a crash.
 
 ## Releases
 
-Cutting one is a version bump and a push:
+Cutting one is a version bump, a push to `main`, and one manual workflow run
+(releases wait for approval, so nothing publishes on push):
 
 ```bash
 npm run bump:patch     # or bump:minor / bump:major — never hand-edit the version
 git commit -am "…" && git push
 ```
 
-From that one push, three things happen and every device ends up on the same
-build without being touched:
+Then GitHub › Actions › **Release everywhere** (`.github/workflows/release-all.yml`)
+› *Run workflow*. It runs the two below in order, the phone only if the desktop
+build succeeded:
 
 | | what runs | what picks it up |
 |---|---|---|
-| **Web / phone** | `.github/workflows/pages.yml` | The open app notices within 15 minutes, or the moment it's next foregrounded, and reloads itself (`src/lib/appUpdate.ts`) |
-| **Desktop** | `.github/workflows/release.yml` — packages Windows, publishes a GitHub Release | Each install checks every 6 hours, downloads in the background, and swaps it in when you next close the app (`electron/updater.cjs`) |
-| **Relay** | `.github/workflows/relay.yml` | Redeployed, so the copy of the app *it* serves stays current too |
+| **Desktop** | `.github/workflows/release.yml` — packages Windows, publishes a GitHub Release | Each install checks every 6 hours, downloads in the background, and swaps it in when you next close the app or press *Restart now* (`electron/updater.cjs`) |
+| **Web / phone** | `.github/workflows/pages.yml` — GitHub Pages | The open app notices within 15 minutes, or the moment it's next foregrounded, and reloads itself (`src/lib/appUpdate.ts`) |
 
-The release workflow only fires when `package.json`'s version has no release yet,
-so ordinary commits deploy the web app and stop there.
+Before any device switches versions it syncs once more and saves a checkpoint of
+the shared state on the device, the relay and the cloud folder
+(`src/lib/updateCheckpoint.ts`). The full procedure, and how to recover from a
+checkpoint, is in `docs/updating.md`. The relay is deployed separately, only when
+`deploy/cloudflare/worker.mjs` changes (`docs/relay-cloudflare.md`).
+
+`release.yml` skips a version that already has a release, so re-running
+*Release everywhere* only redeploys the phone app.
 
 To build locally instead — for a machine with no network, or to test a package
 before publishing:

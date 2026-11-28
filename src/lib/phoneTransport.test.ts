@@ -73,6 +73,44 @@ it('partial delivery stays pending rather than reporting all devices synced', as
   expect((await compositeBridge([route(true), offline]).write({})).ok).toBe(false);
 });
 
+describe('recovery copies on every route', () => {
+  it('sends a backup to every route, and succeeds if any of them kept it', async () => {
+    const folder = vi.fn(async () => ({ ok: true }));
+    const relay = vi.fn(async () => ({ ok: false, error: 'offline' }));
+    const both = compositeBridge([{ ...route(true), writeBackup: folder }, { ...route(true), writeBackup: relay }]);
+    expect((await both.writeBackup('checkpoint-x.json', { _milestone: 2 })).ok).toBe(true);
+    expect(folder).toHaveBeenCalledTimes(1);
+    expect(relay).toHaveBeenCalledTimes(1);
+    const none = compositeBridge([{ ...route(true), writeBackup: relay }]);
+    expect((await none.writeBackup('checkpoint-x.json', { _milestone: 2 })).ok).toBe(false);
+  });
+
+  it('lists backups from every route once, newest first, and reads each from whichever route has it', async () => {
+    const both = compositeBridge([
+      { ...route(true), readBackups: async () => [{ name: 'a.json', saved: 1 }, { name: 'c.json', saved: 3 }], readBackup: async (name: string) => name === 'a.json' ? { from: 'folder' } : null },
+      { ...route(true), readBackups: async () => { throw new Error('offline'); }, readBackup: async () => ({ from: 'relay' }) },
+      { ...route(true), readBackups: async () => [{ name: 'a.json', saved: 1 }, { name: 'b.json', saved: 2 }] },
+    ]);
+    expect((await both.readBackups!()).map(entry => entry.name)).toEqual(['c.json', 'b.json', 'a.json']);
+    expect(await both.readBackup!('a.json')).toEqual({ from: 'folder' });
+    expect(await both.readBackup!('b.json')).toEqual({ from: 'relay' });
+  });
+
+  it('reads the relay\'s backup list and bundles', async () => {
+    const fetch = vi.fn(async (input: string) => ({
+      ok: true, status: 200,
+      json: async () => input.includes('/api/backups')
+        ? { ok: true, backups: [{ id: 'backup:checkpoint-x.json', saved: 5 }, { id: 'device:phone', saved: 6 }, { id: 'backup:bad', saved: 'x' }] }
+        : { ok: true, bundle: { _milestone: 2 } },
+    }));
+    vi.stubGlobal('fetch', fetch);
+    const relay = httpBridge({ base: 'https://relay.example', token: 'synthetic', me: { deviceId: 'phone', deviceName: 'Phone' } });
+    expect(await relay.readBackups!()).toEqual([{ name: 'checkpoint-x.json', saved: 5 }]);
+    expect(await relay.readBackup!('checkpoint-x.json')).toEqual({ _milestone: 2 });
+    expect(String(fetch.mock.lastCall![0])).toContain('name=checkpoint-x.json');
+  });
+});
+
 it('all routes throwing is a read failure, not a successful empty peer list', async () => {
   const broken = { ...route(true), readPeers: async () => { throw new Error('offline'); } };
   expect((await compositeBridge([broken]).readPeers()).ok).toBe(false);

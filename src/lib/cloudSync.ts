@@ -39,7 +39,7 @@ import { useUIStore } from '../uiStore';
 import { VYNUES_STORE_KEY, useVynuesStore } from '../vynuesStore';
 import { APP_VERSION } from '../buildInfo';
 import { withoutHistory, clearHistory } from './history';
-import { httpBridge, compositeBridge, servedByMilestone, identity, rememberToken, type SyncBridge, type HistoryEntry } from './phoneTransport';
+import { httpBridge, compositeBridge, servedByMilestone, identity, rememberToken, type SyncBridge, type HistoryEntry, type BackupEntry } from './phoneTransport';
 import { loadRelay, relayConfigured, provisionSharedRelay } from './relay';
 import { applyVitalsSlot, parseVitalsSlot, readVitalsSlot, subscribeVitals, vitalsStorageEmpty } from './vitalsSync';
 import { compareClocks, mergeClocks, type Clock, type ClockRelation } from './syncClock';
@@ -153,6 +153,8 @@ export interface PeerStatus {
   legacy?: boolean;
   /** Changes this device knows about that the peer's last copy had not seen. */
   waiting?: number;
+  /** Holds exactly what this device holds: nothing waiting either way. */
+  inSync?: boolean;
 }
 
 export interface SyncStatus {
@@ -835,7 +837,14 @@ function refreshPeerStatus() {
           if (isItemPath(path) && !seen(clock, dot)) waiting++;
         }
       }
-      return { deviceId: peer.deviceId, deviceName: peer.deviceName, updatedAt: peer.updatedAt, appVersion: peer.appVersion, legacy: !peer.items, waiting };
+      // Nothing of its own this device hasn't merged, either.
+      const ahead = SLOT_NAMES.some(slot => {
+        const relation = compareClocks(slotClock(peer, slot), meta.slots[slot]);
+        return relation === 'ahead' || relation === 'concurrent';
+      });
+      const legacy = !peer.items;
+      return { deviceId: peer.deviceId, deviceName: peer.deviceName, updatedAt: peer.updatedAt, appVersion: peer.appVersion, legacy, waiting,
+        inSync: !legacy && waiting === 0 && !ahead };
     }),
   });
 }
@@ -1080,6 +1089,75 @@ export async function relayHistoryCopy(id: string): Promise<RecoverySource | nul
   const doc = await api?.readHistoryItem?.(id).catch(() => null);
   if (!doc || !isSyncDoc(doc)) return null;
   return { id: `history:${id}`, label: `${doc.deviceName}'s copy`, at: doc.updatedAt, stores: doc.stores };
+}
+
+/** Checkpoints kept on the relay and in the cloud folder, newest first. */
+export async function checkpoints(): Promise<BackupEntry[]> {
+  const api = bridge();
+  if (!api?.readBackups) return [];
+  return (await api.readBackups().catch(() => [])).filter(entry => entry.name.startsWith('checkpoint-'));
+}
+
+export async function checkpointCopy(name: string): Promise<RecoverySource | null> {
+  const bundle = await bridge()?.readBackup?.(name).catch(() => null) as Record<string, unknown> | null | undefined;
+  if (!bundle || bundle._milestone !== 2) return null;
+  const stores: Partial<Record<Slot, string>> = {};
+  for (const slot of ['quest', 'vynues', 'ui', 'vitals'] as const) if (typeof bundle[slot] === 'string') stores[slot] = bundle[slot] as string;
+  return { id: `checkpoint:${name}`, label: 'the checkpoint', at: String(bundle.exportedAt ?? ''), stores };
+}
+
+export interface CheckpointResult {
+  /** This device reached the others and delivered everything it had. */
+  synced: boolean;
+  /** Every other device it knows holds exactly the same data. */
+  allInSync: boolean;
+  /** A copy reached the relay or the cloud folder, not just this device. */
+  shared: boolean;
+}
+
+/** The last checkpoint content sent off this device, so an unchanged one isn't sent twice. */
+let lastShared = '';
+
+const slug = (text: string) => text.replace(/[^A-Za-z0-9.-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'device';
+
+export interface CheckpointInfo { device: string; version: string; reason: string }
+
+/** What a checkpoint's name says about it: `checkpoint-<time>_v<version>_<device>_<reason>.json`. */
+export function describeCheckpoint(name: string): CheckpointInfo | null {
+  const match = /^checkpoint-[^_]+_v([^_]+)_([^_]+)_([^_]*)\.json$/.exec(name);
+  if (!match) return null;
+  return { version: match[1], device: match[2].replace(/-/g, ' '), reason: match[3].replace(/-/g, ' ') };
+}
+
+/**
+ * Saves the data as it stands after one last exchange with the other devices:
+ * on this device (a safety copy) and on every route that keeps recovery copies
+ * (the relay, the cloud folder). Taken before every update, and by hand from
+ * Sync health once all devices agree, so the state every device last shared is
+ * always one step back.
+ */
+export async function saveCheckpoint(reason: string): Promise<CheckpointResult> {
+  let synced = false;
+  if (config?.enabled && !isSyncPaused() && bridge()) {
+    try { await syncNow(); } catch { /* recorded in status */ }
+    const status = useSyncStatus.getState();
+    synced = !status.error && !status.pending;
+  }
+  const peers = useSyncStatus.getState().peers;
+  const allInSync = synced && peers.every(peer => peer.inSync);
+  const stores = snapshot();
+  await safetyCopy(reason, stores);
+  let shared = false;
+  const api = bridge();
+  const signature = JSON.stringify(stores);
+  if (signature === lastShared) shared = true;
+  else if (api && config?.enabled) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const name = `checkpoint-${stamp}_v${slug(APP_VERSION)}_${slug(config.deviceName)}_${slug(reason)}`.slice(0, 195) + '.json';
+    shared = (await api.writeBackup(name, bundleOf(stores)).catch(() => ({ ok: false }))).ok;
+    if (shared) lastShared = signature;
+  }
+  return { synced, allInSync, shared };
 }
 
 export interface RecoveryItem {

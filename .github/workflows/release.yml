@@ -22,6 +22,8 @@ on:
   # Publish a feature batch only after explicit user approval.
   # For re-cutting a release whose build failed, without an empty version bump.
   workflow_dispatch:
+  # Called by release-all.yml, which ships the desktop and phone builds together.
+  workflow_call:
 
 # Creating a release is a write to the repository; nothing else here needs more.
 permissions:

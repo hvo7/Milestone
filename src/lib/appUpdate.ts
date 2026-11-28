@@ -71,6 +71,8 @@ export interface AppUpdateStatus {
   /** False in Electron and in dev, where none of this applies — the card uses
    *  it to stay out of the way rather than showing a control that does nothing. */
   supported: boolean;
+  /** A checkpoint is being saved before the reload. */
+  saving: boolean;
 }
 
 export const useAppUpdate = create<AppUpdateStatus>(() => ({
@@ -79,6 +81,7 @@ export const useAppUpdate = create<AppUpdateStatus>(() => ({
   checkedAt: null,
   busy: false,
   supported: false,
+  saving: false,
 }));
 
 const set = (patch: Partial<AppUpdateStatus>) => useAppUpdate.setState(patch);
@@ -111,18 +114,49 @@ function reloadedRecently(): boolean {
  * a reload can cost is text typed into an open field in the last moment. That is
  * why this is automatic when the app is hidden and a button when it is not.
  */
-export function applyUpdate() {
+/**
+ * What has to happen before the reload: a checkpoint of the data as last
+ * shared with the other devices (lib/updateCheckpoint.ts). Registered from
+ * outside so this file stays free of sync machinery.
+ */
+type BeforeUpdate = (nextVersion: string | null) => Promise<unknown>;
+let beforeUpdate: BeforeUpdate | null = null;
+let preparing: Promise<unknown> | null = null;
+/** An update is never held back longer than this by a slow or absent network. */
+export const PREPARE_MS = 12_000;
+
+export function setBeforeUpdate(fn: BeforeUpdate | null) { beforeUpdate = fn; preparing = null; }
+
+function prepare(): Promise<unknown> {
+  if (!beforeUpdate) return Promise.resolve();
+  if (!preparing) {
+    set({ saving: true });
+    const work = beforeUpdate(useAppUpdate.getState().nextVersion).catch(() => undefined);
+    preparing = Promise.race([work, new Promise(resolve => setTimeout(resolve, PREPARE_MS))])
+      .finally(() => set({ saving: false }));
+  }
+  return preparing;
+}
+
+/** The reload itself, behind a seam so tests can watch it happen. */
+export const page = { reload: () => window.location.reload() };
+
+export async function applyUpdate() {
   if (reloading) return;
   reloading = true;
   sessionSet(RELOAD_GUARD_KEY, String(Date.now()));
-  window.location.reload();
+  await prepare();
+  page.reload();
 }
 
 /** An update is waiting: take it now if nobody is looking, otherwise say so and
- *  let the toast (or the next time the app is backgrounded) settle it. */
+ *  let the toast (or the next time the app is backgrounded) settle it. The
+ *  checkpoint starts straight away, while the app is still in front and online,
+ *  rather than in the moment it is being backgrounded. */
 function updateFound(nextVersion: string | null) {
-  set({ ready: true, nextVersion });
-  if (document.hidden && !reloadedRecently()) applyUpdate();
+  set({ ready: true, nextVersion: nextVersion ?? useAppUpdate.getState().nextVersion });
+  void prepare();
+  if (document.hidden && !reloadedRecently()) void applyUpdate();
 }
 
 /**
@@ -217,7 +251,7 @@ export function startAppUpdates() {
   // is a check, and going *away* is when a pending update gets taken.
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
-      if (useAppUpdate.getState().ready && !reloadedRecently()) applyUpdate();
+      if (useAppUpdate.getState().ready && !reloadedRecently()) void applyUpdate();
       return;
     }
     void checkForUpdate();

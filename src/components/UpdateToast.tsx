@@ -17,6 +17,7 @@ import { useUndoStore } from '../lib/undo';
 export default function UpdateToast() {
   const ready = useAppUpdate(s => s.ready);
   const nextVersion = useAppUpdate(s => s.nextVersion);
+  const saving = useAppUpdate(s => s.saving);
   // The undo toast owns the bottom of the screen and is the more time-critical
   // of the two — twelve seconds versus "whenever you like" — so this one steps
   // up out of its way rather than covering it.
@@ -41,8 +42,8 @@ export default function UpdateToast() {
           <span style={{ fontSize: 13, color: 'var(--page-text)', lineHeight: 1.4 }}>
             {nextVersion ? `Milestone ${nextVersion} is ready.` : 'A new version is ready.'}
           </span>
-          <button type="button" className="btn-gold" style={{ whiteSpace: 'nowrap' }} onClick={applyUpdate}>
-            Reload
+          <button type="button" className="btn-gold" style={{ whiteSpace: 'nowrap' }} onClick={() => void applyUpdate()} disabled={saving}>
+            {saving ? 'Saving…' : 'Reload'}
           </button>
         </motion.div>
       )}

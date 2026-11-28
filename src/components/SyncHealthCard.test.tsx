@@ -1,10 +1,10 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SyncHealthCard from './SyncHealthCard';
 import { useSyncStatus } from '../lib/cloudSync';
 import { useSyncIssues, type SyncIssue } from '../lib/syncIssues';
-import { resetSafetyForTests, saveSafetySnapshot, isSyncPaused, setSyncPausedFlag } from '../lib/syncSafety';
+import { resetSafetyForTests, saveSafetySnapshot, listSafetySnapshots, isSyncPaused, setSyncPausedFlag } from '../lib/syncSafety';
 
 const host = document.createElement('div');
 let root: ReturnType<typeof createRoot>;
@@ -28,7 +28,7 @@ beforeEach(() => {
     issue({ id: 'closed', status: 'dismissed', label: 'Old one' }),
   ] });
 });
-afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); });
+afterEach(() => { act(() => root.unmount()); host.remove(); vi.unstubAllGlobals(); delete window.electronAPI; });
 
 const button = (name: string) => [...host.querySelectorAll('button')].find(b => b.textContent?.trim() === name)!;
 const render = () => act(() => root.render(<SyncHealthCard />));
@@ -112,4 +112,61 @@ it('stays out of the way on a device that does not sync and has nothing to revie
   useSyncIssues.setState({ issues: [] });
   render();
   expect(host.textContent).toBe('');
+});
+
+describe('before updating', () => {
+  it('names the devices that have not caught up', () => {
+    useSyncIssues.setState({ issues: [] });
+    render();
+    expect(host.textContent).toContain('Before updating');
+    expect(host.textContent).toContain('Not caught up yet: Laptop (older version), Phone. Open Milestone there first.');
+  });
+
+  it('says so when every device has the same data', () => {
+    useSyncIssues.setState({ issues: [] });
+    useSyncStatus.setState({ peers: useSyncStatus.getState().peers.map(peer => ({ ...peer, legacy: false, waiting: 0, inSync: true })) });
+    render();
+    expect(host.textContent).toContain('All 3 devices have the same data.');
+    expect(button('Save checkpoint').className).toBe('btn-gold');
+  });
+
+  it('saves a checkpoint and says where it went', async () => {
+    useSyncIssues.setState({ issues: [] });
+    render();
+    await act(async () => button('Save checkpoint').click());
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    // This test device has no sync route, so the copy stays on the device.
+    expect(host.textContent).toContain('Checkpoint saved on this device only');
+    expect((await listSafetySnapshots()).map(snap => snap.reason)).toContain('Saved by hand');
+  });
+
+  it('is hidden while sync is paused', () => {
+    useSyncIssues.setState({ issues: [] });
+    useSyncStatus.setState({ paused: true });
+    render();
+    expect(host.textContent).not.toContain('Before updating');
+  });
+
+  it('offers saved checkpoints in Recover items', async () => {
+    useSyncIssues.setState({ issues: [] });
+    const name = 'checkpoint-2026-11-28T15-04-05-123Z_v3.6.0_Laptop_Before-updating-from-v3.6.0-to-v3.6.1.json';
+    const bundle = { _milestone: 2, exportedAt: '2026-11-28T15:04:05.123Z', quest: JSON.stringify({ state: { questlines: [{ id: 'k', title: 'Kept in a checkpoint', quests: [] }], routines: [] }, version: 0 }) };
+    Object.defineProperty(window, 'electronAPI', { configurable: true, value: { sync: {
+      readBackups: async () => [{ name, saved: Date.parse('2026-11-28T15:04:05.123Z') }, { name: 'Laptop-before-adopt.json', saved: 1 }],
+      readBackup: async () => bundle,
+    } } });
+    render();
+    await act(async () => button('Recover items').click());
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    const select = host.querySelector<HTMLSelectElement>('#sh-source')!;
+    const labels = [...select.options].map(o => o.textContent!);
+    expect(labels.filter(label => label.startsWith('Checkpoint'))).toEqual([expect.stringMatching(/^Checkpoint, Laptop v3\.6\.0 · /)]);
+    const option = [...select.options].find(o => o.textContent!.startsWith('Checkpoint'))!;
+    await act(async () => {
+      select.value = option.value;
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await act(async () => { await new Promise(r => setTimeout(r, 0)); });
+    expect(host.textContent).toContain('Kept in a checkpoint');
+  });
 });

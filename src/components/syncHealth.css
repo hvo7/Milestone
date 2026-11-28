@@ -31,3 +31,6 @@
 .sh-link:hover { color: var(--page-text); }
 .sh-forget { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: 11.5px; line-height: 1.45; }
 .sh-forget button { font-size: 11.5px; padding: 3px 10px; }
+.sh-checkpoint { display: flex; flex-direction: column; gap: 4px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--card-border); }
+.sh-checkpoint .sh-note { margin: 0; }
+.sh-ok-text { color: var(--success); }

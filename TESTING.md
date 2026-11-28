@@ -1,5 +1,45 @@
 # Milestone Testing
 
+## Update checkpoints and one-click release (2026-11-28) — testing, awaiting approval
+
+On `testing/update-checkpoints`, based on `release/3.5.2` (`944ec76`). Not approved for production; the version stays 3.5.2 until approval (planned 3.6.0).
+
+### Request and scope
+
+"Can you remake a more robust system of implementing updates such that we save the current state that all devices have synced as a snapshot, then we update all the platforms." Also reported: every Render deploy fails with *failed to read dockerfile*.
+
+### Behavior
+
+- **Checkpoint** (`saveCheckpoint`, `src/lib/cloudSync.ts`): one last exchange with the other devices, then the data saved as a safety copy on the device, in the cloud folder's `backups/` and on the relay (`checkpoint-<time>_v<version>_<device>_<reason>.json`, Backup & Restore bundle format). Reports `synced`, `allInSync` (every other device has nothing waiting, nothing unmerged and is on protocol 2; new `PeerStatus.inSync`) and `shared`. Identical content is not uploaded twice.
+- **Automatic before every update** (`src/lib/updateCheckpoint.ts`, started in `renderApp.tsx`): desktop/laptop when an update is downloaded (it may install on quit) and again on *Restart now* (restart waits at most 20 s); phone/web as soon as it learns of a new build and before the reload (`appUpdate.setBeforeUpdate`; reload waits at most 12 s). Buttons show *Saving a checkpoint…*. A checkpoint never blocks an update.
+- **Sync health › Before updating**: *All N devices have the same data* or *Not caught up yet: Desktop (4 waiting)…*, and **Save checkpoint** with a result line (shared or this device only; whether every device agreed). Hidden while paused or not connected.
+- **Recover items** lists checkpoints (relay and cloud folder) as *Checkpoint, Laptop v3.6.0 · date*.
+- **Release everywhere** (`.github/workflows/release-all.yml`, manual): `release.yml` then, only if it succeeded, `pages.yml` (both gained `workflow_call`). Re-runs skip an existing desktop release.
+- Cloud folder (`electron/cloudSync.cjs`): `readBackups`/`readBackup` over IPC (`sync:read-backups`, `sync:read-backup`); checkpoints pruned to the newest 30, other rescue copies never pruned. Composite transport now writes backups to every route and lists/reads them from all.
+
+### Storage and compatibility
+
+No change to stores or sync documents. New files only in `backups/` and the relay's existing backup table (relay keeps the newest 20 backups of any kind). Works with the deployed 3.4.1 relay (its `/api/backup(s)` already exist). Rollback: install 3.5.2; checkpoints remain loadable through *Data › Load backup*.
+
+### Validation (2026-11-28, work session)
+
+- `npm test`: 60 files, 654 tests passed. New: `src/lib/syncCheckpoint.test.ts` (6, through the real reconciler), `src/lib/updateCheckpoint.test.ts` (9, ordering and time limits), `src/components/UpdateCard.test.tsx` (2), 5 in `SyncHealthCard.test.tsx`, 3 in `phoneTransport.test.ts`.
+- `node --test electron/*.test.cjs`: 9 passed (new: folder checkpoints listed, read, pruned to 30; path traversal refused).
+- `npm run build` (`tsc -b` + Vite): passes. `npm run lint`: 12 errors and 1 warning, all in files this batch does not touch (ColorPicker, QuestCreateDrawer, VynuesProjectModal, VynuesTaskCreateDrawer, vynuesUi), unchanged.
+- Workflow YAML parses; `release-all.yml` has not been run (manual dispatch on `main` only).
+- Visual check: Sync health and Updates cards rendered headless at phone width in both states (not caught up / all agree).
+
+### Not verified / limitations
+
+- Not run on the real desktop, laptop or iPhone. Not run in Milestone Testing (it never syncs, so the block is hidden there).
+- Devices on 3.5.x take no automatic checkpoint on the way to 3.6.0 (the code runs in the version being left). `docs/updating.md` gives the manual step for that one update.
+- A desktop that installs on quit uses the checkpoint taken when the update downloaded; later edits are covered by the safety copy taken when it first opens on the new version.
+- iOS may suspend a backgrounded app before the 12 s limit; the checkpoint taken when the update was found covers that.
+
+### Render
+
+Not a Milestone problem: `Dockerfile`/`render.yaml` were removed in `4f06760`; a Render service still linked to the repo fails every deploy. Delete or suspend it, or turn Auto-Deploy off, in the Render dashboard (`docs/updating.md`).
+
 ## Current release status — November 26, 2026
 
 **Sync repair 2 was approved for production by the user on November 26, 2026 ("I approve of this for production") and is prepared as release 3.5.0** on `release/3.5.0`: the `testing/sync-merge-recovery` commit (`5124a82`, pushed by the user) plus the version bump, `CHANGELOG.md` entry, and a fix for the intermittently failing oversized-upload assertion in `deploy/cloudflare/relay.test.mjs` (it now accepts the runtime's cut connection as a refusal; 20 of 20 runs passed). 3.4.1 (`cc1d6af`) and the cleanup commits up to `4f06760` are on `main`.

@@ -100,10 +100,14 @@ before it updated can come back from a device that still has them.
 
 ### Recommended update order
 
-1. Publish the release: `release.yml` (desktop and laptop) and `pages.yml`
-   (the phone app, from 3.5.2). The relay needs no deploy.
-2. Before updating, let the devices you have sync once (open each online; *Sync
+From 3.6.0 the whole procedure, with checkpoints, is in `docs/updating.md`:
+check *Before updating* in Sync health and save a checkpoint, run **Release
+everywhere**, and let each device update (each saves its own checkpoint first).
+
+1. Before updating, let the devices you have sync once (open each online; *Sync
    now*), so no device holds edits the others haven't seen.
+2. Publish the release (`release-all.yml`, or `release.yml` then `pages.yml`).
+   The relay needs no deploy.
 3. Update them one at a time, opening each online after it updates. A device
    left off (or still on 3.4.1) catches up when it next opens and updates.
 4. Check Sync health on each: the new version everywhere, no *Update needed*.

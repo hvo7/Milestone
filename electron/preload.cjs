@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     readPeers:   (folder)         => ipcRenderer.invoke('sync:read-peers', folder),
     write:       (doc)            => ipcRenderer.invoke('sync:write', doc),
     writeBackup: (name, bundle)   => ipcRenderer.invoke('sync:write-backup', { name, bundle }),
+    readBackups: ()               => ipcRenderer.invoke('sync:read-backups'),
+    readBackup:  (name)           => ipcRenderer.invoke('sync:read-backup', name),
     /** Fires when a peer's file lands in the folder. Returns an unsubscribe —
      *  the raw IpcRendererEvent is deliberately not passed through, since handing
      *  the renderer an object with a `sender` would hand it back ipcRenderer. */

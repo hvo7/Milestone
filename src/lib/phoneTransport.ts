@@ -38,7 +38,12 @@ export interface SyncBridge {
    *  (the relay from 1.1). For recovering from a bad sync. */
   readHistory?: () => Promise<HistoryEntry[]>;
   readHistoryItem?: (id: string) => Promise<unknown | null>;
+  /** Recovery copies kept by the route (the relay), newest first. */
+  readBackups?: () => Promise<BackupEntry[]>;
+  readBackup?: (name: string) => Promise<unknown | null>;
 }
+
+export interface BackupEntry { name: string; saved: number }
 
 export interface HistoryEntry { id: string; deviceId: string; deviceName: string; saved: number }
 
@@ -270,6 +275,24 @@ export function httpBridge({ base = '', token, me }: {
         return body?.doc ?? null;
       } catch { return null; }
     },
+    readBackups: async () => {
+      try {
+        const res = await syncFetch(url('backups'), { cache: 'no-store' });
+        if (!res.ok) return [];
+        const body = await res.json() as { backups?: { id?: unknown; saved?: unknown }[] };
+        return (Array.isArray(body?.backups) ? body.backups : [])
+          .filter(row => typeof row?.id === 'string' && row.id.startsWith('backup:') && Number.isFinite(row.saved))
+          .map(row => ({ name: (row.id as string).slice('backup:'.length), saved: row.saved as number }));
+      } catch { return []; }
+    },
+    readBackup: async name => {
+      try {
+        const res = await syncFetch(url('backup', { name }), { cache: 'no-store' });
+        if (!res.ok) return null;
+        const body = await res.json() as { bundle?: unknown };
+        return body?.bundle ?? null;
+      } catch { return null; }
+    },
 
     onChanged: callback => {
       listeners.add(callback);
@@ -358,12 +381,25 @@ export function compositeBridge(parts: SyncBridge[]): SyncBridge {
       return null;
     },
 
+    // Every route that can hold one gets a copy: the cloud folder for the
+    // computers, the relay for the phone. A recovery copy only one device can
+    // reach is not much of one.
     writeBackup: async (name, bundle) => {
+      const results = await Promise.all(parts.map(part => part.writeBackup(name, bundle).catch(() => ({ ok: false } as const))));
+      return results.some(res => res.ok) ? { ok: true } : { ok: false, error: 'No route could hold a backup.' };
+    },
+    readBackups: async () => {
+      const lists = await Promise.all(parts.map(part => part.readBackups?.().catch(() => []) ?? Promise.resolve([])));
+      const byName = new Map<string, BackupEntry>();
+      for (const entry of lists.flat()) byName.set(entry.name, entry);
+      return [...byName.values()].sort((a, b) => b.saved - a.saved);
+    },
+    readBackup: async name => {
       for (const part of parts) {
-        const res = await part.writeBackup(name, bundle).catch(() => ({ ok: false } as const));
-        if (res.ok) return res;
+        const bundle = await part.readBackup?.(name).catch(() => null);
+        if (bundle) return bundle;
       }
-      return { ok: false, error: 'No route could hold a backup.' };
+      return null;
     },
 
     onChanged: callback => {

@@ -129,9 +129,54 @@ function writeBackup(name, bundle) {
     fs.mkdirSync(dir, { recursive: true });
     const file = path.join(dir, name);
     fs.writeFileSync(file, JSON.stringify(bundle), 'utf8');
+    if (String(name).startsWith(CHECKPOINT_PREFIX)) pruneCheckpoints(dir);
     return { ok: true, path: file };
   } catch (e) {
     return { ok: false, error: e.message };
+  }
+}
+
+// ── Checkpoints ───────────────────────────────────────────────────────────────
+// The copy every device takes before it updates (src/lib/updateCheckpoint.ts).
+// They live beside the rescue copies in backups/, so they can be listed and
+// recovered from Sync health on any computer, offline included.
+
+const CHECKPOINT_PREFIX = 'checkpoint-';
+const KEEP_CHECKPOINTS = 30;
+const BACKUP_NAME = /^[\w.-]{1,200}\.json$/;
+
+function listBackups(dir) {
+  try {
+    return fs.readdirSync(dir)
+      .filter(name => BACKUP_NAME.test(name))
+      .map(name => { try { return { name, saved: fs.statSync(path.join(dir, name)).mtimeMs }; } catch { return null; } })
+      .filter(Boolean)
+      .sort((a, b) => b.saved - a.saved);
+  } catch {
+    return [];
+  }
+}
+
+function pruneCheckpoints(dir) {
+  const old = listBackups(dir).filter(entry => entry.name.startsWith(CHECKPOINT_PREFIX)).slice(KEEP_CHECKPOINTS);
+  for (const entry of old) { try { fs.unlinkSync(path.join(dir, entry.name)); } catch { /* another machine got there first */ } }
+}
+
+/** Rescue copies and checkpoints in the folder, newest first. */
+function readBackups() {
+  const config = loadConfig();
+  if (!config.enabled || !config.folder) return [];
+  return listBackups(path.join(config.folder, 'backups')).slice(0, 100);
+}
+
+/** One of them, parsed; null if it isn't there or isn't readable. */
+function readBackup(name) {
+  const config = loadConfig();
+  if (!config.enabled || !config.folder || !BACKUP_NAME.test(String(name))) return null;
+  try {
+    return JSON.parse(fs.readFileSync(path.join(config.folder, 'backups', String(name)), 'utf8'));
+  } catch {
+    return null;
   }
 }
 
@@ -169,4 +214,4 @@ function initWatcher(onChanged) {
   restartWatcher();
 }
 
-module.exports = { loadConfig, setConfig, pickFolder, readPeers, writeDoc, writeBackup, initWatcher };
+module.exports = { loadConfig, setConfig, pickFolder, readPeers, writeDoc, writeBackup, readBackups, readBackup, initWatcher };
