@@ -7,6 +7,14 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.6.0 - 2026-11-28
+
+- Every device saves a **checkpoint** before it switches to a new version: it syncs with the others once more, then keeps the data on the device, in the cloud folder (desktop and laptop) and on the relay. The desktop and laptop take one when an update finishes downloading and again on *Restart now*; the phone takes one before it reloads. An update is never held up by it (at most 20 s on a computer, 12 s on the phone); offline, the copy stays on the device.
+- Sync health has a **Before updating** section: whether every device has the same data (or which one has not caught up), and **Save checkpoint** to take one by hand.
+- Checkpoints from any device appear in **Recover items**, to bring back what is missing or replace a device's data. They are also ordinary backup files that *Load backup* reads.
+- New **Release everywhere** workflow (`release-all.yml`, run by hand): publishes the desktop build, then the phone app only if the desktop build succeeded. The relay needs no deploy. See `docs/updating.md`.
+- The update to 3.6.0 itself starts from 3.5.2, which takes no checkpoint: sync each device and use *Download emergency file* first (`docs/updating.md`).
+
 ## 3.5.2 - 2026-11-27
 
 - The phone app now installs from GitHub Pages (`https://hvo7.github.io/Milestone/`), which updates with every release. The relay stays where it is and needs no deploy; the Cloudflare app address is no longer updated.

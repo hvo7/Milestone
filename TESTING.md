@@ -1,8 +1,8 @@
 # Milestone Testing
 
-## Update checkpoints and one-click release (2026-11-28) — testing, awaiting approval
+## Update checkpoints and one-click release (2026-11-28) — approved, release 3.6.0
 
-On `testing/update-checkpoints`, based on `release/3.5.2` (`944ec76`). Not approved for production; the version stays 3.5.2 until approval (planned 3.6.0).
+On `testing/update-checkpoints` (`2619356`, pushed by the user), based on `release/3.5.2` (`944ec76`). Approved for production by the user on November 28, 2026 ("I approve this for production as 3.6.0"); released as 3.6.0 on `release/3.6.0` (version bump, `CHANGELOG.md`, this status).
 
 ### Request and scope
 
@@ -40,7 +40,11 @@ No change to stores or sync documents. New files only in `backups/` and the rela
 
 Not a Milestone problem: `Dockerfile`/`render.yaml` were removed in `4f06760`; a Render service still linked to the repo fails every deploy. Delete or suspend it, or turn Auto-Deploy off, in the Render dashboard (`docs/updating.md`).
 
-## Current release status — November 26, 2026
+## Current release status — November 28, 2026
+
+**Update checkpoints approved and prepared as release 3.6.0** on `release/3.6.0`: the testing commit plus the version bump, `CHANGELOG.md` entry and status. The user pushes it to `main` from the bundle in `Claude outputs` and runs **Release everywhere** (`release-all.yml`; first run of that workflow). Because 3.5.2 takes no checkpoint, before running it: *Sync now* on the laptop and phone, then *Download emergency file* on the one that has everything. The desktop is away; it updates and joins when next opened. Validation: as recorded for the batch below; the release commit changes only version, notes and status.
+
+## Previous release status — November 26, 2026
 
 **Sync repair 2 was approved for production by the user on November 26, 2026 ("I approve of this for production") and is prepared as release 3.5.0** on `release/3.5.0`: the `testing/sync-merge-recovery` commit (`5124a82`, pushed by the user) plus the version bump, `CHANGELOG.md` entry, and a fix for the intermittently failing oversized-upload assertion in `deploy/cloudflare/relay.test.mjs` (it now accepts the runtime's cut connection as a refusal; 20 of 20 runs passed). 3.4.1 (`cc1d6af`) and the cleanup commits up to `4f06760` are on `main`.
 
