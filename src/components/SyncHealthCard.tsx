@@ -7,7 +7,7 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import {
-  useSyncStatus, setSyncPaused, syncNow, restoreIssue, dismissIssue, peerCopies, relayHistory, relayHistoryCopy,
+  useSyncStatus, setSyncPaused, syncNow, restoreIssue, dismissIssue, peerCopies, relayHistory, relayHistoryCopy, forgetPeer,
   compareWith, bringBack, restoreCopy, shareThisDeviceEverywhere, emergencyBundle, backupBundleOf,
   type RecoverySource, type RecoveryItem, type PeerStatus,
 } from '../lib/cloudSync';
@@ -62,6 +62,7 @@ function IssueRow({ issue }: { issue: SyncIssue }) {
 }
 
 function DeviceRow({ peer, now }: { peer: PeerStatus; now: number }) {
+  const [confirm, setConfirm] = useState(false);
   const stale = now - Date.parse(peer.updatedAt) > STALE_DAYS * 86_400_000;
   return (
     <li className="sh-device">
@@ -71,6 +72,15 @@ function DeviceRow({ peer, now }: { peer: PeerStatus; now: number }) {
       </span>
       {!!peer.waiting && <span className="sh-chip">{peer.waiting} waiting</span>}
       {peer.legacy && <span className="sh-chip sh-chip-warn">Update needed</span>}
+      {confirm ? (
+        <span className="sh-forget">
+          Stop syncing with this {peer.deviceName}? Use it for an app you've removed or replaced.
+          <button type="button" className="btn-ghost" onClick={() => forgetPeer(peer.deviceId)}>Forget</button>
+          <button type="button" className="btn-ghost" onClick={() => setConfirm(false)}>Cancel</button>
+        </span>
+      ) : (
+        <button type="button" className="sh-link" onClick={() => setConfirm(true)} aria-label={`Forget ${peer.deviceName}`}>Forget…</button>
+      )}
     </li>
   );
 }

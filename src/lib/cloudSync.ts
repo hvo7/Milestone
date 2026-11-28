@@ -49,7 +49,7 @@ import {
   type Dot, type Entities, type Side, type Stamps, type MergeConflict, type Baseline,
 } from './syncMerge';
 import { automaticMarks, clearAutomaticMarks } from './syncIntent';
-import { SYNC_ISSUES_KEY, useSyncIssues, recordIssues, closeIssue, type SyncIssue, type NewIssue } from './syncIssues';
+import { SYNC_ISSUES_KEY, useSyncIssues, recordIssues, closeIssue, forgottenDevices, forgetDevice, type SyncIssue, type NewIssue } from './syncIssues';
 import { isSyncPaused, setSyncPausedFlag, saveSafetySnapshot } from './syncSafety';
 
 export { compareClocks, mergeClocks };
@@ -145,6 +145,7 @@ const META_KEY = 'milestone-sync-meta';
 // ── Status, for the settings cards ────────────────────────────────────────────
 
 export interface PeerStatus {
+  deviceId: string;
   deviceName: string;
   updatedAt: string;
   appVersion?: string;
@@ -548,6 +549,20 @@ export function preferredForSlot(a: SyncDoc, b: SyncDoc, slot: Slot): SyncDoc {
   return av.at > bv.at || (av.at === bv.at && av.deviceId >= bv.deviceId) ? a : b;
 }
 
+/** The other devices' readable documents, minus any you chose to forget. */
+const others = (docs: unknown[] | undefined): SyncDoc[] => {
+  const forgotten = new Set(forgottenDevices());
+  return (docs ?? []).filter(isSyncDoc).filter(doc => doc.deviceId !== config?.deviceId && !forgotten.has(doc.deviceId));
+};
+
+/** Stops syncing with a device whose app is gone (replaced, reinstalled, retired).
+ *  Every device ignores its copy from then on; nothing it held is removed here. */
+export function forgetPeer(deviceId: string) {
+  forgetDevice(deviceId);
+  lastPeers = lastPeers.filter(peer => peer.deviceId !== deviceId);
+  refreshPeerStatus();
+}
+
 /** Human names for messages. */
 const SLOT_LABEL: Record<Slot, string> = {
   vitals: 'Life Vitals',
@@ -745,7 +760,7 @@ async function pullOnce() {
 
   // One unreadable document must not stop this device syncing with the others.
   const unreadable = res.peers.filter(doc => !isSyncDoc(doc)) as { deviceName?: unknown }[];
-  const peers = res.peers.filter(isSyncDoc).filter(doc => doc.deviceId !== config?.deviceId);
+  const peers = others(res.peers);
   lastPeers = peers;
   const skipped = unreadable.map(doc => typeof doc?.deviceName === 'string' && doc.deviceName ? doc.deviceName.slice(0, 40) : 'an unnamed device');
   setStatus({
@@ -820,7 +835,7 @@ function refreshPeerStatus() {
           if (isItemPath(path) && !seen(clock, dot)) waiting++;
         }
       }
-      return { deviceName: peer.deviceName, updatedAt: peer.updatedAt, appVersion: peer.appVersion, legacy: !peer.items, waiting };
+      return { deviceId: peer.deviceId, deviceName: peer.deviceName, updatedAt: peer.updatedAt, appVersion: peer.appVersion, legacy: !peer.items, waiting };
     }),
   });
 }
@@ -913,7 +928,7 @@ async function enableFolder(folder: string, mode: 'adopt' | 'push') {
   try {
     const res = await api.readPeers();
     if (!res.ok) throw new Error(res.error ?? 'Unable to inspect existing sync data.');
-    const peers = (res.peers ?? []).filter(isSyncDoc).filter(doc => doc.deviceId !== config?.deviceId);
+    const peers = others(res.peers);
     lastPeers = peers;
     await safetyCopy(mode === 'push' ? 'Before sharing this computer\'s data' : 'Before loading the folder\'s data');
 
@@ -1138,7 +1153,7 @@ export async function shareThisDeviceEverywhere(): Promise<void> {
     if (!api || !config?.enabled) throw new Error('Sync is not set up on this device.');
     const res = await api.readPeers();
     if (!res.ok) throw new Error(res.error ?? 'Could not reach the other devices.');
-    const peers = (res.peers ?? []).filter(isSyncDoc).filter(doc => doc.deviceId !== config?.deviceId);
+    const peers = others(res.peers);
     lastPeers = peers;
     await safetyCopy('Before using this device\'s data everywhere');
     makeAuthoritative(peers);

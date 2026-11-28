@@ -100,8 +100,8 @@ before it updated can come back from a device that still has them.
 
 ### Recommended update order
 
-1. Publish the release: `release.yml` (desktop and laptop) and the Cloudflare
-   deploy (phone app and relay); `pages.yml` for the web copy.
+1. Publish the release: `release.yml` (desktop and laptop) and `pages.yml`
+   (the phone app, from 3.5.2). The relay needs no deploy.
 2. Before updating, let the devices you have sync once (open each online; *Sync
    now*), so no device holds edits the others haven't seen.
 3. Update them one at a time, opening each online after it updates. A device

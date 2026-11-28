@@ -19,8 +19,8 @@ beforeEach(() => {
   root = createRoot(host);
   useSyncStatus.setState({ available: true, enabled: true, linked: true, paused: false, pending: false, error: null, busy: false,
     peers: [
-      { deviceName: 'Laptop', updatedAt: new Date(Date.now() - 6 * 86_400_000).toISOString(), appVersion: '3.4.1', legacy: true, waiting: 12 },
-      { deviceName: 'Phone', updatedAt: new Date().toISOString(), appVersion: '3.5.0', legacy: false, waiting: 0 },
+      { deviceId: 'laptop', deviceName: 'Laptop', updatedAt: new Date(Date.now() - 6 * 86_400_000).toISOString(), appVersion: '3.4.1', legacy: true, waiting: 12 },
+      { deviceId: 'phone', deviceName: 'Phone', updatedAt: new Date().toISOString(), appVersion: '3.5.0', legacy: false, waiting: 0 },
     ] });
   useSyncIssues.setState({ issues: [
     issue({ id: 'e' }),
@@ -89,6 +89,15 @@ it('offers safety copies in recovery and lists what each would bring back', asyn
   await act(async () => button('Cancel').click());
   await act(async () => button('Use this device\'s data everywhere…').click());
   expect(button('Use everywhere')).toBeTruthy();
+});
+
+it('forgets a device only after asking', async () => {
+  useSyncIssues.setState({ issues: [], forgotten: [] });
+  render();
+  await act(async () => (host.querySelector('[aria-label="Forget Laptop"]') as HTMLButtonElement).click());
+  expect(host.textContent).toContain('Stop syncing with this Laptop?');
+  await act(async () => button('Forget').click());
+  expect(useSyncIssues.getState().forgotten).toEqual(['laptop']);
 });
 
 it('says when this device is not connected', () => {

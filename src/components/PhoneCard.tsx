@@ -8,7 +8,7 @@ import { APP_VERSION } from '../buildInfo';
  */
 import { useEffect, useState } from 'react';
 import { useSyncStatus, reconnectCloudSync, syncNow } from '../lib/cloudSync';
-import { loadRelay, saveRelay, testRelay, relayConfigured, type RelayConfig } from '../lib/relay';
+import { loadRelay, saveRelay, testRelay, relayConfigured, setupCode, fromSetupCode, type RelayConfig } from '../lib/relay';
 
 /**
  * Where to reach your other copy when it isn't on this network.
@@ -22,21 +22,31 @@ function RelaySection() {
   const [config, setConfig] = useState<RelayConfig>(loadRelay);
   const [result, setResult] = useState<{ ok: boolean; error?: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [shared, setShared] = useState('');
+
+  async function copyForPhone() {
+    const code = setupCode(loadRelay());
+    setShared(code);
+    try { await navigator.clipboard.writeText(code); } catch { /* the field below can be copied by hand */ }
+  }
 
   async function save() {
     setBusy(true);
     setResult(null);
     try {
-      if (!config.url.trim() && !config.token.trim()) {
+      // A pasted setup code fills both fields at once.
+      const entered = fromSetupCode(config);
+      if (entered !== config) setConfig(entered);
+      if (!entered.url.trim() && !entered.token.trim()) {
         setConfig(saveRelay(config));
         await reconnectCloudSync();
         setResult({ ok: true });
         return;
       }
-      const checked = await testRelay(config);
+      const checked = await testRelay(entered);
       setResult(checked);
       if (checked.ok) {
-        setConfig(saveRelay(config));
+        setConfig(saveRelay(entered));
         await reconnectCloudSync();
       }
     } finally {
@@ -58,7 +68,7 @@ function RelaySection() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <input
           className="rune-input"
-          placeholder="https://milestone.example.com"
+          placeholder="Relay address or setup code"
           value={config.url}
           onChange={e => setConfig(c => ({ ...c, url: e.target.value }))}
           style={{ fontSize: 12.5, padding: '7px 10px' }}
@@ -83,7 +93,21 @@ function RelaySection() {
           {!result && relayConfigured(config) && (
             <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>Set up</span>
           )}
+          {relayConfigured(loadRelay()) && (
+            <button type="button" className="btn-ghost" onClick={() => void copyForPhone()} style={{ fontSize: 12, padding: '5px 12px', marginLeft: 'auto' }}>
+              Copy setup code
+            </button>
+          )}
         </div>
+        {shared && (
+          <>
+            <input className="rune-input" readOnly value={shared} aria-label="Setup code" onFocus={e => e.currentTarget.select()}
+              style={{ fontSize: 11.5, padding: '7px 10px' }} />
+            <span style={{ fontSize: 11.5, color: 'var(--text-dim)' }}>
+              Copied. Paste it into this field in the phone app, then Save and check. It contains the key: keep it private.
+            </span>
+          </>
+        )}
       </div>
     </div>
   );

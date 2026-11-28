@@ -40,9 +40,20 @@ export interface SyncIssue {
   closedAt?: string;
 }
 
-interface IssuesState { issues: SyncIssue[] }
+interface IssuesState {
+  issues: SyncIssue[];
+  /** Device ids no longer synced with — an app that was replaced (say, the phone
+   *  app moved to a new address). Synced, so every device ignores them. */
+  forgotten?: string[];
+}
 
-export const useSyncIssues = create<IssuesState>()(persist(() => ({ issues: [] as SyncIssue[] }), { name: SYNC_ISSUES_KEY }));
+export const useSyncIssues = create<IssuesState>()(persist((): IssuesState => ({ issues: [], forgotten: [] }), { name: SYNC_ISSUES_KEY }));
+
+export function forgetDevice(deviceId: string): void {
+  useSyncIssues.setState(state => ({ forgotten: [...new Set([...(state.forgotten ?? []), deviceId])] }));
+}
+
+export const forgottenDevices = (): string[] => useSyncIssues.getState().forgotten ?? [];
 
 /** Closed issues are kept this long, then dropped. Open ones stay until closed. */
 const CLOSED_DAYS = 30;

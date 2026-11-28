@@ -115,8 +115,13 @@ folder, so it needs one of the other two routes:
 - **Over Wi-Fi**, from a desktop that's awake — Sync & Backup → *On your phone*.
 - **Through the relay**, for everything else. One small always-on address all three
   devices reach, so an edit made on a train is on the desktop as it happens. It
-  runs on Cloudflare and also serves the phone app: see
-  **[docs/relay-cloudflare.md](docs/relay-cloudflare.md)**.
+  runs on Cloudflare: see **[docs/relay-cloudflare.md](docs/relay-cloudflare.md)**.
+
+From 3.5.2 the phone app is installed from GitHub Pages
+(`https://hvo7.github.io/Milestone/`), which `pages.yml` updates; the Cloudflare
+address now only matters as the relay. To connect the phone: on a computer,
+Sync & Backup › *When you're away* › **Copy setup code**; in the phone app, paste it
+into the address field and **Save and check**.
 
 All three routes speak the same protocol and a device uses whichever are up at
 once, so the reconciler never has to care which one a change arrived by. Changes

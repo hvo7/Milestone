@@ -47,6 +47,23 @@ export function saveRelay(config: RelayConfig): RelayConfig {
 
 export const relayConfigured = (config: RelayConfig = loadRelay()): boolean => !!config.url && !!config.token;
 
+/**
+ * Address and key as one line, for moving a relay connection to another device
+ * by copy and paste: `https://relay.example#key=…`. A phone app installed on the
+ * Home Screen has its own storage, so the connection has to be entered inside
+ * it; one paste is easier than retyping a long key.
+ */
+export const setupCode = (config: RelayConfig): string => `${config.url}#key=${encodeURIComponent(config.token)}`;
+
+/** Splits a pasted setup code into address and key; anything else is returned as is. */
+export function fromSetupCode(config: RelayConfig): RelayConfig {
+  const match = /^(.*?)#key=(.+)$/.exec(config.url.trim());
+  if (!match) return config;
+  let token = match[2];
+  try { token = decodeURIComponent(token); } catch { /* keep it as typed */ }
+  return { url: match[1], token };
+}
+
 /** First setup only. A saved empty config is an explicit disconnect. */
 export function provisionSharedRelay(config: RelayConfig): boolean {
   if (localStorage.getItem(KEY) !== null || !relayConfigured(config)) return false;

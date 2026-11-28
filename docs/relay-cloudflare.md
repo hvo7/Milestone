@@ -16,7 +16,26 @@ read a desktop profile, copy Testing data, provision credentials, or deploy when
 built or tested. The desktop stays authoritative for the first pairing requested
 by the user. After pairing, edits travel in both directions.
 
-## Keeping the phone on the current version
+## The phone app moved to GitHub Pages (3.5.2)
+
+On 2026-11-27 the user chose to stop deploying the phone app to Cloudflare: the
+`cloudflare.yml` run failed because the repository has no Cloudflare secrets, and
+the user did not want to manage them. The phone app now installs from GitHub
+Pages, `https://hvo7.github.io/Milestone/`, which `pages.yml` updates with every
+release. The relay stays exactly as deployed (3.4.1 Worker): it only stores and
+relays documents, and every client from 3.5.0 works with it (relay history,
+added in 3.5.0's Worker, is simply absent until the Worker is redeployed).
+
+Moving the phone: install the Pages app to the Home Screen, open it, paste the
+setup code from a computer (*When you're away* › **Copy setup code**) into the
+address field, **Save and check**. It joins with the other devices' data. Remove
+the old Cloudflare-address app from the Home Screen afterwards and **Forget** it
+in Sync health so it isn't listed as an outdated device.
+
+`cloudflare.yml` and the by-hand deploy below are now needed only to change the
+relay itself.
+
+## Keeping the phone on the current version (before 3.5.2)
 
 The iPhone installs Milestone from the Cloudflare address, so it only ever gets
 the build that was last deployed *there*. `pages.yml` (GitHub Pages) and

@@ -7,6 +7,12 @@ beside the nav-bar brand and the line in the Data modal. Bump it with
 
 Dates are the date the version was set, not the date it was packaged.
 
+## 3.5.2 - 2026-11-27
+
+- The phone app now installs from GitHub Pages (`https://hvo7.github.io/Milestone/`), which updates with every release. The relay stays where it is and needs no deploy; the Cloudflare app address is no longer updated.
+- *When you're away* has **Copy setup code**: the relay address and key as one line to paste into the phone app's address field.
+- Sync health can **Forget** a device whose app was removed or replaced. Every device stops syncing with it; nothing it held is deleted.
+
 ## 3.5.1 - 2026-11-27
 
 - A device that updates after another already runs 3.5 (for example a desktop left off for days, even one that ran the old version once before updating) now takes the updated devices' data and keeps only its own changes that never synced, plus items only it had. Where another device changed the same item too, its own change is kept and the other version is listed in Sync health. Its previous copy is saved in Recover items. In 3.5.0 such a device could let its stale copy win.

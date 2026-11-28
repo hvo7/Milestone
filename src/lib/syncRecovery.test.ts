@@ -315,6 +315,24 @@ describe('emergency tools', () => {
   });
 });
 
+describe('forgetting a replaced device', () => {
+  it('ignores its copy from then on, on every device', async () => {
+    const t = await setup({ before: staleLaptop, peers: [phoneDoc(false)] });
+    await t.sync.startCloudSync();
+    expect(t.sync.useSyncStatus.getState().peers.map(p => p.deviceName)).toEqual(['Phone']);
+    t.sync.forgetPeer('phone');
+    expect(t.sync.useSyncStatus.getState().peers).toEqual([]);
+    await vi.advanceTimersByTimeAsync(800);
+    // The list travels with the issues, so the others stop syncing with it too.
+    expect(JSON.parse(t.write.mock.lastCall![0].stores.issues!).state.forgotten).toEqual(['phone']);
+    // Its later writes are not merged.
+    t.peers.splice(0, 1, { ...phoneDoc(false), clock: { phone: 50 }, slotClocks: { quest: { phone: 50 } },
+      stores: { quest: questSlot([ql('zombie', 'From the old app')]) } });
+    await t.sync.syncNow();
+    expect(t.store.getState().questlines.map(q => q.id)).not.toContain('zombie');
+  });
+});
+
 describe('joining', () => {
   it('a fresh phone takes the group\'s data and keeps what it made before pairing', async () => {
     const desktop: SyncDoc = { _milestoneSync: 1, deviceId: 'desktop', deviceName: 'Desktop', updatedAt: '2026-11-25T00:00:00.000Z', syncProtocol: 2,
